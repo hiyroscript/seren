@@ -562,10 +562,18 @@ const BAL = {
     starDecayMonths: 8, sentenceMonthsPerSeverity: 9
   },
 
+  // Skipping time should cost you the chance to do better, never the ability
+  // to survive, and it should hand control back the moment something matters.
+  skip: {
+    maxEvents: { 1: 1, 3: 2, 6: 3, 12: 4 },
+    urgent: { health: 30, energy: 18, hunger: 18, hydration: 18 },
+    // Floors the character maintains on their own each month.
+    fedFloor: 60, wateredFloor: 68, brokeFedFloor: 22, brokeWateredFloor: 40,
+    restBase: 22, restPerQuality: 0.42, cleanBase: 40, cleanPerQuality: 0.2
+  },
+
   events: {
-    perMonthBase: 0.42,         // grows with how busy the life is
-    perMonthMax: 2.4,
-    maxQueued: 6,
+    maxQueued: 2,               // never stack decisions on top of each other
     defaultCooldown: 14         // months
   },
 
@@ -649,6 +657,17 @@ const STR = {
     'time.6m': '6 months', 'time.12m': '1 year',
     'time.warnNeeds': 'Something needs attention before you skip ahead.',
     'time.passed': '{n} months pass.',
+    'time.digest': '{n} months later', 'time.digestOne': 'A month later',
+    'time.nothing': 'A quiet stretch. Nothing worth writing down.',
+    'time.stopped': 'Stopped after {n} of {total} months.',
+    'time.resume': 'Carry on ({n} left)',
+    'time.reason.health': 'Your health needs attention.',
+    'time.reason.needs': 'You are running on empty.',
+    'time.reason.rest': 'You badly need to sleep.',
+    'time.reason.rent': 'You missed the rent.',
+    'time.reason.money': 'You are in the red.',
+    'time.reason.major': 'Something happened that you should look at.',
+    'time.upkeep': 'Food, water and sleep look after themselves while time passes. Everything else does not.',
 
     'vitals.needs': 'Condition', 'vitals.mood': 'Mood', 'vitals.standing': 'Standing',
     'need.hunger': 'Fed', 'need.hydration': 'Hydrated', 'need.energy': 'Rested',
@@ -784,6 +803,17 @@ const STR = {
     'time.6m': '6 mois', 'time.12m': '1 an',
     'time.warnNeeds': 'Quelque chose demande votre attention avant de sauter dans le temps.',
     'time.passed': '{n} mois passent.',
+    'time.digest': '{n} mois plus tard', 'time.digestOne': 'Un mois plus tard',
+    'time.nothing': 'Une période calme. Rien à noter.',
+    'time.stopped': 'Arrêté après {n} mois sur {total}.',
+    'time.resume': 'Poursuivre ({n} restants)',
+    'time.reason.health': 'Votre santé demande votre attention.',
+    'time.reason.needs': 'Vous êtes à bout de ressources.',
+    'time.reason.rest': 'Vous avez vraiment besoin de dormir.',
+    'time.reason.rent': 'Vous avez manqué un loyer.',
+    'time.reason.money': 'Vous êtes dans le rouge.',
+    'time.reason.major': 'Il s\'est passé quelque chose qu\'il faut regarder.',
+    'time.upkeep': 'Manger, boire et dormir se règlent tout seuls quand le temps passe. Le reste, non.',
 
     'vitals.needs': 'État', 'vitals.mood': 'Humeur', 'vitals.standing': 'Réputation',
     'need.hunger': 'Rassasié', 'need.hydration': 'Hydraté', 'need.energy': 'Reposé',
@@ -2301,6 +2331,7 @@ function createLife({ first, last, gender, country, points }) {
       foodStocked: false, fragranceMonths: 0, claimingBenefits: false,
       lastMedical: -99, lastCheckup: -99
     },
+    skip: null, interrupt: null,
     npcs: {}, rel: {}, mem: {},
     feed: [], ledger: [],
     queue: [], cooldowns: {}, chains: {},
@@ -2418,14 +2449,14 @@ __def("ui/app.js", function (__x, __req) {
 // minigame overlay. Game logic lives in core/; this decides what is on screen.
 
 const { t, L, setLang, getLang } = __req("i18n/i18n.js");
-const { el, btn, panel, openModal, closeModal, infoModal, toast } = __req("ui/components.js");
+const { el, btn, kv, panel, openModal, closeModal, infoModal, toast } = __req("ui/components.js");
 const { BAL } = __req("config/balance.js");
 const { money, MONTHS } = __req("data/world.js");
 const { country, age, jobTitle, condition } = __req("core/derived.js");
 const { getState } = __req("core/state.js");
 const { saveGame } = __req("core/save.js");
-const { advance, passiveTick, resetIdle } = __req("core/time.js");
-const { nextEvent, popEvent, resolveChoice, availableChoices, pendingCount } = __req("core/events.js");
+const { advance, passiveTick, resetIdle, urgentReason } = __req("core/time.js");
+const { nextEvent, popEvent, resolveChoice, availableChoices, pendingCount, budgetFor } = __req("core/events.js");
 const { PROGRAM_BY_ID } = __req("data/education.js");
 const { runMinigame } = __req("minigames/index.js");
 const { skill, visionPenalty } = __req("core/derived.js");
@@ -2566,38 +2597,102 @@ function createApp({ root, settings, saveSettings, onNewLife }) {
   // ---------------------------------------------------------------- time
 
   // Months are simulated one at a time and any event they produce is answered
-  // before the next month runs, so a choice made in March shapes April.
+  // before the next month runs, so a choice made in March shapes April. The
+  // loop stops the moment something needs you, and never spends more than a
+  // few interruptions on a single skip.
   let advancing = false;
   async function doAdvance(months) {
     const s = app.s;
     if (!s || s.over || advancing) return;
     advancing = true;
     resetIdle();
+
+    const start = { age: age(s), money: s.char.money, feed: s.feed.length };
+    const budget = budgetFor(months, s);
+    // Whatever is already wrong when the player chooses to skip is their call.
+    // The skip stops for something new going wrong, not for the status quo.
+    const preexisting = urgentReason(s);
+    let used = 0, done = 0, stop = null;
+
     try {
       for (let i = 0; i < months; i++) {
         if (s.over) break;
-        advance(s, 1);
+        const mark = s.feed.length;
+        advance(s, 1, Math.max(0, budget - used), months - i);
+        done++;
         save();
         refresh();
-        await drainEvents();
+        used += await drainEvents();
         if (s.over) break;
+        const reason = urgentReason(s, s.feed.slice(mark));
+        if (reason && reason !== preexisting) { stop = reason; break; }
       }
     } finally {
       advancing = false;
       save();
       refresh();
     }
+    if (!s.over) showDigest(start, done, months, stop);
+  }
+
+  // One card at the end of a skip: what changed, what mattered, and why it
+  // stopped if it stopped early.
+  function showDigest(start, done, asked, stop) {
+    const s = app.s;
+    const notable = s.feed.slice(start.feed).filter(f => f.major || f.tone !== 'neutral');
+    const quiet = !notable.length && !stop;
+    if (done <= 1 && quiet) return;
+
+    openModal((m, api) => {
+      m.append(el('h2', null, done === 1 ? t('time.digestOne') : t('time.digest', { n: done })));
+
+      const facts = el('div');
+      facts.append(kv(t('common.age'), `${start.age} \u2192 ${age(s)}`));
+      const delta = s.char.money - start.money;
+      facts.append(kv(t('hdr.money'), (delta >= 0 ? '+' : '') + money(delta, country(s)),
+        delta < 0 ? 'loss' : 'gain'));
+      m.append(facts);
+
+      if (notable.length) {
+        const list = el('div', 'feed');
+        for (const f of notable.slice(-10)) {
+          const item = el('div', 'feed-item' + (f.major ? ' is-major' : '') + ' tone-' + (f.tone || 'neutral'));
+          item.append(el('div', 'when', t('common.age') + ' ' + (BAL.start.age + Math.floor(f.month / 12))));
+          item.append(el('div', 'what', f.text));
+          list.append(item);
+        }
+        m.append(el('div', 'sep'), list);
+      } else {
+        m.append(el('p', 'hint', t('time.nothing')));
+      }
+
+      const left = asked - done;
+      if (stop) {
+        m.append(el('p', 'hint caution',
+          t('time.stopped', { n: done, total: asked }) + ' ' + t('time.reason.' + stop)));
+      }
+
+      const choices = el('div', 'choices');
+      choices.append(btn(t('common.continue'), 'btn btn-primary', () => api.close()));
+      if (left > 0) {
+        choices.append(btn(t('time.resume', { n: left }), 'btn', () => { api.close(); doAdvance(left); }));
+      }
+      m.append(choices);
+    }, { dismissable: false });
   }
 
   // ---------------------------------------------------------------- events
 
+  // Resolves with how many events the player actually had to answer.
   function drainEvents() {
     return new Promise((resolve) => {
+      let shown = 0;
       const step = () => {
         const s = app.s;
-        if (!s || s.over) { refresh(); resolve(); return; }
+        if (!s || s.over) { refresh(); resolve(shown); return; }
         const next = nextEvent(s);
-        if (!next) { resolve(); return; }
+        if (!next) { resolve(shown); return; }
+        shown++;
         showEvent(next.ev, next.ctx, next.index, step);
       };
       step();
@@ -2778,10 +2873,12 @@ function timePanel(app) {
     { label: t('time.6m'), value: 6 }, { label: t('time.12m'), value: 12 }
   ], app.settings.step, (v) => { app.settings.step = v; app.saveSettings(); app.refresh(); }));
   b.append(el('div', 'sep'));
-  const go = btn(t('time.advance'), 'btn btn-primary btn-block', () => app.advance(app.settings.step));
-  b.append(go);
+  const stepLabel = { 1: t('time.1m'), 3: t('time.3m'), 6: t('time.6m'), 12: t('time.12m') }[app.settings.step];
+  b.append(btn(`${t('time.advance')} \u00b7 ${stepLabel}`, 'btn btn-primary btn-block',
+    () => app.advance(app.settings.step)));
   const urgent = urgentWarning(s);
   if (urgent) b.append(el('p', 'hint caution', urgent));
+  b.append(el('p', 'hint', t('time.upkeep')));
   return p;
 }
 
@@ -4784,17 +4881,17 @@ const { rollMonthEvents, queueById } = __req("core/events.js");
 const { loseJob, moveOut, arrest } = __req("content/events.js");
 const { L } = __req("i18n/i18n.js");
 
-function advance(s, months) {
+function advance(s, months, allowance = 1, monthsLeft = months) {
   const notes = [];
   for (let i = 0; i < months; i++) {
     if (s.over) break;
-    stepMonth(s, notes);
+    stepMonth(s, notes, allowance, Math.max(1, monthsLeft - i));
   }
   s.daysLeft = BAL.start.daysPerMonth;
   return notes;
 }
 
-function stepMonth(s, notes) {
+function stepMonth(s, notes, allowance = 1, monthsLeft = 1) {
   s.month++;
   const inPrison = !!s.char.legal.incarceration;
 
@@ -4808,6 +4905,9 @@ function stepMonth(s, notes) {
     workMonth(s, notes);
     educationMonth(s, notes);
   }
+  // The monthly budget already pays for groceries. If it went through, the
+  // character ate; the Eat action is about doing better than subsistence.
+  autoUpkeep(s, s.char.money >= 0, inPrison);
 
   childrenMonth(s);
   healthMonth(s, notes);
@@ -4815,7 +4915,7 @@ function stepMonth(s, notes) {
   legalMonth(s);
   tickNpcs(s, notes);
   handleNpcActions(s, notes);
-  if (!inPrison || chance(0.4)) rollMonthEvents(s);
+  if (allowance > 0 && (!inPrison || chance(0.4))) rollMonthEvents(s, allowance, monthsLeft);
   checkEnding(s);
 }
 
@@ -4849,6 +4949,33 @@ function decayNeeds(s, inPrison) {
   m.happiness = clamp(m.happiness + ((n.social - 45) * 0.06 + (60 - m.stress) * 0.07 + (s.char.money > 2000 ? 1 : -1)));
   m.anger = clamp(m.anger - 3 + (m.stress > 70 ? 3 : 0));
   s.char.debtStress = s.char.money < 0 ? Math.min(40, s.char.debtStress + 2) : Math.max(0, s.char.debtStress - 3);
+}
+
+// Nobody forgets to eat for a year. What a long skip really costs you is the
+// gym, the studying, the phone calls and the job hunt — not your life.
+function autoUpkeep(s, covered, inPrison) {
+  if (inPrison) return;
+  const n = s.char.needs;
+  const sk = BAL.skip;
+  const q = homeQuality(s);
+  n.hunger = Math.max(n.hunger, covered ? sk.fedFloor : sk.brokeFedFloor);
+  n.hydration = Math.max(n.hydration, covered ? sk.wateredFloor : sk.brokeWateredFloor);
+  n.energy = Math.max(n.energy, sk.restBase + q * sk.restPerQuality);
+  if (q > 25) n.hygiene = Math.max(n.hygiene, sk.cleanBase + q * sk.cleanPerQuality);
+}
+
+// Why an advance should hand control back. Returns a reason key or null.
+function urgentReason(s, newFeed = []) {
+  if (s.over) return null;
+  const u = BAL.skip.urgent;
+  const n = s.char.needs;
+  if (n.health < u.health) return 'health';
+  if (n.hunger < u.hunger || n.hydration < u.hydration) return 'needs';
+  if (n.energy < u.energy) return 'rest';
+  if (s.char.home?.kind === 'rent' && (s.char.home.missed || 0) > 0) return 'rent';
+  if (s.char.money < 0) return 'money';
+  if (newFeed.some(f => f.major)) return 'major';
+  return null;
 }
 
 // ---------------------------------------------------------------- money
@@ -5249,6 +5376,7 @@ function passiveTick(s) {
 function resetIdle() { idleTotal = 0; }
 
   __x.advance = advance;
+  __x.urgentReason = urgentReason;
   __x.meetsJobReq = meetsJobReq;
   __x.conditionBurden = conditionBurden;
   __x.healthTarget = healthTarget;
@@ -5307,29 +5435,30 @@ function candidateEvents(s) {
   return out;
 }
 
-// How many events a single month should produce, given how busy the life is.
-function eventCountForMonth(s) {
-  const load = BAL.events.perMonthBase + lifeActivity(s) * 0.28;
-  const lambda = Math.min(BAL.events.perMonthMax, load);
-  let n = 0;
-  if (rnd() < lambda) n++;
-  if (rnd() < lambda - 1) n++;
-  if (rnd() < lambda - 2) n++;
-  return n;
+// How many decisions a skip of this length may ask for, given this life. An
+// empty life gets a fraction of the ceiling; a full one gets all of it.
+function budgetFor(months, s) {
+  const cap = BAL.skip.maxEvents[months] ?? 2;
+  return Math.max(1, Math.round(cap * clamp(0.3 + lifeActivity(s) / 4, 0.3, 1)));
 }
 
-function rollMonthEvents(s) {
-  const n = eventCountForMonth(s);
-  const queued = [];
-  for (let i = 0; i < n; i++) {
-    if (s.queue.length >= BAL.events.maxQueued) break;
-    const cands = candidateEvents(s).filter(c => !s.queue.some(q => q.id === c.ev.id));
-    const chosen = weighted(cands);
-    if (!chosen) break;
-    queue(s, chosen.ev, { npcId: chosen.npcId });
-    queued.push(chosen.ev.id);
-  }
-  return queued;
+// At most one decision per month, drawn from the allowance the whole skip has
+// left, and spread across the months still to come so a year does not
+// front-load every dialogue into January. A quiet life spends less than a full
+// one, so doing nothing really does mean fewer things happening.
+function rollMonthEvents(s, allowance = 1, monthsLeft = 1) {
+  if (allowance <= 0) return [];
+  if (s.queue.length >= BAL.events.maxQueued) return [];
+
+  const share = allowance / Math.max(1, monthsLeft);
+  const busy = clamp(0.45 + lifeActivity(s) * 0.2, 0.3, 1.2);
+  if (rnd() >= Math.min(0.9, share * busy)) return [];
+
+  const cands = candidateEvents(s).filter(c => !s.queue.some(q => q.id === c.ev.id));
+  const chosen = weighted(cands);
+  if (!chosen) return [];
+  queue(s, chosen.ev, { npcId: chosen.npcId });
+  return [chosen.ev.id];
 }
 
 function queue(s, ev, ctx = {}) {
@@ -5388,7 +5517,7 @@ function availableChoices(s, ev, ctx) {
 }
 
   __x.candidateEvents = candidateEvents;
-  __x.eventCountForMonth = eventCountForMonth;
+  __x.budgetFor = budgetFor;
   __x.rollMonthEvents = rollMonthEvents;
   __x.queue = queue;
   __x.queueById = queueById;
