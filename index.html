@@ -129,13 +129,15 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radiu
 @keyframes d-lane{0%,16%{transform:translateX(0)}30%,46%{transform:translateX(-33px)}60%,76%{transform:translateX(33px)}90%,100%{transform:translateX(0)}}
 @keyframes d-squash{0%,38%{transform:scaleY(1)}50%,74%{transform:scaleY(.55) translateY(6px)}88%,100%{transform:scaleY(1)}}
 @keyframes d-fall{0%{transform:translateY(-34px)}100%{transform:translateY(96px)}}
+@keyframes d-drag{0%,14%{transform:translateY(-7px);opacity:.2}40%,78%{transform:translateY(0);opacity:.65}100%{transform:translateY(-7px);opacity:.2}}
 @keyframes d-blink{0%,42%{opacity:1}50%,66%{opacity:0}74%{opacity:1}82%{opacity:.25}90%,100%{opacity:1}}
 .a1{animation:d-lane 3.6s var(--ease) infinite}
 .a2{animation:d-squash 2.6s var(--ease) infinite}
 .a3{animation:d-fall 2.6s linear infinite}
 .a4{animation:d-blink 3s steps(1,end) infinite}
-body.reduced .a1,body.reduced .a2,body.reduced .a3,body.reduced .a4{animation:none}
-@media (prefers-reduced-motion:reduce){.a1,.a2,.a3,.a4{animation:none}}
+.a5{animation:d-drag 2.6s var(--ease) infinite;transform-box:fill-box;transform-origin:center}
+body.reduced .a1,body.reduced .a2,body.reduced .a3,body.reduced .a4,body.reduced .a5{animation:none}
+@media (prefers-reduced-motion:reduce){.a1,.a2,.a3,.a4,.a5{animation:none}}
 
 /* ---------- completion ---------- */
 .stats{display:flex;flex-direction:column;gap:1px;width:min(320px,84vw);margin:4px 0 10px}
@@ -204,6 +206,9 @@ body.reduced .rotIcon{animation:none}
             <g class="a3"><rect class="blk" x="0" y="0" width="120" height="16"/>
               <path class="chev" d="M14 5 l6 5 l6 -5 M54 5 l6 5 l6 -5 M94 5 l6 5 l6 -5"/></g>
             <circle class="ball a2" cx="60" cy="58" r="11"/>
+            <g class="a5"><circle cx="99" cy="40" r="3.2" fill="#000"/>
+              <path d="M99 47 l0 13 M94 55 l5 6 l5 -6" fill="none" stroke="#000"
+                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></g>
           </svg>
           <figcaption data-i18n="htCrouch"></figcaption>
         </figure>
@@ -357,7 +362,7 @@ var I18N = {
     effects: 'Visual effects', full: 'Full', reduced: 'Reduced',
     howToTitle: 'HOW TO PLAY',
     htLanes: 'Swipe left or right to change column.',
-    htCrouch: 'Hold anywhere to crouch under a barrier.',
+    htCrouch: 'Swipe down and hold to duck under a barrier.',
     htObstacles: 'Dodge the black shapes. A square blocks one column.',
     htHit: 'A hit removes you for two seconds, then you respawn.',
     htWalls: 'Barriers marked with chevrons can only be passed by crouching.',
@@ -381,7 +386,7 @@ var I18N = {
     effects: 'Effets visuels', full: 'Complets', reduced: 'Réduits',
     howToTitle: 'COMMENT JOUER',
     htLanes: 'Glissez à gauche ou à droite pour changer de colonne.',
-    htCrouch: 'Maintenez l\u2019appui pour vous baisser sous une barrière.',
+    htCrouch: 'Glissez vers le bas et maintenez pour rester baissé.',
     htObstacles: 'Évitez les formes noires. Un carré bloque une colonne.',
     htHit: 'Un choc vous retire deux secondes, puis vous réapparaissez.',
     htWalls: 'Les barrières marquées de chevrons se franchissent uniquement en se baissant.',
@@ -556,8 +561,10 @@ var CFG = {
   FINAL_DISTANCE:   500,    /* metres of the final stage */
 
   /* player */
-  PLAYER_Y:         0.79,   /* fraction of playfield height */
-  PLAYER_R:         0.255,  /* fraction of column width */
+  PLAYER_Y:         0.845,  /* fraction of playfield height */
+  PLAYER_R:         0.225,  /* fraction of column width */
+  TRAIL_RATE:       0.022,  /* seconds between trail nodes */
+  TRAIL_LIFE:       0.46,   /* seconds a trail node survives */
   LANE_TIME:        0.155,  /* seconds per lane switch */
   CROUCH_RATE:      22,     /* crouch easing rate */
   HITBOX_FORGIVE:   0.84,
@@ -583,6 +590,19 @@ var CFG = {
   IRIS_IN:          0.55,
   IRIS_OUT:         0.6
 };
+
+/* ---------------------------------------------------------------------------
+   ACCENT — the world is ink on paper, but its *energy* takes on colour, and
+   that colour travels round the wheel as the run accelerates: cool at 1.00x,
+   hot by 2.00x, resolving into the full spectrum of the finish wall.
+   Set ACCENT to false for a strictly black-and-white run.
+   ------------------------------------------------------------------------- */
+var ACCENT = true;
+function accentHue() { return lerp(206, 342, clamp((Run.mult - 1) / 1, 0, 1)); }
+function accent(a, light) {
+  if (!ACCENT) return 'rgba(0,0,0,' + a + ')';
+  return 'hsla(' + accentHue().toFixed(0) + ',88%,' + (light || 52) + '%,' + a + ')';
+}
 
 /* ============================================================================
    DEVICE + STATE
@@ -687,9 +707,67 @@ function positionPauseButton() {
    7. VFX — particles, ripples, trails, speed lines, screen shake
    ========================================================================== */
 var VFX = {
-  parts: [], ripples: [], lines: [], shake: 0, shakeT: 0,
+  parts: [], ripples: [], lines: [], trail: [], shake: 0, shakeT: 0, moteAcc: 0,
 
   scale: function () { return Settings.reduced ? 0.35 : 1; },
+
+  /* ---- the black tail the player leaves on the track ---- */
+  pushTrail: function (x, y, rx, ry) {
+    this.trail.push({ x: x, y: y, rx: rx, ry: ry, t: 0, max: CFG.TRAIL_LIFE });
+    if (this.trail.length > 90) this.trail.shift();
+  },
+  drawTrail: function () {
+    ctx.fillStyle = '#000';
+    for (var i = 0; i < this.trail.length; i++) {
+      var n = this.trail[i], k = n.t / n.max, f = 1 - k;
+      ctx.globalAlpha = 0.30 * f * f;
+      ctx.beginPath();
+      ctx.ellipse(n.x, n.y, Math.max(0.5, n.rx * (0.30 + 0.70 * f)),
+                             Math.max(0.5, n.ry * (0.24 + 0.76 * f)), 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+  /* everything that belongs to the track scrolls with it */
+  scrollWorld: function (dy) {
+    var i;
+    for (i = 0; i < this.trail.length; i++) this.trail[i].y += dy;
+    for (i = 0; i < this.parts.length; i++) if (this.parts[i].w) this.parts[i].y += dy;
+    for (i = 0; i < this.ripples.length; i++) if (this.ripples[i].w) this.ripples[i].y += dy;
+  },
+
+  /* ---- ambient specks: texture in the empty track, never noise ---- */
+  motes: function (dt, mult) {
+    if (Settings.reduced) return;
+    this.moteAcc += (5 + (mult - 1) * 9) * dt;
+    while (this.moteAcc >= 1) {
+      this.moteAcc -= 1;
+      this.parts.push({
+        x: PF.x + rand(4, PF.w - 4), y: PF.y - rand(4, 30),
+        vx: rand(-8, 8), vy: rand(10, 40), life: 0, max: rand(1.6, 2.6),
+        size: rand(1, 2.3), color: '#000', drag: 0.2, grav: 0, streak: false,
+        a0: rand(.10, .22), w: true
+      });
+    }
+  },
+  /* ---- an obstacle sweeping past the player ---- */
+  whoosh: function (r, near) {
+    if (Settings.reduced) return;
+    var y = r.y + r.h * 0.5;
+    for (var side = 0; side < 2; side++) {
+      var x = side ? r.x + r.w : r.x;
+      this.parts.push({
+        x: x, y: y, vx: (side ? 1 : -1) * rand(120, 260), vy: rand(-30, 30),
+        life: 0, max: rand(.18, .3), size: rand(1.6, 3), color: '#000',
+        drag: 3.4, grav: 0, streak: true, a0: .5
+      });
+    }
+    if (near) {
+      this.ripple(near.x, near.y, playerRadius() * 0.9, playerRadius() * 2.6, accent(1), .34, 1.6);
+      this.burst(near.x, near.y, 6, { color: accent(1), spMin: 60, spMax: 220,
+        sizeMax: 2.6, lifeMax: .32, streak: true });
+    }
+  },
 
   burst: function (x, y, n, opt) {
     opt = opt || {};
@@ -702,7 +780,7 @@ var VFX = {
         life: 0, max: rand(opt.lifeMin || .3, opt.lifeMax || .7),
         size: rand(opt.sizeMin || 2, opt.sizeMax || 5),
         color: opt.color || '#000', drag: opt.drag || 2.6,
-        grav: opt.grav || 0, streak: !!opt.streak
+        grav: opt.grav || 0, streak: !!opt.streak, a0: opt.a0, w: !!opt.world
       });
     }
   },
@@ -729,20 +807,27 @@ var VFX = {
       var r = this.ripples[i]; r.t += dt;
       if (r.t >= r.dur) this.ripples.splice(i, 1);
     }
+    for (i = this.trail.length - 1; i >= 0; i--) {
+      var n = this.trail[i]; n.t += dt;
+      if (n.t >= n.max) this.trail.splice(i, 1);
+    }
     for (i = this.lines.length - 1; i >= 0; i--) {
       var l = this.lines[i]; l.y += l.v * dt; l.life += dt;
       if (l.life > l.max || l.y > PF.y + PF.h + 100) this.lines.splice(i, 1);
     }
     this.shake = Math.max(0, this.shake - dt * 26);
   },
-  clear: function () { this.parts.length = 0; this.ripples.length = 0; this.lines.length = 0; this.shake = 0; },
+  clear: function () {
+    this.parts.length = 0; this.ripples.length = 0; this.lines.length = 0;
+    this.trail.length = 0; this.shake = 0; this.moteAcc = 0;
+  },
 
   drawParticles: function () {
     var i, p, a;
     for (i = 0; i < this.parts.length; i++) {
       p = this.parts[i];
       a = 1 - p.life / p.max;
-      ctx.globalAlpha = a;
+      ctx.globalAlpha = a * (p.a0 === undefined ? 1 : p.a0);
       ctx.fillStyle = p.color;
       if (p.streak) {
         var len = clamp(Math.hypot(p.vx, p.vy) * 0.035, 3, 40);
@@ -769,9 +854,9 @@ var VFX = {
     ctx.globalAlpha = 1;
   },
   drawSpeedLines: function () {
-    ctx.strokeStyle = '#000';
     for (var i = 0; i < this.lines.length; i++) {
       var l = this.lines[i];
+      ctx.strokeStyle = l.c;
       ctx.globalAlpha = l.a * (1 - l.life / l.max);
       ctx.lineWidth = l.w;
       ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x, l.y + l.len); ctx.stroke();
@@ -781,10 +866,13 @@ var VFX = {
   spawnSpeedLine: function (mult) {
     if (Settings.reduced) return;
     var world = Run.speedN() * PF.h;               /* pixels per second of the world */
+    var hot = ACCENT && Math.random() < 0.34;
     this.lines.push({
       x: PF.x + rand(6, PF.w - 6), y: PF.y - rand(20, 140),
       len: rand(20, 80) * (0.6 + mult * 0.5), v: world * rand(1.5, 2.6),
-      a: rand(.05, .12), w: rand(.7, 1.4), life: 0, max: 2.2
+      a: hot ? rand(.20, .42) : rand(.05, .13),
+      w: hot ? rand(1, 2.2) : rand(.7, 1.4),
+      c: hot ? accent(1, 56) : '#000', life: 0, max: 2.2
     });
   }
 };
@@ -797,7 +885,7 @@ var Player = {
   lane: 1, xF: 0.5, fromF: 0.5, toF: 0.5, moveT: 1, dir: 0,
   crouch: false, crouchAmt: 0,
   alive: true, spawnT: 1, immune: 0, immuneExt: 0, endingImmunity: false,
-  trailT: 0, yOff: 0, scaleMul: 1,
+  trailT: 0, dustT: 0, yOff: 0, scaleMul: 1,
 
   laneF: function (l) { return (l + 0.5) / 3; },
 
@@ -820,7 +908,23 @@ var Player = {
     this.lane = n;
     this.fromF = this.xF; this.toF = this.laneF(n); this.moveT = 0;
     Sound.play(this.dir > 0 ? 'laneR' : 'laneL');
+    var r = playerRadius();
+    VFX.burst(this.x() - this.dir * r * 0.5, this.y() + r * 0.5, 7, {
+      color: '#000', dir: PI / 2 - this.dir * 0.9, spMin: 60, spMax: 210,
+      sizeMax: 2.6, lifeMax: .34, streak: true, a0: .6, world: true
+    });
+    VFX.ripple(this.x(), this.y(), r * 0.7, r * 1.9, '#000', .3, 1.2);
     return true;
+  },
+
+  /* the drawn size of the body, so the tail always matches the pose */
+  dims: function () {
+    var r = playerRadius() * this.scaleMul;
+    var m = this.moveT < 1 ? Math.sin(this.moveT * PI) : 0;
+    return {
+      rx: r * (1 + 0.22 * this.crouchAmt + 0.16 * m),
+      ry: r * (1 - 0.34 * this.crouchAmt - 0.10 * m)
+    };
   },
 
   update: function (dt, active) {
@@ -829,10 +933,32 @@ var Player = {
       this.moveT = Math.min(1, this.moveT + dt / CFG.LANE_TIME);
       var e = easeOutBack(this.moveT) * 0.12 + easeOutQuint(this.moveT) * 0.88;
       this.xF = lerp(this.fromF, this.toF, e);
-      /* lane switch trail */
-      this.trailT -= dt;
-      if (active && this.trailT <= 0) { this.trailT = 0.035; VFX.ghost(this.x(), this.y(), playerRadius() * 0.9); }
+      if (active) VFX.ghost(this.x(), this.y(), playerRadius() * 0.95);
     } else { this.xF = this.toF; }
+
+    /* the tail: laid down continuously, squashed flat while crouching */
+    if (active && this.alive) {
+      this.trailT -= dt;
+      if (this.trailT <= 0) {
+        this.trailT = CFG.TRAIL_RATE;
+        var d = this.dims();
+        VFX.pushTrail(this.x(), this.y() + d.ry * 0.34, d.rx * 0.80, d.ry * 0.52);
+      }
+      /* dust kicked up along the ground while crouching */
+      if (this.crouchAmt > 0.55 && !Settings.reduced) {
+        this.dustT -= dt;
+        if (this.dustT <= 0) {
+          this.dustT = 0.045;
+          var dd = this.dims();
+          VFX.parts.push({
+            x: this.x() + rand(-dd.rx, dd.rx), y: this.y() + dd.ry * 0.8,
+            vx: rand(-40, 40), vy: rand(30, 110), life: 0, max: rand(.22, .4),
+            size: rand(1.2, 2.6), color: '#000', drag: 2.2, grav: 0,
+            streak: false, a0: .45, w: true
+          });
+        }
+      }
+    }
 
     /* crouch easing */
     var target = (this.crouch && this.alive) ? 1 : 0;
@@ -878,9 +1004,17 @@ var Player = {
 
     /* movement squash-and-stretch */
     var m = this.moveT < 1 ? Math.sin(this.moveT * PI) : 0;
-    var rx = r * (1 + 0.22 * c + 0.16 * m) * pop * this.scaleMul;
-    var ry = r * (1 - 0.34 * c - 0.10 * m) * pop * this.scaleMul;
+    var d = this.dims();
+    var rx = d.rx * pop, ry = d.ry * pop;
     var tilt = this.dir * m * 0.20;
+
+    /* contact shadow: the ball sits on the track instead of floating over it */
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(x, y + ry * 1.04, rx * 1.05, Math.max(1, ry * 0.20), 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
 
     var alpha = 1;
     if (this.immune > 0) alpha = 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(App.time * 26));
@@ -913,6 +1047,22 @@ var Player = {
     ctx.lineWidth = Math.max(1.5, r * 0.085);
     ctx.strokeStyle = '#000'; ctx.stroke();
 
+    /* it is rolling: a seam that turns with the ground covered */
+    if (c < 0.5) {
+      var roll = Run.distance * 0.55;
+      ctx.globalAlpha = alpha * (1 - c * 2) * 0.42;
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = Math.max(1.2, r * 0.07);
+      ctx.lineCap = 'round';
+      for (var q = 0; q < 2; q++) {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, Math.max(1, rx * 0.54), Math.max(1, ry * 0.54), 0,
+          roll + q * PI - 0.6, roll + q * PI + 0.6);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = alpha;
+    }
+
     /* two stacked downward chevrons while crouching */
     if (c > 0.05) {
       ctx.globalAlpha = alpha * c;
@@ -941,8 +1091,24 @@ var Player = {
 function Obstacle(kind, cxF, wF, hN, crouch, lanes) {
   this.kind = kind; this.cxF = cxF; this.wF = wF; this.hN = hN;
   this.crouch = !!crouch; this.lanes = lanes; this.yN = -hN - CFG.SPAWN_MARGIN;
-  this.dead = false;
+  this.dead = false; this.passed = false;
+  this.move = null;               /* set for moving squares */
+  this.lastCxF = cxF;
 }
+function laneCenterF(l) { return (l + 0.5) / 3; }
+/* moving squares slide sideways as they come down the track. They only ever
+   travel between two neighbouring columns, so the third column is always a
+   guaranteed way through and the hazard stays readable. */
+Obstacle.prototype.advance = function (scrollN) {
+  var m = this.move;
+  if (!m) return;
+  this.lastCxF = this.cxF;
+  m.p += scrollN / m.dist;
+  var k;
+  if (m.mode === 'shuttle') k = 0.5 - 0.5 * Math.cos(clamp(m.p, 0, 8) * TAU);
+  else k = easeInOutCubic(clamp(m.p, 0, 1));
+  this.cxF = lerp(laneCenterF(m.a), laneCenterF(m.b), k);
+};
 Obstacle.prototype.rect = function () {
   var w = this.wF * PF.w;
   return { x: PF.x + this.cxF * PF.w - w / 2, y: PF.y + this.yN * PF.h, w: w, h: this.hN * PF.h };
@@ -970,26 +1136,70 @@ var Obstacles = {
         [entry.lane, entry.lane + 1]));
     } else if (entry.kind === 'bar3') {
       out.push(new Obstacle('bar3', 0.5, 1, colN * 0.50, true, [0, 1, 2]));
+    } else if (entry.kind === 'mover' || entry.kind === 'shuttle') {
+      var span = entry.lanes;      /* the two columns it travels between */
+      var mv = new Obstacle('mover', laneCenterF(entry.lane), 0.74 / 3, colN * 0.74, false, span);
+      mv.move = {
+        a: entry.lane, b: entry.to, mode: entry.kind === 'shuttle' ? 'shuttle' : 'cross',
+        dist: entry.kind === 'shuttle' ? 0.62 : 0.86, p: 0
+      };
+      out.push(mv);
     }
     for (var j = 0; j < out.length; j++) this.list.push(out[j]);
     return out;
   },
 
-  update: function (scrollN) {
+  update: function (scrollN, dt) {
     for (var i = this.list.length - 1; i >= 0; i--) {
       var o = this.list[i];
       o.yN += scrollN;
+      o.advance(scrollN);
       if (o.yN > 1.25) this.list.splice(i, 1);
     }
   },
 
   draw: function () {
-    ctx.fillStyle = '#000';
     for (var i = 0; i < this.list.length; i++) {
       var o = this.list[i], r = o.rect();
       if (r.y > PF.y + PF.h || r.y + r.h < PF.y - 4) continue;
+      /* a moving square drags a short afterimage so its travel reads instantly */
+      if (o.move && !Settings.reduced) {
+        var d = o.cxF - o.lastCxF;
+        if (Math.abs(d) > 1e-5) {
+          ctx.fillStyle = '#000';
+          for (var g = 1; g <= 3; g++) {
+            ctx.globalAlpha = 0.13 - g * 0.03;
+            ctx.fillRect(r.x - d * PF.w * g * 3.2, r.y, r.w, r.h);
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+      /* the shadow a block throws down the track: depth, and an early read */
+      if (!Settings.reduced) {
+        var sh = Math.min(r.h * 0.55, colW() * 0.5);
+        var sg = ctx.createLinearGradient(0, r.y + r.h, 0, r.y + r.h + sh);
+        sg.addColorStop(0, 'rgba(0,0,0,.22)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg;
+        ctx.fillRect(r.x, r.y + r.h, r.w, sh);
+      }
+      ctx.fillStyle = '#000';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       if (o.crouch) this.drawChevrons(o, r);
+    }
+  },
+  /* redrawn over the player so ducking genuinely reads as passing underneath */
+  drawOverhead: function () {
+    if (!Player.alive || Player.crouchAmt < 0.02) return;
+    var b = Player.box(), top = b.y - b.ry * 2.2, bot = b.y + b.ry * 2.2;
+    for (var i = 0; i < this.list.length; i++) {
+      var o = this.list[i];
+      if (!o.crouch) continue;
+      var r = o.rect();
+      if (r.y > bot || r.y + r.h < top) continue;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      this.drawChevrons(o, r);
     }
   },
   /* white chevrons = "you may pass under this by crouching" */
@@ -1012,9 +1222,11 @@ var Obstacles = {
 
 /* ============================================================================
    10. PROCEDURAL GENERATOR
-   Pattern based with controlled randomness. Gaps are authored in *seconds of
-   travel*, so they automatically stretch as the world speeds up, and every gap
-   is then raised to a guaranteed fair minimum before it is used.
+   Every hazard is rolled independently — kind, column and spacing are all
+   random, so the track never repeats an authored phrase. Fairness is not
+   authored either: it is enforced. Each gap is expressed in *seconds of
+   travel* (so it stretches with speed) and is then raised to a guaranteed
+   minimum derived from how far the player may actually have to move.
    ========================================================================== */
 function allBut(blocked) {
   var out = [];
@@ -1031,104 +1243,102 @@ function laneDistance(from, to) {
   }
   return worst;
 }
-function E_square(lane, gap) {
-  return { kind: 'square', lane: lane, crouch: false, gap: gap, safe: allBut([lane]) };
+function E_square(lane) {
+  return { kind: 'square', lane: lane, crouch: false, safe: allBut([lane]) };
 }
-function E_twin(a, b, gap) {
-  return { kind: 'twin', lanes: [a, b], crouch: false, gap: gap, safe: allBut([a, b]) };
+function E_twin(a, b) {
+  return { kind: 'twin', lanes: [a, b], crouch: false, safe: allBut([a, b]) };
 }
-function E_bar2(start, crouchable, gap) {
-  return { kind: 'bar2', lane: start, crouch: crouchable, gap: gap,
+function E_bar2(start, crouchable) {
+  return { kind: 'bar2', lane: start, crouch: crouchable,
     safe: crouchable ? [0, 1, 2] : allBut([start, start + 1]) };
 }
-function E_bar3(gap) { return { kind: 'bar3', crouch: true, gap: gap, safe: [0, 1, 2] }; }
+function E_bar3() { return { kind: 'bar3', crouch: true, safe: [0, 1, 2] }; }
+/* a moving square: travels a -> b, so the remaining column is always open */
+function E_mover(a, b, shuttle) {
+  var lo = Math.min(a, b), hi = Math.max(a, b), span = [];
+  for (var l = lo; l <= hi; l++) span.push(l);
+  return { kind: shuttle ? 'shuttle' : 'mover', lane: a, to: b, lanes: span,
+    crouch: false, safe: allBut(span) };
+}
 
-var PATTERNS = [
-  { id: 'solo', min: 1.00, weight: 3, wall: false, make: function () {
-      return [E_square(randInt(0, 2), rand(1.0, 1.45))]; } },
-
-  { id: 'breather', min: 1.00, weight: 1, wall: false, make: function () {
-      return [E_square(randInt(0, 2), rand(1.7, 2.1))]; } },
-
-  { id: 'alt', min: 1.00, weight: 3, wall: false, make: function () {
-      var a = randInt(0, 2), b = pick(allBut([a]));
-      return [E_square(a, 0.78), E_square(b, 1.1)]; } },
-
-  { id: 'rhythm', min: 1.00, weight: 2, wall: false, make: function () {
-      var a = randInt(0, 2), b = pick(allBut([a]));
-      return [E_square(a, 0.72), E_square(b, 0.72), E_square(a, 1.2)]; } },
-
-  { id: 'gate', min: 1.05, weight: 2, wall: false, make: function () {
-      var outer = Math.random() < .5;
-      return outer ? [E_twin(0, 2, 0.95), E_square(1, 1.2)]
-                   : [E_square(1, 0.95), E_twin(0, 2, 1.2)]; } },
-
-  { id: 'block', min: 1.05, weight: 2, wall: false, make: function () {
-      return [E_bar2(randInt(0, 1), false, rand(1.1, 1.4))]; } },
-
-  { id: 'sweep', min: 1.15, weight: 2, wall: false, make: function () {
-      var first = randInt(0, 1);
-      return [E_bar2(first, false, 1.05), E_bar2(1 - first, false, 1.25)]; } },
-
-  { id: 'stairs', min: 1.15, weight: 2, wall: false, make: function () {
-      var up = Math.random() < .5;
-      var s = up ? [0, 1, 2] : [2, 1, 0];
-      return [E_square(s[0], .72), E_square(s[1], .72), E_square(s[2], 1.2)]; } },
-
-  { id: 'wall', min: 1.00, weight: 3, wall: true, make: function () {
-      return [E_bar3(rand(1.25, 1.6))]; } },
-
-  { id: 'wallDouble', min: 1.20, weight: 2, wall: true, make: function () {
-      return [E_bar3(0.92), E_bar3(1.5)]; } },
-
-  { id: 'wallGate', min: 1.10, weight: 2, wall: true, make: function () {
-      return [E_bar3(1.15), E_twin(0, 2, 1.25)]; } },
-
-  { id: 'duckOrDodge', min: 1.10, weight: 2, wall: false, make: function () {
-      var s = randInt(0, 1);
-      var free = s === 0 ? 2 : 0;
-      return [E_bar2(s, true, 1.0), E_square(free, 1.25)]; } },
-
-  { id: 'wallThenSolo', min: 1.05, weight: 2, wall: true, make: function () {
-      return [E_bar3(1.15), E_square(randInt(0, 2), 1.3)]; } }
+/* the roll table: weights shift with speed, nothing else is scripted */
+var KINDS = [
+  { id: 'square',  min: 1.00, w: function (m) { return 30; },
+    make: function (last) { return E_square(rollLane(last)); } },
+  { id: 'twin',    min: 1.05, w: function (m) { return 11; },
+    make: function () { var a = randInt(0, 2), b = pick(allBut([a])); return E_twin(a, b); } },
+  { id: 'bar2',    min: 1.05, w: function (m) { return 12; },
+    make: function () { return E_bar2(randInt(0, 1), false); } },
+  { id: 'bar2c',   min: 1.10, w: function (m) { return 9; },
+    make: function () { return E_bar2(randInt(0, 1), true); } },
+  { id: 'bar3',    min: 1.00, w: function (m) { return 11; }, wall: true,
+    make: function () { return E_bar3(); } },
+  { id: 'mover',   min: 1.15, w: function (m) { return 9 + (m - 1.15) * 12; },
+    make: function () {
+      var a = randInt(0, 2), b;
+      if (a === 1) b = Math.random() < .5 ? 0 : 2; else b = 1;   /* always adjacent */
+      return E_mover(a, b, false);
+    } },
+  { id: 'shuttle', min: 1.35, w: function (m) { return 5 + (m - 1.35) * 10; },
+    make: function () {
+      var a = randInt(0, 1);
+      return E_mover(a, a + 1, true);
+    } }
 ];
+/* columns are rolled with a mild bias away from the previous one, so the
+   randomness stays random without clumping in a single lane */
+function rollLane(last) {
+  var l = randInt(0, 2);
+  if (l === last && Math.random() < 0.55) l = pick(allBut([last]));
+  return l;
+}
 
 var Gen = {
-  queue: [], timer: 0, sinceWall: 99, lastId: '', enabled: false,
+  queue: [], timer: 0, sinceWall: 99, lastKind: '', lastLane: -1, enabled: false,
 
-  reset: function () { this.queue.length = 0; this.timer = 0.9; this.sinceWall = 99; this.lastId = ''; this.enabled = true; },
+  reset: function () {
+    this.queue.length = 0; this.timer = 0.9; this.sinceWall = 99;
+    this.lastKind = ''; this.lastLane = -1; this.enabled = true;
+  },
   stop: function () { this.enabled = false; },
 
   /* gaps compress a little as the run speeds up, but never below the fair floor */
   gapScale: function (mult) { return lerp(1.18, 0.92, clamp((mult - 1) / 1, 0, 1)); },
 
-  choose: function (mult) {
-    var pool = [], total = 0, i, p;
-    for (i = 0; i < PATTERNS.length; i++) {
-      p = PATTERNS[i];
-      if (mult + 1e-6 < p.min) continue;
-      if (p.wall && this.sinceWall < CFG.WALL_COOLDOWN) continue;
-      if (p.id === this.lastId && Math.random() < 0.8) continue;
-      var w = p.weight;
-      if (p.wall) w *= clamp(this.sinceWall / (CFG.WALL_COOLDOWN * 1.6), 0.2, 1.4);
-      pool.push({ p: p, w: w }); total += w;
+  /* a fresh random gap for every hazard, with the occasional breather */
+  rollGap: function () {
+    if (Math.random() < 0.12) return rand(1.75, 2.25);
+    return rand(0.66, 1.5);
+  },
+
+  roll: function (mult) {
+    var pool = [], total = 0, i, k, w;
+    for (i = 0; i < KINDS.length; i++) {
+      k = KINDS[i];
+      if (mult + 1e-6 < k.min) continue;
+      if (k.wall && this.sinceWall < CFG.WALL_COOLDOWN) continue;
+      w = Math.max(1, k.w(mult));
+      if (k.id === this.lastKind) w *= 0.35;          /* no two-in-a-row habits */
+      if (k.wall) w *= clamp(this.sinceWall / (CFG.WALL_COOLDOWN * 1.6), 0.2, 1.4);
+      pool.push({ k: k, w: w }); total += w;
     }
-    if (!pool.length) return PATTERNS[0];
+    if (!pool.length) return KINDS[0];
     var r = Math.random() * total;
-    for (i = 0; i < pool.length; i++) { r -= pool[i].w; if (r <= 0) return pool[i].p; }
-    return pool[pool.length - 1].p;
+    for (i = 0; i < pool.length; i++) { r -= pool[i].w; if (r <= 0) return pool[i].k; }
+    return pool[pool.length - 1].k;
   },
 
   refill: function (mult) {
     while (this.queue.length < 3) {
-      var p = this.choose(mult);
-      this.lastId = p.id;
-      var entries = p.make();
-      for (var i = 0; i < entries.length; i++) {
-        entries[i].wall = p.wall;
-        this.queue.push(entries[i]);
-      }
-      if (p.wall) this.sinceWall = 0;
+      var k = this.roll(mult);
+      var e = k.make(this.lastLane);
+      e.gap = this.rollGap();
+      e.wall = !!k.wall;
+      this.lastKind = k.id;
+      this.lastLane = (e.lane === undefined) ? -1 : e.lane;
+      if (k.wall) this.sinceWall = 0;
+      this.queue.push(e);
     }
   },
 
@@ -1136,6 +1346,7 @@ var Gen = {
   fairGap: function (a, b) {
     var g = CFG.REACTION_BASE + laneDistance(a.safe, b.safe) * CFG.REACTION_LANE;
     if (a.crouch) g += CFG.CROUCH_RELEASE;
+    if (a.kind === 'mover' || a.kind === 'shuttle') g += CFG.CROUCH_RELEASE;
     return g;
   },
 
@@ -1174,6 +1385,7 @@ function hitsBox(b, r, shrink) {
 
 var Run = {
   distance: 0, mult: 1, speedTimer: 0, collisions: 0, playT: 0,
+  hudPulse: 0, milestone: 0,
   finalActive: false, finalStart: 0,
   wall: null, seq: null, scrollScale: 1, lineAcc: 0,
   respawnT: 0, countT: 0, countIdx: 0,
@@ -1181,6 +1393,7 @@ var Run = {
   /* ---------- lifecycle ---------- */
   begin: function () {
     this.distance = 0; this.mult = 1; this.speedTimer = 0; this.collisions = 0;
+    this.hudPulse = 0; this.milestone = 0;
     this.playT = 0; this.finalActive = false; this.finalStart = 0;
     this.wall = null; this.seq = null; this.scrollScale = 1; this.respawnT = 0; this.lineAcc = 0;
     Obstacles.clear(); VFX.clear(); Gen.reset();
@@ -1218,6 +1431,7 @@ var Run = {
     if (App.state !== ST.PLAYING && App.state !== ST.RESPAWNING) return;
 
     this.playT += dt;
+    if (this.hudPulse > 0) this.hudPulse = Math.max(0, this.hudPulse - dt * 2.4);
 
     /* --- speed progression: +0.05x every 20s of active play, capped at 2.00x --- */
     if (this.mult < CFG.SPEED_MAX - 1e-9) {
@@ -1233,12 +1447,18 @@ var Run = {
     var scrollN = this.speedN() * dt * this.scrollScale;
     this.distance += CFG.BASE_SPEED * this.mult * dt * this.scrollScale;
 
-    Obstacles.update(scrollN);
+    var ms = Math.floor(this.distance / 100);
+    if (ms > this.milestone) { this.milestone = ms; this.hudPulse = 1; }
+
+    Obstacles.update(scrollN, dt);
     Gen.update(dt, scrollN, this.mult);
     Player.update(dt, true);
+    VFX.scrollWorld(scrollN * PF.h);
+    VFX.motes(dt, this.mult);
+    this.passFX();
 
     /* --- ambient speed lines --- */
-    this.lineAcc += (this.mult - 1) * 46 * dt;
+    this.lineAcc += (0.34 + (this.mult - 1) * 1.6) * 40 * dt;
     while (this.lineAcc >= 1) { this.lineAcc -= 1; VFX.spawnSpeedLine(this.mult); }
 
     /* --- collision --- */
@@ -1272,17 +1492,39 @@ var Run = {
 
   finalProgress: function () { return Math.max(0, this.distance - this.finalStart); },
 
+  /* an obstacle sweeping past the player: air displacement, and a spark
+     when it goes by close enough to be felt */
+  passFX: function () {
+    if (Settings.reduced) return;
+    var px = Player.x(), py = Player.y(), pr = playerRadius();
+    for (var i = 0; i < Obstacles.list.length; i++) {
+      var o = Obstacles.list[i];
+      if (o.passed || o.yN < CFG.PLAYER_Y) continue;
+      o.passed = true;
+      var r = o.rect(), near = null;
+      if (Player.alive) {
+        var gap = Math.max(r.x - px, px - (r.x + r.w));
+        if (gap < pr * 1.5) near = { x: px, y: py };     /* squeezed by, or ducked under */
+      }
+      VFX.whoosh(r, near);
+    }
+  },
+
   onSpeedUp: function () {
     Sound.play('speedUp');
     var x = PF.x + PF.w / 2, y = PF.y + PF.h * CFG.PLAYER_Y;
-    VFX.ripple(x, y, PF.w * 0.1, PF.w * 0.85, '#000', .6, 1.6);
+    VFX.ripple(x, y, PF.w * 0.1, PF.w * 0.9, accent(1), .6, 2.4);
+    VFX.ripple(x, y, PF.w * 0.05, PF.w * 0.55, '#000', .45, 1.2);
+    VFX.burst(x, y, 14, { color: accent(1), spMin: 120, spMax: 460,
+      sizeMax: 3.4, lifeMax: .6, streak: true, world: true });
   },
 
   enterFinal: function () {
     this.finalActive = true;
     this.finalStart = this.distance;
     Sound.play('finalStage');
-    VFX.ripple(PF.x + PF.w / 2, PF.y + PF.h * 0.5, PF.w * 0.05, PF.w * 1.25, '#000', 1.0, 2.4);
+    VFX.ripple(PF.x + PF.w / 2, PF.y + PF.h * 0.5, PF.w * 0.05, PF.w * 1.25, accent(1), 1.0, 3);
+    VFX.ripple(PF.x + PF.w / 2, PF.y + PF.h * 0.5, PF.w * 0.05, PF.w * 0.9, '#000', .8, 1.6);
     VFX.addShake(4);
   },
 
@@ -1296,6 +1538,7 @@ var Run = {
     VFX.addShake(13);
     VFX.burst(x, y, 26, { color: '#000', spMin: 120, spMax: 420, sizeMin: 2, sizeMax: 5.5, lifeMax: .75 });
     VFX.ripple(x, y, r * 0.6, r * 4.2, '#000', .5, 3);
+    VFX.ripple(x, y, r * 0.6, r * 3.4, accent(1), .42, 2.2);
     VFX.ripple(x, y, r * 0.6, r * 2.6, '#000', .32, 1.5);
     this.respawnT = CFG.RESPAWN_DELAY;
     App.set(ST.RESPAWNING);
@@ -1391,7 +1634,8 @@ var Run = {
     this.scrollScale = 1 - easeInOutCubic(clamp(s.t / 0.9, 0, 1));
     var scrollN = this.speedN() * dt * this.scrollScale;
     this.distance += CFG.BASE_SPEED * this.mult * dt * this.scrollScale;
-    Obstacles.update(scrollN);
+    Obstacles.update(scrollN, dt);
+    VFX.scrollWorld(scrollN * PF.h);
     if (this.wall) { this.wall.bottomN += scrollN; this.wall.spin += dt * (0.5 + s.t * 1.6); }
 
     Player.update(dt, false);
@@ -1574,70 +1818,194 @@ function drawHome() {
 }
 
 /* ---------- gameplay scene ---------- */
-function drawLanes() {
+/* the ground itself: a lit column under the player, rungs and dashed dividers
+   that scroll with the world, so speed is legible even on an empty stretch */
+var RUNG_M = 3.4, DASH_M = 2.2;
+
+/* walk the rungs of a given world spacing from the bottom of the field upward */
+function eachRung(stepM, fn) {
+  var d0 = Run.distance;
+  var k = Math.floor((d0 + (CFG.PLAYER_Y - 1.06) * CFG.METERS_VISIBLE) / stepM);
+  for (var n = 0; n < 48; n++, k++) {
+    var yN = CFG.PLAYER_Y - (k * stepM - d0) / CFG.METERS_VISIBLE;
+    if (yN < -0.04) break;
+    if (yN > 1.04) continue;
+    fn(PF.y + yN * PF.h, k);
+  }
+}
+
+function drawTrack() {
+  var lw = Math.max(1, Math.min(2, PF.w * 0.0035));
+  var cw = colW();
+
+  /* the column the player is running in, so the eye always knows where it is */
+  if (Player.alive) {
+    ctx.fillStyle = accent(ACCENT ? 0.06 : 0.03);
+    ctx.fillRect(PF.x + Player.xF * PF.w - cw / 2, PF.y, cw, PF.h);
+  }
+
+  /* rungs: short bars inside each column, brighter every fourth */
+  var inset = cw * 0.16;
+  eachRung(RUNG_M, function (y, k) {
+    var strong = (k % 4 === 0);
+    ctx.fillStyle = strong ? 'rgba(0,0,0,.13)' : 'rgba(0,0,0,.055)';
+    var h = strong ? Math.max(1.5, lw * 1.4) : Math.max(1, lw);
+    for (var c = 0; c < 3; c++) {
+      ctx.fillRect(PF.x + c * cw + inset, y, cw - inset * 2, h);
+    }
+  });
+
+  /* dividers: a whisper of a line, with a scrolling dashed rhythm on top */
   ctx.strokeStyle = '#000';
-  ctx.lineWidth = Math.max(1, Math.min(2, PF.w * 0.0035));
-  ctx.globalAlpha = 0.9;
+  ctx.lineWidth = lw;
+  ctx.globalAlpha = 0.10;
   for (var i = 1; i < 3; i++) {
     var x = Math.round(PF.x + PF.w * i / 3) + 0.5;
     ctx.beginPath(); ctx.moveTo(x, PF.y); ctx.lineTo(x, PF.y + PF.h); ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  var dashH = DASH_M / CFG.METERS_VISIBLE * PF.h * 0.55;
+  eachRung(DASH_M, function (y) {
+    ctx.fillStyle = 'rgba(0,0,0,.62)';
+    for (var i = 1; i < 3; i++) {
+      ctx.fillRect(Math.round(PF.x + PF.w * i / 3) - lw / 2, y, Math.max(1, lw), dashH);
+    }
+  });
+}
+
+/* obstacles emerge from the distance instead of popping in at the edge */
+function drawHorizon() {
+  var h = PF.h * 0.17;
+  var g = ctx.createLinearGradient(0, PF.y, 0, PF.y + h);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.5, 'rgba(255,255,255,.78)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(PF.x, PF.y, PF.w, h);
+}
+
+/* the corridor tightens as the run accelerates */
+function drawEdges() {
+  var k = clamp((Run.mult - 1) / 1, 0, 1);
+  var a = 0.05 + 0.10 * k;
+  var w = PF.w * (0.06 + 0.05 * k);
+  var g = ctx.createLinearGradient(PF.x, 0, PF.x + w, 0);
+  g.addColorStop(0, 'rgba(0,0,0,' + a.toFixed(3) + ')');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(PF.x, PF.y, w, PF.h);
+  var g2 = ctx.createLinearGradient(PF.x + PF.w, 0, PF.x + PF.w - w, 0);
+  g2.addColorStop(0, 'rgba(0,0,0,' + a.toFixed(3) + ')');
+  g2.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g2; ctx.fillRect(PF.x + PF.w - w, PF.y, w, PF.h);
 }
 function drawFinishWall() {
   var w = Run.wall; if (!w) return;
   var bottom = PF.y + w.bottomN * PF.h;
-  var top = bottom - PF.h * 3.4;
-  if (bottom < PF.y - 2) return;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(PF.x, top, PF.w, bottom - top);
+  if (bottom < -1) return;
 
-  /* leading edge: three tapering rules that read as a horizon */
-  ctx.strokeStyle = '#000';
-  for (var i = 1; i <= 3; i++) {
-    ctx.globalAlpha = 0.10 * (4 - i);
-    ctx.lineWidth = Math.max(1, 3 - i);
-    var yy = bottom + i * PF.h * 0.018;
-    ctx.beginPath(); ctx.moveTo(PF.x + PF.w * 0.04 * i, yy); ctx.lineTo(PF.x + PF.w * (1 - 0.04 * i), yy); ctx.stroke();
+  var reduced = Settings.reduced;
+  var hue0 = (App.time * (reduced ? 12 : 26)) % 360;
+  var band = PF.h * (reduced ? 0.115 : 0.072);
+  var seamW = Math.max(2, VIEW.w * 0.004);
+
+  /* ---- the mass: stratified bands running the full width of the screen,
+     each one a step further round the colour wheel, the whole thing turning
+     continuously ---- */
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, -1, VIEW.w, bottom + 1); ctx.clip();
+
+  var i = 0, y = bottom;
+  while (y > -band && i < 60) {
+    var h = (hue0 + i * 17) % 360;
+    var top = y - band;
+    ctx.fillStyle = 'hsl(' + h.toFixed(1) + ',72%,' + (i % 2 ? 47 : 53) + '%)';
+    ctx.fillRect(0, top, VIEW.w, band + 1);
+
+    /* staggered seams: they give the slab a sense of scale */
+    ctx.fillStyle = 'rgba(0,0,0,.42)';
+    var cols = 5, off = (i % 2) * 0.5;
+    for (var c = 0; c <= cols; c++) {
+      var sx = VIEW.w * (c + off) / cols - seamW / 2;
+      ctx.fillRect(sx, top, seamW, band + 1);
+    }
+    ctx.fillRect(0, top, VIEW.w, Math.max(1.5, band * 0.035));   /* joint line */
+    y = top; i++;
   }
+
+  /* it gets darker and heavier the further up it goes */
+  var g = ctx.createLinearGradient(0, bottom - PF.h * 1.1, 0, bottom);
+  g.addColorStop(0, 'rgba(0,0,0,.75)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, bottom - PF.h * 1.1, VIEW.w, PF.h * 1.1);
+  ctx.restore();
+
+  /* ---- leading edge ---- */
+  ctx.fillStyle = 'rgba(0,0,0,.85)';
+  ctx.fillRect(0, bottom - Math.max(3, PF.h * 0.008), VIEW.w, Math.max(3, PF.h * 0.008));
+  ctx.fillStyle = '#fff';
+  ctx.globalAlpha = 0.9;
+  ctx.fillRect(0, bottom - 1, VIEW.w, Math.max(1.5, PF.h * 0.003));
   ctx.globalAlpha = 1;
 
-  /* portal aperture */
+  /* the shadow it throws down the track ahead of itself */
+  var sg = ctx.createLinearGradient(0, bottom, 0, bottom + PF.h * 0.22);
+  sg.addColorStop(0, 'rgba(0,0,0,.34)');
+  sg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(0, bottom, VIEW.w, PF.h * 0.22);
+
+  /* ---- the way through ---- */
   var a = Run.apertureCenter(), R = Run.apertureR();
-  if (a.y + R < PF.y - 10) return;
+  if (a.y + R < -10) return;
   var pulse = 1 + Math.sin(App.time * 3.4) * 0.025;
+
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(a.x, a.y, R * pulse, 0, TAU); ctx.fill();
+
   ctx.save();
   ctx.translate(a.x, a.y);
   ctx.rotate(w.spin);
-  ctx.strokeStyle = '#fff';
   ctx.lineCap = 'round';
-  var n = Settings.reduced ? 8 : 16;
+  var n = reduced ? 8 : 18;
   for (var j = 0; j < n; j++) {
     var ang = j / n * TAU;
-    ctx.globalAlpha = 0.16 + 0.22 * (0.5 + 0.5 * Math.sin(App.time * 2.4 + j));
-    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = 'hsl(' + ((hue0 + j * (360 / n)) % 360).toFixed(1) + ',85%,62%)';
+    ctx.globalAlpha = 0.35 + 0.4 * (0.5 + 0.5 * Math.sin(App.time * 2.4 + j));
+    ctx.lineWidth = Math.max(1.4, R * 0.05);
     ctx.beginPath();
-    ctx.moveTo(Math.cos(ang) * R * 0.92 * pulse, Math.sin(ang) * R * 0.92 * pulse);
-    ctx.lineTo(Math.cos(ang) * R * 0.34, Math.sin(ang) * R * 0.34);
+    ctx.moveTo(Math.cos(ang) * R * 0.94 * pulse, Math.sin(ang) * R * 0.94 * pulse);
+    ctx.lineTo(Math.cos(ang) * R * 0.42, Math.sin(ang) * R * 0.42);
     ctx.stroke();
   }
   ctx.restore();
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = Math.max(2, R * 0.035);
-  ctx.beginPath(); ctx.arc(a.x, a.y, R * pulse, 0, TAU); ctx.stroke();
-  ctx.globalAlpha = 0.9;
+
+  /* rim: a ring of colour that keeps turning with the wall */
+  var segs = reduced ? 6 : 14;
+  ctx.lineWidth = Math.max(2.5, R * 0.075);
+  for (var k = 0; k < segs; k++) {
+    ctx.strokeStyle = 'hsl(' + ((hue0 * 1.6 + k * (360 / segs)) % 360).toFixed(1) + ',88%,58%)';
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, R * pulse, k / segs * TAU - w.spin, (k + 1.02) / segs * TAU - w.spin);
+    ctx.stroke();
+  }
   ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(a.x, a.y, R * 0.075 * (1 + Math.sin(App.time * 7) * 0.25), 0, TAU); ctx.fill();
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, R * 0.075 * (1 + Math.sin(App.time * 7) * 0.25), 0, TAU);
+  ctx.fill();
   ctx.globalAlpha = 1;
 }
 
 function drawHUD() {
   var pad = IS_MOBILE ? INSET.l + 16 : 14;
   var top = hudTop() + 8;
-  var s1 = clamp(PF.w * 0.042, 13, 21);
+  var pulse = easeOutCubic(Run.hudPulse);
+  var s1 = clamp(PF.w * 0.042, 13, 21) * (1 + 0.15 * pulse);
   var s2 = clamp(PF.w * 0.028, 10, 13);
-  tracked(numFmt(Run.distance) + ' ' + t('meters'), PF.x + pad, top + s1 * 0.4, s1, 600, 0.05, 'left', '#000', 0.82);
+  tracked(numFmt(Run.distance) + ' ' + t('meters'), PF.x + pad, top + s1 * 0.4, s1, 600, 0.05, 'left',
+    pulse > 0.03 ? accent(1, 46) : '#000', 0.82 + 0.18 * pulse);
   tracked(Run.mult.toFixed(2) + 'x', PF.x + pad, top + s1 * 1.5, s2, 500, 0.12, 'left', '#000', 0.42);
 
   if (Run.finalActive) {
@@ -1680,15 +2048,29 @@ function drawScene() {
   ctx.save();
   ctx.beginPath(); ctx.rect(PF.x, PF.y, PF.w, PF.h); ctx.clip();
 
+  drawTrack();
   VFX.drawSpeedLines();
-  drawLanes();
+  VFX.drawTrail();
   Obstacles.draw();
-  drawFinishWall();
-  VFX.drawRipples();
-  Player.draw();
-  VFX.drawParticles();
+  drawHorizon();
+  drawEdges();
+  if (!Run.wall) {
+    VFX.drawRipples();
+    Player.draw();
+    Obstacles.drawOverhead();     /* a barrier you duck under passes over you */
+    VFX.drawParticles();
+  }
 
   ctx.restore();
+
+  /* the wall cuts off the whole screen, corridor framing included, so it is
+     drawn unclipped and the player rides on top of it until it swallows him */
+  if (Run.wall) {
+    drawFinishWall();
+    VFX.drawRipples();
+    Player.draw();
+    VFX.drawParticles();
+  }
 
   /* desktop framing: two hairlines that hold the corridor on a wide screen */
   if (!IS_MOBILE) {
@@ -1718,7 +2100,7 @@ function render() {
   ctx.fillRect(0, 0, VIEW.w, VIEW.h);
   var s = App.state;
   if (s === ST.LANG) { /* white page under the panel */ }
-  else if (s === ST.SPLASH) { drawHome(); drawSplash(); }
+  else if (s === ST.SPLASH) { if (Settings.lang) drawHome(); drawSplash(); }
   else if (s === ST.HOME || s === ST.HOWTO) { drawHome(); VFX.drawRipples(); VFX.drawParticles(); }
   else if (s === ST.SETTINGS) {
     if (App.prev === ST.HOME || App.prev === ST.HOWTO) drawHome(); else drawScene();
@@ -1727,8 +2109,9 @@ function render() {
 }
 
 /* ============================================================================
-   13. INPUT — keyboard, mouse and a gesture system that separates
-   taps / swipes / holds so crouches and lane switches never fight.
+   13. INPUT — keyboard, mouse and a gesture system built around one rule:
+   a lane change needs a decisive, deliberate swipe. Crouching is a dedicated
+   button, so a hold and a swipe can never be confused for one another.
    ========================================================================== */
 /* pointer ids are normalised to strings: object keys are strings, so a promoted
    pointer would otherwise never match its own pointerup */
@@ -1737,37 +2120,59 @@ function pid(e) { return String(e.pointerId === undefined ? 'mouse' : e.pointerI
 var Input = {
   crouchHeld: false,
   crouchKeys: {},
-  pointers: {},          /* id -> {x,y,x0,y0,t0,moved,holding,swiped} */
-  primary: null,
+  pointers: {},          /* id -> {x,y,x0,y0,t0,lx,ly,lt,swiped,crouching} */
+  crouchHold: 0,         /* keeps a quick flick down readable */
+  laneLock: 0,           /* two fingers can never spend one swipe twice */
 
-  swipeDist: function () { return Math.max(26, Math.min(VIEW.w, VIEW.h) * 0.055); },
-  HOLD_DELAY: 0.085,
-  HOLD_TOL: 15,
+  /* a swipe must travel this far before it counts as intent */
+  swipeDist: function () { return Math.max(46, Math.min(VIEW.w, VIEW.h) * 0.090); },
+  SWIPE_WINDOW: 0.45,    /* seconds: a slow drag is not a swipe */
+  SWIPE_RATIO: 1.4,      /* one axis must clearly beat the other */
+  REANCHOR: 0.12,        /* a finger that pauses starts a fresh swipe from there */
+  MIN_CROUCH: 0.30,      /* a flick down still ducks long enough to matter */
+  LANE_COOLDOWN: 0.09,
 
   releaseAll: function () {
     this.crouchHeld = false; this.crouchKeys = {};
-    this.pointers = {}; this.primary = null;
+    this.pointers = {}; this.crouchHold = 0; this.laneLock = 0;
   },
 
+  /* gameplay input is dead until the countdown has fully finished */
   canPlay: function () {
-    return !App.blocked && (App.state === ST.PLAYING || App.state === ST.RESPAWNING || App.state === ST.COUNTDOWN);
+    return !App.blocked && (App.state === ST.PLAYING || App.state === ST.RESPAWNING);
+  },
+  canPause: function () {
+    return !App.blocked && (App.state === ST.PLAYING || App.state === ST.RESPAWNING ||
+                            App.state === ST.COUNTDOWN);
   },
   move: function (dir) {
     if (!this.canPlay() || !Player.alive) return;
     Player.setLane(Player.lane + dir);
   },
 
-  /* holds are confirmed in the loop so a swipe never registers as a crouch */
-  updateHold: function () {
-    var p = this.primary !== null ? this.pointers[this.primary] : null;
-    if (p && !p.swiped && !p.holding && (App.time - p.t0) > this.HOLD_DELAY && p.moved < this.HOLD_TOL) {
-      p.holding = true;
-    }
-    this.crouchHeld = !!(p && p.holding) || this.anyKeyCrouch();
+  /* crouch is held for as long as a finger that swiped down stays on the glass */
+  anyFingerDown: function () {
+    for (var k in this.pointers) if (this.pointers[k].crouching) return true;
+    return false;
   },
   anyKeyCrouch: function () {
     for (var k in this.crouchKeys) if (this.crouchKeys[k]) return true;
     return false;
+  },
+  updateHold: function () {
+    this.crouchHeld = this.anyFingerDown() || this.anyKeyCrouch() || this.crouchHold > 0;
+  },
+  tick: function (dt) {
+    /* the floor is measured from the swipe, so lifting after a long hold
+       stands the player up at once */
+    if (this.crouchHold > 0) this.crouchHold = Math.max(0, this.crouchHold - dt);
+    if (this.laneLock > 0) this.laneLock = Math.max(0, this.laneLock - dt);
+    this.updateHold();
+  },
+
+  /* start a fresh swipe measurement from the current point */
+  anchor: function (p, x, y) {
+    p.x0 = x; p.y0 = y; p.t0 = App.time; p.swiped = false; p.dirX = 0; p.peak = x;
   },
 
   onDown: function (e) {
@@ -1779,25 +2184,52 @@ var Input = {
     if (!this.canPlay()) return;
 
     this.pointers[id] = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY,
-      lastX: e.clientX, t0: App.time, moved: 0, holding: false, swiped: false };
-    if (this.primary === null) this.primary = id;
+      lx: e.clientX, ly: e.clientY, lt: App.time, t0: App.time,
+      swiped: false, crouching: false, dirX: 0, peak: e.clientX };
   },
   onMove: function (e) {
     var id = pid(e);
     if (App.state === ST.HOME && e.pointerType === 'mouse') Home.hover(e.clientX, e.clientY);
     var p = this.pointers[id];
     if (!p) return;
-    p.moved = Math.max(p.moved, Math.hypot(e.clientX - p.x0, e.clientY - p.y0));
-    p.x = e.clientX; p.y = e.clientY;
-    if (id !== this.primary) return;
+    var now = App.time, need = this.swipeDist();
+    var rest = now - p.lt;              /* how long this finger has been still */
 
-    var dx = e.clientX - p.lastX, dy = e.clientY - p.y0;
-    var need = this.swipeDist();
-    if (Math.abs(dx) >= need && Math.abs(dx) > Math.abs(dy) * 0.8) {
-      this.move(dx > 0 ? 1 : -1);
-      p.lastX = e.clientX;
+    if (p.swiped) {
+      /* the flick is spent. It renews only when the finger clearly reverses or
+         comes to rest — so one long drag is still one column, but a second
+         deliberate flick works even with the finger never leaving the glass. */
+      p.peak = p.dirX > 0 ? Math.max(p.peak, e.clientX) : Math.min(p.peak, e.clientX);
+      var back = p.dirX > 0 ? p.peak - e.clientX : e.clientX - p.peak;
+      if (back > need * 0.32 || rest > 0.10) this.anchor(p, e.clientX, e.clientY);
+    } else if (rest > this.REANCHOR && Math.hypot(e.clientX - p.lx, e.clientY - p.ly) < 4) {
+      /* a finger that paused starts its next gesture from where it stopped */
+      this.anchor(p, e.clientX, e.clientY);
+    }
+    p.x = e.clientX; p.y = e.clientY;
+    p.lx = e.clientX; p.ly = e.clientY; p.lt = now;
+
+    var dx = e.clientX - p.x0, dy = e.clientY - p.y0;
+    var adx = Math.abs(dx), ady = Math.abs(dy);
+    var quick = (now - p.t0) <= this.SWIPE_WINDOW;
+    if (!quick) return;
+
+    /* swipe DOWN, then keep the finger on the glass: that is the crouch */
+    if (!p.crouching && dy > 0 && ady >= need && ady > adx * this.SWIPE_RATIO) {
+      p.crouching = true;
+      this.crouchHold = this.MIN_CROUCH;
+      this.updateHold();
+      /* measure again from here, so a flick sideways still steers while ducked */
+      this.anchor(p, e.clientX, e.clientY);
+      return;
+    }
+    /* a decisive sideways swipe changes column, exactly one column per flick */
+    if (!p.swiped && adx >= need && adx > ady * this.SWIPE_RATIO && this.laneLock <= 0) {
       p.swiped = true;
-      p.holding = false;             /* a swipe cancels the crouch intent */
+      p.dirX = dx > 0 ? 1 : -1;
+      p.peak = e.clientX;
+      this.laneLock = this.LANE_COOLDOWN;
+      this.move(p.dirX);
     }
   },
   onUp: function (e) {
@@ -1806,17 +2238,6 @@ var Input = {
     if (App.state === ST.HOME) { Home.release(e.clientX, e.clientY); }
     if (!p) return;
     delete this.pointers[id];
-    if (this.primary === id) {
-      this.primary = null;
-      /* promote another finger so a two-finger hold keeps crouching */
-      for (var k in this.pointers) {
-        this.primary = k;
-        var q = this.pointers[k];
-        q.t0 = Math.min(q.t0, App.time - this.HOLD_DELAY);
-        q.lastX = q.x; q.x0 = q.x; q.y0 = q.y; q.moved = 0; q.swiped = false;
-        break;
-      }
-    }
     this.updateHold();
   },
 
@@ -1825,7 +2246,7 @@ var Input = {
     var k = e.key;
     if (k === 'Escape') {
       if (App.state === ST.PAUSED) resumeGame();
-      else if (Input.canPlay()) pauseGame();
+      else if (Input.canPause()) pauseGame();
       e.preventDefault();
       return;
     }
@@ -2051,21 +2472,27 @@ function update(dt) {
 
   if (App.state === ST.SPLASH) {
     Splash.t += dt;
-    if (Splash.t >= CFG.SPLASH_TIME) App.set(ST.HOME);
+    if (Splash.t >= CFG.SPLASH_TIME) {
+      /* the language question comes after the title card, never before it */
+      if (!Settings.lang) { App.set(ST.LANG); Screens.show('lang'); }
+      else App.set(ST.HOME);
+    }
     return;
   }
   if (App.blocked) return;
 
-  Input.updateHold();
+  Input.tick(dt);
 
-  if (App.state === ST.PLAYING || App.state === ST.RESPAWNING || App.state === ST.COUNTDOWN) {
+  if (App.state === ST.PLAYING || App.state === ST.RESPAWNING) {
     var want = Input.crouchHeld && Player.alive;
     if (want !== Player.crouch) {
       Player.crouch = want;
       Sound.play(want ? 'crouchIn' : 'crouchOut');
       if (want && !Settings.reduced) {
-        VFX.burst(Player.x(), Player.y() + playerRadius() * 0.6, 5,
-          { color: '#000', dir: PI / 2, spMax: 120, sizeMax: 2.4, lifeMax: .35 });
+        var pr = playerRadius();
+        VFX.burst(Player.x(), Player.y() + pr * 0.6, 9,
+          { color: '#000', dir: PI / 2, spMax: 160, sizeMax: 2.6, lifeMax: .38, world: true });
+        VFX.ripple(Player.x(), Player.y() + pr * 0.5, pr * 0.5, pr * 2.6, accent(1), .34, 1.8);
       }
     }
   }
@@ -2135,7 +2562,8 @@ function wireEvents() {
       Sound.unlock(); Sound.play('start');
       setLanguage(this.getAttribute('data-lang'));
       Screens.show(null);
-      startSplash();
+      App.set(ST.HOME);
+      irisOut(VIEW.w / 2, VIEW.h / 2);
     });
   }
 
@@ -2195,13 +2623,8 @@ function boot() {
   applyI18n();
   wireEvents();
 
-  if (!Settings.lang) {
-    App.set(ST.LANG);
-    Screens.show('lang');
-  } else {
-    setLanguage(Settings.lang);
-    startSplash();
-  }
+  if (Settings.lang) setLanguage(Settings.lang);
+  startSplash();
   requestAnimationFrame(frame);
 }
 
