@@ -88,6 +88,21 @@ button:focus-visible,input:focus-visible{outline:2px solid currentColor;outline-
 .langCircle:active{transform:scale(.96)}
 .mark{font-weight:700;font-size:13px;letter-spacing:.55em;text-indent:.55em}
 
+/* ---------- marble selection ---------- */
+.marbles{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px;width:min(430px,88vw)}
+@media (min-width:660px){.marbles{grid-template-columns:repeat(4,1fr);width:min(560px,92vw)}}
+.marbleOpt{display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:13px 6px;border:1.5px solid transparent;border-radius:18px;
+  background:transparent;cursor:pointer;
+  transition:border-color .2s var(--ease),transform .12s var(--ease)}
+.marbleOpt svg{width:clamp(58px,15vw,78px);height:auto;display:block;
+  transition:transform .28s var(--ease)}
+.marbleOpt span{font:600 10px/1 var(--f);letter-spacing:.16em;text-indent:.16em;color:var(--soft)}
+.marbleOpt:hover svg,.marbleOpt:focus-visible svg{transform:scale(1.07)}
+.marbleOpt:active{transform:scale(.96)}
+.marbleOpt[aria-pressed="true"]{border-color:var(--ink)}
+.marbleOpt[aria-pressed="true"] span{color:var(--ink)}
+
 /* ---------- settings sheet ---------- */
 .sheet{display:flex;flex-direction:column;gap:22px;width:min(420px,88vw)}
 .row{display:flex;align-items:center;justify-content:space-between;gap:18px;
@@ -239,6 +254,53 @@ body.reduced .rotIcon{animation:none}
     <button class="btn" data-act="howto-back" data-i18n="back">BACK</button>
   </section>
 
+  <!-- MARBLE SELECTION -->
+  <section class="panel" id="panel-marble" role="dialog">
+    <h2 data-i18n="marbleTitle">MARBLE</h2>
+    <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+      <clipPath id="mBall"><circle cx="32" cy="32" r="28"/></clipPath>
+      <clipPath id="mMoon"><circle cx="32" cy="32" r="27"/></clipPath>
+    </defs></svg>
+    <div class="marbles">
+      <button class="marbleOpt" data-marble="blue" aria-pressed="true">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#2F63E0" stroke="#000" stroke-width="3"/>
+          <rect x="4" y="24" width="56" height="16" fill="#fff" clip-path="url(#mBall)"/>
+        </svg>
+        <span data-i18n="cBlue">BLUE</span>
+      </button>
+      <button class="marbleOpt" data-marble="red" aria-pressed="false">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#DE3B3B" stroke="#000" stroke-width="3"/>
+          <g transform="translate(32,32)" fill="#fff" clip-path="url(#mBall)">
+            <rect x="-6" y="-28" width="12" height="28"/>
+            <rect x="-6" y="-28" width="12" height="28" transform="rotate(120)"/>
+            <rect x="-6" y="-28" width="12" height="28" transform="rotate(240)"/>
+          </g>
+        </svg>
+        <span data-i18n="cRed">RED</span>
+      </button>
+      <button class="marbleOpt" data-marble="green" aria-pressed="false">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#12A05B" stroke="#000" stroke-width="3"/>
+          <path fill="#fff" clip-path="url(#mBall)"
+                d="M32 4 A28 28 0 0 1 32 60 A14 14 0 0 0 32 32 A14 14 0 0 1 32 4 Z"/>
+        </svg>
+        <span data-i18n="cGreen">GREEN</span>
+      </button>
+      <button class="marbleOpt" data-marble="yellow" aria-pressed="false">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#EFA80B" stroke="#000" stroke-width="3"/>
+          <path fill="#fff" fill-rule="evenodd" clip-path="url(#mMoon)"
+                d="M5 32 a27 27 0 1 0 54 0 a27 27 0 1 0 -54 0
+                   M23 32 a21 21 0 1 0 42 0 a21 21 0 1 0 -42 0"/>
+        </svg>
+        <span data-i18n="cYellow">YELLOW</span>
+      </button>
+    </div>
+    <button class="btn" data-act="marble-back" data-i18n="back">BACK</button>
+  </section>
+
   <!-- SETTINGS -->
   <section class="panel" id="panel-settings" role="dialog">
     <h2 data-i18n="settings">SETTINGS</h2>
@@ -357,7 +419,9 @@ var I18N = {
     langTitle: 'Choose your language',
     langNote: 'You can change this later in Settings.',
     start: 'START GAME', settings: 'SETTINGS', howTo: 'HOW TO PLAY', back: 'BACK',
-    circleSettings: ['SETTINGS'], circleHowTo: ['HOW TO', 'PLAY'],
+    circleSettings: ['SETTINGS'], circleHowTo: ['HOW TO', 'PLAY'], circleMarble: ['MARBLE'],
+    marbleTitle: 'MARBLE',
+    cBlue: 'BLUE', cRed: 'RED', cGreen: 'GREEN', cYellow: 'YELLOW',
     language: 'Language', volume: 'Sound effects', mute: 'Mute',
     effects: 'Visual effects', full: 'Full', reduced: 'Reduced',
     howToTitle: 'HOW TO PLAY',
@@ -381,7 +445,9 @@ var I18N = {
     langTitle: 'Choisissez votre langue',
     langNote: 'Vous pourrez la changer dans les Paramètres.',
     start: 'COMMENCER', settings: 'PARAMÈTRES', howTo: 'COMMENT JOUER', back: 'RETOUR',
-    circleSettings: ['PARAMÈTRES'], circleHowTo: ['COMMENT', 'JOUER'],
+    circleSettings: ['PARAMÈTRES'], circleHowTo: ['COMMENT', 'JOUER'], circleMarble: ['BILLE'],
+    marbleTitle: 'BILLE',
+    cBlue: 'BLEU', cRed: 'ROUGE', cGreen: 'VERT', cYellow: 'JAUNE',
     language: 'Langue', volume: 'Effets sonores', mute: 'Muet',
     effects: 'Effets visuels', full: 'Complets', reduced: 'Réduits',
     howToTitle: 'COMMENT JOUER',
@@ -412,6 +478,50 @@ function numFmt(n) {
 }
 
 /* ============================================================================
+   MARBLES — four bodies, each with its own white device inside. The devices
+   are deliberately asymmetric so the spin is unmistakable while running.
+   ========================================================================== */
+var MARBLES = {
+  blue:   { color: '#2F63E0', ink: '#fff', pattern: 'band' },
+  red:    { color: '#DE3B3B', ink: '#fff', pattern: 'spokes' },
+  green:  { color: '#12A05B', ink: '#fff', pattern: 'swirl' },
+  yellow: { color: '#EFA80B', ink: '#000', pattern: 'crescent' }
+};
+var MARBLE_ORDER = ['blue', 'red', 'green', 'yellow'];
+function marble() { return MARBLES[Settings.marble] || MARBLES.blue; }
+
+/* drawn into a circle of radius R, already clipped to the body and rotated */
+function drawMarblePattern(kind, R) {
+  ctx.fillStyle = '#fff';
+  if (kind === 'band') {
+    ctx.fillRect(-R, -R * 0.30, R * 2, R * 0.60);
+  } else if (kind === 'spokes') {
+    var bw = R * 0.20;
+    for (var i = 0; i < 3; i++) {
+      ctx.save();
+      ctx.rotate(i * TAU / 3);
+      ctx.fillRect(-bw, -R, bw * 2, R);
+      ctx.restore();
+    }
+  } else if (kind === 'swirl') {
+    ctx.beginPath();
+    ctx.arc(0, 0, R, -PI / 2, PI / 2, false);
+    ctx.arc(0, R / 2, R / 2, PI / 2, -PI / 2, true);
+    ctx.arc(0, -R / 2, R / 2, PI / 2, -PI / 2, false);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'crescent') {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.93, 0, TAU); ctx.clip();
+    ctx.beginPath();
+    ctx.arc(0, 0, R * 0.93, 0, TAU);
+    ctx.arc(R * 0.46, 0, R * 0.74, 0, TAU);
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
+}
+
+/* ============================================================================
    3. SETTINGS
    ========================================================================== */
 var prefersReduced = false;
@@ -422,9 +532,11 @@ var Settings = {
   volume: clamp(Store.get('volume', 0.7), 0, 1),
   muted: !!Store.get('muted', false),
   effects: Store.get('effects', prefersReduced ? 'reduced' : 'full'),
+  marble: Store.get('marble', 'blue'),
   save: function () {
     Store.set('lang', this.lang); Store.set('volume', this.volume);
     Store.set('muted', this.muted); Store.set('effects', this.effects);
+    Store.set('marble', this.marble);
   },
   get reduced() { return this.effects === 'reduced'; }
 };
@@ -559,12 +671,15 @@ var CFG = {
   SPEED_STEP_TIME:  20,     /* seconds of active play per step */
   SPEED_MAX:        2.00,
   FINAL_DISTANCE:   500,    /* metres of the final stage */
+  SUCTION_DISTANCE: 100,    /* metres of gap at which the wall takes hold */
 
   /* player */
   PLAYER_Y:         0.845,  /* fraction of playfield height */
   PLAYER_R:         0.225,  /* fraction of column width */
   LANE_TIME:        0.155,  /* seconds per lane switch */
   CROUCH_RATE:      22,     /* crouch easing rate */
+  ROLL_RATE:        0.42,   /* radians of marble spin per metre travelled */
+  SWITCH_TRAIL:     0.30,   /* seconds a lane-switch trail node survives */
   HITBOX_FORGIVE:   0.84,
   OBSTACLE_FORGIVE: 0.055,  /* shrink obstacles by this fraction of their size */
 
@@ -620,7 +735,7 @@ var IS_MOBILE = detectMobile();
 
 var ST = {
   LANG: 'LANGUAGE_SELECT', SPLASH: 'SPLASH', HOME: 'HOME',
-  HOWTO: 'HOW_TO_PLAY', SETTINGS: 'SETTINGS',
+  HOWTO: 'HOW_TO_PLAY', SETTINGS: 'SETTINGS', MARBLE: 'MARBLE_SELECT',
   COUNTDOWN: 'COUNTDOWN', PLAYING: 'PLAYING', PAUSED: 'PAUSED',
   RESPAWNING: 'RESPAWNING', FINISH: 'FINISH_SEQUENCE', COMPLETED: 'COMPLETED'
 };
@@ -714,6 +829,7 @@ var VFX = {
   scrollWorld: function (dy) {
     var i;
     for (i = 0; i < this.parts.length; i++) if (this.parts[i].w) this.parts[i].y += dy;
+    for (i = 0; i < this.switchTrail.length; i++) this.switchTrail[i].y += dy;
     for (i = 0; i < this.ripples.length; i++) if (this.ripples[i].w) this.ripples[i].y += dy;
   },
 
@@ -769,9 +885,25 @@ var VFX = {
     this.ripples.push({ x: x, y: y, r0: r0, r1: r1, t: 0,
       dur: dur || .55, color: color || '#000', w: width || 2 });
   },
-  ghost: function (x, y, r) {
-    if (Settings.reduced) return;
-    this.ripples.push({ x: x, y: y, r0: r, r1: r * 0.75, t: 0, dur: .3, color: '#000', w: 1.2, fade: true });
+  /* ---- the streak a marble leaves while it crosses to another column ----
+     It exists only for the length of the switch and the moment after it. */
+  switchTrail: [],
+  pushSwitch: function (x, y, rx, ry) {
+    this.switchTrail.push({ x: x, y: y, rx: rx, ry: ry, t: 0, max: CFG.SWITCH_TRAIL });
+    if (this.switchTrail.length > 32) this.switchTrail.shift();
+  },
+  drawSwitchTrail: function () {
+    if (!this.switchTrail.length) return;
+    ctx.fillStyle = marble().color;
+    for (var i = 0; i < this.switchTrail.length; i++) {
+      var n = this.switchTrail[i], f = 1 - n.t / n.max;
+      ctx.globalAlpha = 0.44 * f * f;
+      ctx.beginPath();
+      ctx.ellipse(n.x, n.y, Math.max(0.5, n.rx * (0.22 + 0.78 * f)),
+                            Math.max(0.5, n.ry * (0.22 + 0.78 * f)), 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   },
   addShake: function (m) { if (Settings.reduced) return; this.shake = Math.max(this.shake, m); },
 
@@ -788,6 +920,10 @@ var VFX = {
       var r = this.ripples[i]; r.t += dt;
       if (r.t >= r.dur) this.ripples.splice(i, 1);
     }
+    for (i = this.switchTrail.length - 1; i >= 0; i--) {
+      var n = this.switchTrail[i]; n.t += dt;
+      if (n.t >= n.max) this.switchTrail.splice(i, 1);
+    }
     for (i = this.lines.length - 1; i >= 0; i--) {
       var l = this.lines[i]; l.y += l.v * dt; l.life += dt;
       if (l.life > l.max || l.y > PF.y + PF.h + 100) this.lines.splice(i, 1);
@@ -796,7 +932,7 @@ var VFX = {
   },
   clear: function () {
     this.parts.length = 0; this.ripples.length = 0; this.lines.length = 0;
-    this.shake = 0; this.moteAcc = 0;
+    this.switchTrail.length = 0; this.shake = 0; this.moteAcc = 0;
   },
 
   drawParticles: function () {
@@ -887,7 +1023,8 @@ var Player = {
     this.lane = n;
     this.fromF = this.xF; this.toF = this.laneF(n); this.moveT = 0;
     Sound.play(this.dir > 0 ? 'laneR' : 'laneL');
-    var r = playerRadius();
+    var r = playerRadius(), d0 = this.dims();
+    VFX.pushSwitch(this.x(), this.y(), d0.rx * 0.86, d0.ry * 0.86);
     VFX.burst(this.x() - this.dir * r * 0.5, this.y() + r * 0.5, 7, {
       color: '#000', dir: PI / 2 - this.dir * 0.9, spMin: 60, spMax: 210,
       sizeMax: 2.6, lifeMax: .34, streak: true, a0: .6, world: true
@@ -912,7 +1049,10 @@ var Player = {
       this.moveT = Math.min(1, this.moveT + dt / CFG.LANE_TIME);
       var e = easeOutBack(this.moveT) * 0.12 + easeOutQuint(this.moveT) * 0.88;
       this.xF = lerp(this.fromF, this.toF, e);
-      if (active) VFX.ghost(this.x(), this.y(), playerRadius() * 0.95);
+      if (active && this.alive) {
+        var d = this.dims();
+        VFX.pushSwitch(this.x(), this.y(), d.rx * 0.86, d.ry * 0.86);
+      }
     } else { this.xF = this.toF; }
 
     /* dust kicked up along the ground while crouching */
@@ -1005,9 +1145,22 @@ var Player = {
     }
 
     /* body */
+    var mb = marble();
     ctx.beginPath();
     ctx.ellipse(0, 0, Math.max(1, rx), Math.max(1, ry), 0, 0, TAU);
-    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.fillStyle = mb.color; ctx.fill();
+
+    /* the device inside it, turning with the ground the marble has covered */
+    var r0 = Math.max(1, r * pop * this.scaleMul);
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, Math.max(1, rx), Math.max(1, ry), 0, 0, TAU);
+    ctx.clip();
+    ctx.scale(Math.max(0.05, rx / r0), Math.max(0.05, ry / r0));
+    ctx.rotate(Run.distance * CFG.ROLL_RATE);
+    drawMarblePattern(mb.pattern, r0);
+    ctx.restore();
+
     ctx.lineWidth = Math.max(1.5, r * 0.085);
     ctx.strokeStyle = '#000'; ctx.stroke();
 
@@ -1422,11 +1575,13 @@ var Run = {
     if (!this.finalActive && this.mult >= CFG.SPEED_MAX - 1e-9) this.enterFinal();
     if (this.finalActive && !this.wall && this.finalProgress() >= CFG.FINAL_DISTANCE) {
       Gen.stop();
-      this.wall = { bottomN: -2.3 };
+      /* far enough out that the run keeps its rhythm for a moment before the
+         wall takes hold at SUCTION_DISTANCE */
+      this.wall = { bottomN: CFG.PLAYER_Y - (CFG.SUCTION_DISTANCE + 22) / CFG.METERS_VISIBLE };
     }
     if (this.wall) {
       this.wall.bottomN += scrollN;
-      if (this.wall.bottomN >= CFG.PLAYER_Y - 0.30) this.beginFinish();
+      if (this.wallGap() <= CFG.SUCTION_DISTANCE) this.beginFinish();
     }
   },
 
@@ -1539,13 +1694,10 @@ var Run = {
   },
 
   /* ---------- finish sequence ---------- */
-  /* the point on the wall the player is drawn into. Nothing is drawn there:
-     the wall is blank, and the player simply shrinks away against it */
-  absorbPoint: function () {
-    return {
-      x: PF.x + PF.w / 2,
-      y: PF.y + (this.wall ? this.wall.bottomN : 0) * PF.h - PF.w * 0.34
-    };
+  /* metres of open track still between the player and the face of the wall */
+  wallGap: function () {
+    if (!this.wall) return Infinity;
+    return (CFG.PLAYER_Y - this.wall.bottomN) * CFG.METERS_VISIBLE;
   },
   /* has the slab run past the last pixel of the world? */
   wallCovered: function () {
@@ -1561,60 +1713,67 @@ var Run = {
       Player.reset(1); Player.spawnT = 1;
     }
     Player.crouch = false;
-    var a = this.absorbPoint();
-    this.seq = {
-      t: 0, fromX: Player.x(), fromY: Player.y(),
-      soundDone: false, particleT: 0,
-      ax: a.x, ay: a.y            /* fixed: the player is drawn to one place */
-    };
+    this.seq = { t: 0, fromX: Player.x(), soundDone: false, particleT: 0 };
   },
 
   updateFinish: function (dt) {
     var s = this.seq;
-    if (!s) return;
+    if (!s || !this.wall) return;
     s.t += dt;
 
-    /* the track eases to a halt, but the wall keeps coming: it does not stop
-       until it has run over every last pixel of the world */
-    this.scrollScale = 1 - easeInOutCubic(clamp(s.t / 0.9, 0, 1));
-    var scrollN = this.speedN() * dt * this.scrollScale;
-    this.distance += CFG.BASE_SPEED * this.mult * dt * this.scrollScale;
+    /* the track keeps running: the wall closes the gap at exactly the speed of
+       the world, so the hundred metres are real metres */
+    var scrollN = this.speedN() * dt;
+    this.distance += CFG.BASE_SPEED * this.mult * dt;
     Obstacles.update(scrollN, dt);
     VFX.scrollWorld(scrollN * PF.h);
-    if (this.wall) this.wall.bottomN += this.speedN() * dt * Math.max(this.scrollScale, 0.62);
+    this.wall.bottomN += scrollN;
 
     Player.update(dt, false);
 
-    /* the player is drawn into the wall and shrinks away against it */
-    var k = clamp(s.t / 1.05, 0, 1), e = easeInCubic(k);
-    Player.xF = ((lerp(s.fromX, s.ax, e)) - PF.x) / PF.w;
-    Player.yOff = lerp(s.fromY, s.ay, e) - (PF.y + CFG.PLAYER_Y * PF.h);
-    Player.scaleMul = 1 - 0.96 * easeInCubic(k);
+    var home = PF.y + CFG.PLAYER_Y * PF.h;
+    var edge = PF.y + this.wall.bottomN * PF.h;      /* the face, in screen pixels */
+    var r = playerRadius();
+
+    /* two stages of the same pull. Over the hundred metres the marble is drawn
+       forward off its mark; once the face is actually on screen it takes over
+       and the marble is pulled into it. */
+    var gapK = clamp(1 - this.wallGap() / CFG.SUCTION_DISTANCE, 0, 1);
+    var closeK = clamp(1 - (home - edge) / (PF.h * 0.92), 0, 1);
+    var e = easeInCubic(closeK);
+    var driftY = home - PF.h * 0.17 * easeInCubic(gapK);
+
+    Player.xF = (lerp(s.fromX, PF.x + PF.w / 2, e) - PF.x) / PF.w;
+    Player.yOff = lerp(driftY, edge - r, e) - home;
+    Player.scaleMul = 1 - 0.97 * e;
     Player.moveT = 1; Player.toF = Player.xF; Player.fromF = Player.xF;
 
-    /* suction particles streaming inward */
+    /* everything loose on the track is dragged the same way */
+    var tx = PF.x + PF.w / 2, ty = Math.max(edge, PF.y - PF.h * 0.12);
     s.particleT -= dt;
-    if (s.particleT <= 0 && s.t < 1.3) {
+    if (s.particleT <= 0 && Player.alive) {
       s.particleT = 0.02;
-      var n = Settings.reduced ? 1 : 3;
+      var n = Settings.reduced ? 1 : 2 + Math.round(gapK * 2);
       for (var i = 0; i < n; i++) {
         var ang = rand(0, TAU), dist = rand(PF.w * 0.35, PF.w * 0.95);
-        var px = s.ax + Math.cos(ang) * dist, py = s.ay + Math.sin(ang) * dist * 0.8;
-        var toA = Math.atan2(s.ay - py, s.ax - px);
+        var px = tx + Math.cos(ang) * dist, py = home + Math.sin(ang) * dist * 0.8;
+        var toA = Math.atan2(ty - py, tx - px);
+        var sp = rand(400, 780) * (0.6 + gapK * 0.8);
         VFX.parts.push({
-          x: px, y: py, vx: Math.cos(toA) * rand(500, 950), vy: Math.sin(toA) * rand(500, 950),
-          life: 0, max: rand(.35, .6), size: rand(1.5, 3.4), color: '#000', drag: -0.9, grav: 0, streak: true
+          x: px, y: py, vx: Math.cos(toA) * sp, vy: Math.sin(toA) * sp,
+          life: 0, max: rand(.35, .6), size: rand(1.5, 3.4), color: '#000',
+          drag: -0.9, grav: 0, streak: true
         });
       }
     }
-    if (!Settings.reduced && s.t < 1.2) VFX.addShake(2.5);
+    if (!Settings.reduced && Player.alive) VFX.addShake(0.6 + 2.4 * closeK);
 
-    /* absorbed: the player is gone and the slab is all there is */
-    if (s.t >= 1.05) {
+    /* absorbed: the marble is gone and the slab is all there is */
+    if (e >= 0.97 && Player.alive) {
       if (!s.soundDone) { s.soundDone = true; Sound.play('complete'); }
       Player.alive = false;
     }
-    if (App.state === ST.FINISH && s.t >= 1.45 && (this.wallCovered() || s.t >= 3)) {
+    if (App.state === ST.FINISH && !Player.alive && (this.wallCovered() || s.t >= 14)) {
       App.set(ST.COMPLETED);
       Screens.showComplete();
     }
@@ -1707,6 +1866,7 @@ function fx(id) {
 var HOME_DEF = [
   { id: 'howto', ang: -0.98, rf: 0.52, color: '#F2B705', text: '#000', key: 'circleHowTo' },
   { id: 'settings', ang: 2.24, rf: 0.52, color: '#3B5BDB', text: '#fff', key: 'circleSettings' },
+  { id: 'marble', ang: -1.95, rf: 0.52, color: null, text: null, key: 'circleMarble' },
   { id: 'deco1', ang: -2.55, rf: 0.20, color: '#0FA3A3', text: null },
   { id: 'deco2', ang: 0.62, rf: 0.135, color: '#E5487B', text: null }
 ];
@@ -1720,8 +1880,10 @@ function homeCircles() {
   for (var i = 0; i < HOME_DEF.length; i++) {
     var d = HOME_DEF[i], r = R * d.rf;
     var f = 1 + (d.rf > 0.4 ? 0 : 0.12);
+    /* the marble button wears whatever marble is currently chosen */
+    var mb = d.id === 'marble' ? marble() : null;
     out.push({
-      id: d.id, r: r, color: d.color, text: d.text, key: d.key,
+      id: d.id, r: r, color: mb ? mb.color : d.color, text: mb ? mb.ink : d.text, key: d.key,
       x: clamp(cx + Math.cos(d.ang) * ring * f, r + 8, VIEW.w - r - 8),
       y: clamp(cy + Math.sin(d.ang) * ring * f, r + 8 + INSET.t, VIEW.h - r - 8 - INSET.b)
     });
@@ -1841,23 +2003,33 @@ function drawEdges() {
   g2.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g2; ctx.fillRect(PF.x + PF.w - w, PF.y, w, PF.h);
 }
+/* the finish wall's palette: solid, saturated, and never two at once */
+var WALL_COLORS = ['#E5484D', '#F5A524', '#30A46C', '#00A2C7', '#3E63DD', '#8E4EC6'];
+var WALL_HOLD = 0.40, WALL_FADE = 0.52;   /* seconds held, seconds crossfading */
+
 function drawFinishWall() {
   var w = Run.wall; if (!w) return;
   var bottom = PF.y + w.bottomN * PF.h;
   if (bottom < -1) return;
 
-  /* One blank slab of colour. Nothing is drawn on it: no seams, no joints, no
-     way through — only the spectrum, turning. It is painted well past every
-     edge of the screen so that a shake, a notch or a desktop margin can never
-     uncover a strip of the world beside it. */
-  var over = 96;
-  var hue = (App.time * (Settings.reduced ? 15 : 32)) % 360;
-  var g = ctx.createLinearGradient(-over, 0, VIEW.w + over, 0);
-  for (var i = 0; i <= 6; i++) {
-    g.addColorStop(i / 6, 'hsl(' + ((hue + i * 60) % 360).toFixed(1) + ',78%,54%)');
+  /* One blank slab, one colour at a time: it holds, then crossfades into the
+     next. Painted well past every edge of the screen so that a shake, a notch
+     or a desktop margin can never uncover a strip of the world beside it. */
+  var over = 96, x = -over, y = -over, w = VIEW.w + over * 2, h = bottom + over;
+  var cyc = (WALL_HOLD + WALL_FADE) * (Settings.reduced ? 1.7 : 1);
+  var p = App.time / cyc;
+  var i = Math.floor(p) % WALL_COLORS.length;
+  var into = (p - Math.floor(p)) * cyc - WALL_HOLD * (Settings.reduced ? 1.7 : 1);
+  var mix = easeInOutCubic(clamp(into / (WALL_FADE * (Settings.reduced ? 1.7 : 1)), 0, 1));
+
+  ctx.fillStyle = WALL_COLORS[i];
+  ctx.fillRect(x, y, w, h);
+  if (mix > 0) {
+    ctx.globalAlpha = mix;
+    ctx.fillStyle = WALL_COLORS[(i + 1) % WALL_COLORS.length];
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
   }
-  ctx.fillStyle = g;
-  ctx.fillRect(-over, -over, VIEW.w + over * 2, bottom + over);
 }
 
 function drawHUD() {
@@ -1916,6 +2088,7 @@ function drawScene() {
   drawHorizon();
   drawEdges();
   if (!Run.wall) {
+    VFX.drawSwitchTrail();
     VFX.drawRipples();
     Player.draw();
     Obstacles.drawOverhead();     /* a barrier you duck under passes over you */
@@ -1954,7 +2127,9 @@ function render() {
   var s = App.state;
   if (s === ST.LANG) { /* white page under the panel */ }
   else if (s === ST.SPLASH) { if (Settings.lang) drawHome(); drawSplash(); }
-  else if (s === ST.HOME || s === ST.HOWTO) { drawHome(); VFX.drawRipples(); VFX.drawParticles(); }
+  else if (s === ST.HOME || s === ST.HOWTO || s === ST.MARBLE) {
+    drawHome(); VFX.drawRipples(); VFX.drawParticles();
+  }
   else if (s === ST.SETTINGS) {
     if (App.prev === ST.HOME || App.prev === ST.HOWTO) drawHome(); else drawScene();
   } else drawScene();
@@ -2174,6 +2349,8 @@ var Home = {
       Sound.play('ui'); App.prev = ST.HOME; App.set(ST.SETTINGS); Screens.show('settings');
     } else if (id === 'howto') {
       Sound.play('ui'); App.set(ST.HOWTO); Screens.show('howto');
+    } else if (id === 'marble') {
+      Sound.play('ui'); App.set(ST.MARBLE); Screens.show('marble');
     } else {
       Sound.play('ui');
       VFX.burst(c.x + fl.x, c.y + fl.y, 10, { color: c.color, spMax: 180, sizeMax: 4 });
@@ -2185,7 +2362,7 @@ var Home = {
    SCREENS + CHROME
    ========================================================================== */
 var Screens = {
-  ids: ['lang', 'howto', 'settings', 'pause', 'complete'],
+  ids: ['lang', 'howto', 'marble', 'settings', 'pause', 'complete'],
   show: function (id) {
     for (var i = 0; i < this.ids.length; i++) {
       var el = document.getElementById('panel-' + this.ids[i]);
@@ -2273,6 +2450,13 @@ function setLanguage(l) {
   try { document.documentElement.lang = Settings.lang; } catch (e) {}
   applyI18n();
   syncSettingsUI();
+}
+function syncMarbleUI() {
+  var opts = document.querySelectorAll('[data-marble]');
+  for (var i = 0; i < opts.length; i++) {
+    opts[i].setAttribute('aria-pressed',
+      opts[i].getAttribute('data-marble') === Settings.marble ? 'true' : 'false');
+  }
 }
 function syncSettingsUI() {
   var segL = document.getElementById('segLang').children;
@@ -2427,6 +2611,7 @@ function wireEvents() {
     var act = el.getAttribute('data-act');
     Sound.unlock();
     if (act === 'howto-back') { Sound.play('uiBack'); Screens.show(null); App.set(ST.HOME); }
+    else if (act === 'marble-back') { Sound.play('uiBack'); Screens.show(null); App.set(ST.HOME); }
     else if (act === 'settings-back') {
       Sound.play('uiBack');
       if (App.prev === ST.PAUSED) { App.set(ST.PAUSED); Screens.show('pause'); }
@@ -2437,6 +2622,18 @@ function wireEvents() {
     else if (act === 'pause-settings') { Sound.play('ui'); App.prev = ST.PAUSED; App.set(ST.SETTINGS); Screens.show('settings'); }
     else if (act === 'home') goHome(App.state === ST.COMPLETED);
     else if (act === 'again') { Screens.show(null); Sound.play('start'); Run.begin(); irisOut(VIEW.w / 2, VIEW.h / 2); }
+  });
+
+  /* marble selection */
+  document.querySelector('.marbles').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-marble]') : null;
+    if (!b) return;
+    var id = b.getAttribute('data-marble');
+    if (!MARBLES[id]) return;
+    Settings.marble = id;
+    Settings.save();
+    syncMarbleUI();
+    Sound.unlock(); Sound.play('ui');
   });
 
   /* settings controls */
@@ -2472,7 +2669,9 @@ function boot() {
     'You can change this later in Settings. \u00B7 Vous pourrez la changer dans les Paramètres.';
 
   layout();
+  if (!MARBLES[Settings.marble]) Settings.marble = 'blue';
   syncSettingsUI();
+  syncMarbleUI();
   applyI18n();
   wireEvents();
 
