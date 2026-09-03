@@ -1207,21 +1207,6 @@ var Player = {
     ctx.lineWidth = Math.max(1.4, rr * 0.085);
     ctx.strokeStyle = '#000'; ctx.stroke();
 
-    /* two stacked downward chevrons while crouching */
-
-    if (c > 0.05) {
-      ctx.globalAlpha = alpha * c;
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = Math.max(1.4, rr * 0.13);
-      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      var w = rr * 0.40, h = rr * 0.22, gap = rr * 0.34;
-      for (var k = 0; k < 2; k++) {
-        var yy = -gap * 0.5 + k * gap - h * 0.2;
-        ctx.beginPath();
-        ctx.moveTo(-w, yy); ctx.lineTo(0, yy + h); ctx.lineTo(w, yy);
-        ctx.stroke();
-      }
-    }
     ctx.restore();
     ctx.globalAlpha = 1;
   }
