@@ -89,13 +89,13 @@ button:focus-visible,input:focus-visible{outline:2px solid currentColor;outline-
 .mark{font-weight:700;font-size:13px;letter-spacing:.55em;text-indent:.55em}
 
 /* ---------- marble selection ---------- */
-.marbles{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px;width:min(430px,88vw)}
-@media (min-width:660px){.marbles{grid-template-columns:repeat(4,1fr);width:min(560px,92vw)}}
+.marbles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 10px;width:min(400px,92vw)}
+@media (min-width:700px){.marbles{grid-template-columns:repeat(6,1fr);width:min(680px,94vw)}}
 .marbleOpt{display:flex;flex-direction:column;align-items:center;gap:10px;
-  padding:13px 6px;border:1.5px solid transparent;border-radius:18px;
+  padding:11px 4px;border:1.5px solid transparent;border-radius:16px;
   background:transparent;cursor:pointer;
   transition:border-color .2s var(--ease),transform .12s var(--ease)}
-.marbleOpt svg{width:clamp(58px,15vw,78px);height:auto;display:block;
+.marbleOpt svg{width:clamp(46px,13vw,68px);height:auto;display:block;
   transition:transform .28s var(--ease)}
 .marbleOpt span{font:600 10px/1 var(--f);letter-spacing:.16em;text-indent:.16em;color:var(--soft)}
 .marbleOpt:hover svg,.marbleOpt:focus-visible svg{transform:scale(1.07)}
@@ -259,43 +259,49 @@ body.reduced .rotIcon{animation:none}
     <h2 data-i18n="marbleTitle">MARBLE</h2>
     <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
       <clipPath id="mBall"><circle cx="32" cy="32" r="28"/></clipPath>
-      <clipPath id="mMoon"><circle cx="32" cy="32" r="27"/></clipPath>
     </defs></svg>
     <div class="marbles">
       <button class="marbleOpt" data-marble="blue" aria-pressed="true">
         <svg viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="28" fill="#2F63E0" stroke="#000" stroke-width="3"/>
-          <rect x="4" y="24" width="56" height="16" fill="#fff" clip-path="url(#mBall)"/>
+          <circle cx="32" cy="32" r="28" fill="#2F63E0" stroke="#000" stroke-width="2"/>
+          <rect x="19" y="19" width="26" height="26" fill="#fff" clip-path="url(#mBall)"/>
         </svg>
         <span data-i18n="cBlue">BLUE</span>
       </button>
       <button class="marbleOpt" data-marble="red" aria-pressed="false">
         <svg viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="28" fill="#DE3B3B" stroke="#000" stroke-width="3"/>
-          <g transform="translate(32,32)" fill="#fff" clip-path="url(#mBall)">
-            <rect x="-6" y="-28" width="12" height="28"/>
-            <rect x="-6" y="-28" width="12" height="28" transform="rotate(120)"/>
-            <rect x="-6" y="-28" width="12" height="28" transform="rotate(240)"/>
-          </g>
+          <circle cx="32" cy="32" r="28" fill="#DE3B3B" stroke="#000" stroke-width="2"/>
+          <path fill="#fff" clip-path="url(#mBall)" d="M32 49 C11 33, 17 15, 32 26 C47 15, 53 33, 32 49 Z"/>
         </svg>
         <span data-i18n="cRed">RED</span>
       </button>
       <button class="marbleOpt" data-marble="green" aria-pressed="false">
         <svg viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="28" fill="#12A05B" stroke="#000" stroke-width="3"/>
-          <path fill="#fff" clip-path="url(#mBall)"
-                d="M32 4 A28 28 0 0 1 32 60 A14 14 0 0 0 32 32 A14 14 0 0 1 32 4 Z"/>
+          <circle cx="32" cy="32" r="28" fill="#12A05B" stroke="#000" stroke-width="2"/>
+          <path fill="#fff" clip-path="url(#mBall)" d="M32 13 L48.5 41.5 L15.5 41.5 Z"/>
         </svg>
         <span data-i18n="cGreen">GREEN</span>
       </button>
       <button class="marbleOpt" data-marble="yellow" aria-pressed="false">
         <svg viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="28" fill="#EFA80B" stroke="#000" stroke-width="3"/>
-          <path fill="#fff" fill-rule="evenodd" clip-path="url(#mMoon)"
-                d="M5 32 a27 27 0 1 0 54 0 a27 27 0 1 0 -54 0
-                   M23 32 a21 21 0 1 0 42 0 a21 21 0 1 0 -42 0"/>
+          <circle cx="32" cy="32" r="28" fill="#EFA80B" stroke="#000" stroke-width="2"/>
+          <path fill="#fff" clip-path="url(#mBall)" d="M32 11 L36.9 25.2 L52 25.6 L40 34.6 L44.4 49 L32 40.4 L19.6 49 L24 34.6 L12 25.6 L27.1 25.2 Z"/>
         </svg>
         <span data-i18n="cYellow">YELLOW</span>
+      </button>
+      <button class="marbleOpt" data-marble="pink" aria-pressed="false">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#E8467C" stroke="#000" stroke-width="2"/>
+          <path fill="#fff" fill-rule="evenodd" clip-path="url(#mBall)" d="M9 32 Q32 8 55 32 Q32 56 9 32 Z M32 22 a3.2 10 0 1 0 0.1 0 Z"/>
+        </svg>
+        <span data-i18n="cPink">PINK</span>
+      </button>
+      <button class="marbleOpt" data-marble="purple" aria-pressed="false">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#8B4FD8" stroke="#000" stroke-width="2"/>
+          <path fill="#fff" clip-path="url(#mBall)" d="M32 10 L45 32 L32 54 L19 32 Z"/>
+        </svg>
+        <span data-i18n="cPurple">PURPLE</span>
       </button>
     </div>
     <button class="btn" data-act="marble-back" data-i18n="back">BACK</button>
@@ -419,9 +425,10 @@ var I18N = {
     langTitle: 'Choose your language',
     langNote: 'You can change this later in Settings.',
     start: 'START GAME', settings: 'SETTINGS', howTo: 'HOW TO PLAY', back: 'BACK',
-    circleSettings: ['SETTINGS'], circleHowTo: ['HOW TO', 'PLAY'], circleMarble: ['MARBLE'],
-    marbleTitle: 'MARBLE',
+    circleSettings: ['SETTINGS'], circleHowTo: ['HOW TO', 'PLAY'], circleMarble: ['MARBLE', 'COLOR'],
+    marbleTitle: 'MARBLE COLOR',
     cBlue: 'BLUE', cRed: 'RED', cGreen: 'GREEN', cYellow: 'YELLOW',
+    cPink: 'PINK', cPurple: 'PURPLE',
     language: 'Language', volume: 'Sound effects', mute: 'Mute',
     effects: 'Visual effects', full: 'Full', reduced: 'Reduced',
     howToTitle: 'HOW TO PLAY',
@@ -445,9 +452,10 @@ var I18N = {
     langTitle: 'Choisissez votre langue',
     langNote: 'Vous pourrez la changer dans les Paramètres.',
     start: 'COMMENCER', settings: 'PARAMÈTRES', howTo: 'COMMENT JOUER', back: 'RETOUR',
-    circleSettings: ['PARAMÈTRES'], circleHowTo: ['COMMENT', 'JOUER'], circleMarble: ['BILLE'],
-    marbleTitle: 'BILLE',
+    circleSettings: ['PARAMÈTRES'], circleHowTo: ['COMMENT', 'JOUER'], circleMarble: ['COULEUR', 'BILLE'],
+    marbleTitle: 'COULEUR DE BILLE',
     cBlue: 'BLEU', cRed: 'ROUGE', cGreen: 'VERT', cYellow: 'JAUNE',
+    cPink: 'ROSE', cPurple: 'VIOLET',
     language: 'Langue', volume: 'Effets sonores', mute: 'Muet',
     effects: 'Effets visuels', full: 'Complets', reduced: 'Réduits',
     howToTitle: 'COMMENT JOUER',
@@ -482,42 +490,66 @@ function numFmt(n) {
    are deliberately asymmetric so the spin is unmistakable while running.
    ========================================================================== */
 var MARBLES = {
-  blue:   { color: '#2F63E0', ink: '#fff', pattern: 'band' },
-  red:    { color: '#DE3B3B', ink: '#fff', pattern: 'spokes' },
-  green:  { color: '#12A05B', ink: '#fff', pattern: 'swirl' },
-  yellow: { color: '#EFA80B', ink: '#000', pattern: 'crescent' }
+  blue:   { color: '#2F63E0', ink: '#fff', pattern: 'square' },
+  red:    { color: '#DE3B3B', ink: '#fff', pattern: 'heart' },
+  green:  { color: '#12A05B', ink: '#fff', pattern: 'triangle' },
+  yellow: { color: '#EFA80B', ink: '#000', pattern: 'star' },
+  pink:   { color: '#E8467C', ink: '#fff', pattern: 'cateye' },
+  purple: { color: '#8B4FD8', ink: '#fff', pattern: 'diamond' }
 };
-var MARBLE_ORDER = ['blue', 'red', 'green', 'yellow'];
+var MARBLE_ORDER = ['blue', 'red', 'green', 'yellow', 'pink', 'purple'];
 function marble() { return MARBLES[Settings.marble] || MARBLES.blue; }
 
-/* drawn into a circle of radius R, already clipped to the body and rotated */
+/* Drawn into a circle of radius R, already clipped to the body and turned by
+   the roll. Every device is off-centre or pointed so that its rotation reads
+   at a glance; all of them sit well inside R so nothing is ever clipped. */
 function drawMarblePattern(kind, R) {
   ctx.fillStyle = '#fff';
-  if (kind === 'band') {
-    ctx.fillRect(-R, -R * 0.30, R * 2, R * 0.60);
-  } else if (kind === 'spokes') {
-    var bw = R * 0.20;
-    for (var i = 0; i < 3; i++) {
-      ctx.save();
-      ctx.rotate(i * TAU / 3);
-      ctx.fillRect(-bw, -R, bw * 2, R);
-      ctx.restore();
-    }
-  } else if (kind === 'swirl') {
-    ctx.beginPath();
-    ctx.arc(0, 0, R, -PI / 2, PI / 2, false);
-    ctx.arc(0, R / 2, R / 2, PI / 2, -PI / 2, true);
-    ctx.arc(0, -R / 2, R / 2, PI / 2, -PI / 2, false);
+  ctx.beginPath();
+  if (kind === 'square') {
+    var h = R * 0.46;
+    ctx.rect(-h, -h, h * 2, h * 2);
+    ctx.fill();
+  } else if (kind === 'triangle') {
+    var t = R * 0.68;
+    ctx.moveTo(0, -t);
+    ctx.lineTo(t * 0.866, t * 0.5);
+    ctx.lineTo(-t * 0.866, t * 0.5);
     ctx.closePath();
     ctx.fill();
-  } else if (kind === 'crescent') {
-    ctx.save();
-    ctx.beginPath(); ctx.arc(0, 0, R * 0.93, 0, TAU); ctx.clip();
-    ctx.beginPath();
-    ctx.arc(0, 0, R * 0.93, 0, TAU);
-    ctx.arc(R * 0.46, 0, R * 0.74, 0, TAU);
+  } else if (kind === 'diamond') {
+    ctx.moveTo(0, -R * 0.74);
+    ctx.lineTo(R * 0.42, 0);
+    ctx.lineTo(0, R * 0.74);
+    ctx.lineTo(-R * 0.42, 0);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'heart') {
+    var S = R * 0.62;
+    ctx.moveTo(0, S * 0.98);
+    ctx.bezierCurveTo(-S * 1.20, S * 0.08, -S * 0.88, -S * 1.00, 0, -S * 0.34);
+    ctx.bezierCurveTo(S * 0.88, -S * 1.00, S * 1.20, S * 0.08, 0, S * 0.98);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'star') {
+    var ro = R * 0.72, ri = R * 0.30;
+    for (var i = 0; i < 10; i++) {
+      var a = -PI / 2 + i * PI / 5, rr = (i % 2) ? ri : ro;
+      var px = Math.cos(a) * rr, py = Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'cateye') {
+    /* a lens with a slit cut out of it, so it reads as an eye either way up */
+    var L = R * 0.80, B = R * 0.40;
+    ctx.moveTo(-L, 0);
+    ctx.quadraticCurveTo(0, -B * 1.7, L, 0);
+    ctx.quadraticCurveTo(0, B * 1.7, -L, 0);
+    ctx.closePath();
+    ctx.moveTo(0, -B * 0.72);
+    ctx.ellipse(0, 0, R * 0.11, B * 0.72, 0, 0, TAU);
     ctx.fill('evenodd');
-    ctx.restore();
   }
 }
 
@@ -678,8 +710,9 @@ var CFG = {
   PLAYER_R:         0.225,  /* fraction of column width */
   LANE_TIME:        0.155,  /* seconds per lane switch */
   CROUCH_RATE:      22,     /* crouch easing rate */
-  ROLL_RATE:        0.42,   /* radians of marble spin per metre travelled */
-  SWITCH_TRAIL:     0.30,   /* seconds a lane-switch trail node survives */
+  ROLL_RATE:        0.85,   /* radians of marble spin per metre travelled */
+  CROUCH_SHRINK:    0.42,   /* how far the marble shrinks when it ducks */
+  DASH_TIME:        0.30,   /* seconds a lane-switch dash survives */
   HITBOX_FORGIVE:   0.84,
   OBSTACLE_FORGIVE: 0.055,  /* shrink obstacles by this fraction of their size */
 
@@ -829,7 +862,6 @@ var VFX = {
   scrollWorld: function (dy) {
     var i;
     for (i = 0; i < this.parts.length; i++) if (this.parts[i].w) this.parts[i].y += dy;
-    for (i = 0; i < this.switchTrail.length; i++) this.switchTrail[i].y += dy;
     for (i = 0; i < this.ripples.length; i++) if (this.ripples[i].w) this.ripples[i].y += dy;
   },
 
@@ -885,22 +917,35 @@ var VFX = {
     this.ripples.push({ x: x, y: y, r0: r0, r1: r1, t: 0,
       dur: dur || .55, color: color || '#000', w: width || 2 });
   },
-  /* ---- the streak a marble leaves while it crosses to another column ----
-     It exists only for the length of the switch and the moment after it. */
-  switchTrail: [],
-  pushSwitch: function (x, y, rx, ry) {
-    this.switchTrail.push({ x: x, y: y, rx: rx, ry: ry, t: 0, max: CFG.SWITCH_TRAIL });
-    if (this.switchTrail.length > 32) this.switchTrail.shift();
+  /* ---- the dash a marble throws off as it crosses to another column ----
+     A single horizontal streak, laid from the column it left to its own
+     trailing edge. It exists only for the switch and the moment after it. */
+  dashes: [], liveDash: null,
+  startDash: function (x, y, dir, r) {
+    this.liveDash = { x0: x, x1: x, y: y, dir: dir, r: r, t: 0, max: CFG.DASH_TIME };
+    this.dashes.push(this.liveDash);
+    if (this.dashes.length > 3) this.dashes.shift();
   },
-  drawSwitchTrail: function () {
-    if (!this.switchTrail.length) return;
+  trackDash: function (x, y) {
+    if (this.liveDash) { this.liveDash.x1 = x; this.liveDash.y = y; }
+  },
+  releaseDash: function () { this.liveDash = null; },
+  drawDashes: function () {
+    if (!this.dashes.length) return;
     ctx.fillStyle = marble().color;
-    for (var i = 0; i < this.switchTrail.length; i++) {
-      var n = this.switchTrail[i], f = 1 - n.t / n.max;
-      ctx.globalAlpha = 0.44 * f * f;
+    for (var i = 0; i < this.dashes.length; i++) {
+      var d = this.dashes[i], f = 1 - d.t / d.max;
+      var head = d.x1 - d.dir * d.r * 0.82;      /* the marble's trailing edge */
+      if ((head - d.x0) * d.dir <= 1) continue;  /* nothing to draw yet */
+      var hh = d.r * 0.42 * (0.32 + 0.68 * f);   /* thins as it goes */
+      var th = hh * 0.16;
+      ctx.globalAlpha = 0.58 * f * f;
       ctx.beginPath();
-      ctx.ellipse(n.x, n.y, Math.max(0.5, n.rx * (0.22 + 0.78 * f)),
-                            Math.max(0.5, n.ry * (0.22 + 0.78 * f)), 0, 0, TAU);
+      ctx.moveTo(d.x0, d.y - th);
+      ctx.lineTo(head, d.y - hh);
+      ctx.lineTo(head, d.y + hh);
+      ctx.lineTo(d.x0, d.y + th);
+      ctx.closePath();
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -920,9 +965,12 @@ var VFX = {
       var r = this.ripples[i]; r.t += dt;
       if (r.t >= r.dur) this.ripples.splice(i, 1);
     }
-    for (i = this.switchTrail.length - 1; i >= 0; i--) {
-      var n = this.switchTrail[i]; n.t += dt;
-      if (n.t >= n.max) this.switchTrail.splice(i, 1);
+    for (i = this.dashes.length - 1; i >= 0; i--) {
+      var d = this.dashes[i]; d.t += dt;
+      if (d.t >= d.max) {
+        if (this.liveDash === d) this.liveDash = null;
+        this.dashes.splice(i, 1);
+      }
     }
     for (i = this.lines.length - 1; i >= 0; i--) {
       var l = this.lines[i]; l.y += l.v * dt; l.life += dt;
@@ -932,7 +980,7 @@ var VFX = {
   },
   clear: function () {
     this.parts.length = 0; this.ripples.length = 0; this.lines.length = 0;
-    this.switchTrail.length = 0; this.shake = 0; this.moteAcc = 0;
+    this.dashes.length = 0; this.liveDash = null; this.shake = 0; this.moteAcc = 0;
   },
 
   drawParticles: function () {
@@ -1023,8 +1071,8 @@ var Player = {
     this.lane = n;
     this.fromF = this.xF; this.toF = this.laneF(n); this.moveT = 0;
     Sound.play(this.dir > 0 ? 'laneR' : 'laneL');
-    var r = playerRadius(), d0 = this.dims();
-    VFX.pushSwitch(this.x(), this.y(), d0.rx * 0.86, d0.ry * 0.86);
+    var r = playerRadius();
+    VFX.startDash(this.x(), this.y(), this.dir, this.dims().rx);
     VFX.burst(this.x() - this.dir * r * 0.5, this.y() + r * 0.5, 7, {
       color: '#000', dir: PI / 2 - this.dir * 0.9, spMin: 60, spMax: 210,
       sizeMax: 2.6, lifeMax: .34, streak: true, a0: .6, world: true
@@ -1033,14 +1081,12 @@ var Player = {
     return true;
   },
 
-  /* the drawn size of the body, so the tail always matches the pose */
+  /* the drawn size of the body. Ducking shrinks the whole marble evenly —
+     it never flattens — and the only stretch left is the lane-change lean. */
   dims: function () {
-    var r = playerRadius() * this.scaleMul;
+    var r = playerRadius() * this.scaleMul * (1 - CFG.CROUCH_SHRINK * this.crouchAmt);
     var m = this.moveT < 1 ? Math.sin(this.moveT * PI) : 0;
-    return {
-      rx: r * (1 + 0.22 * this.crouchAmt + 0.16 * m),
-      ry: r * (1 - 0.34 * this.crouchAmt - 0.10 * m)
-    };
+    return { rx: r * (1 + 0.16 * m), ry: r * (1 - 0.10 * m) };
   },
 
   update: function (dt, active) {
@@ -1049,10 +1095,8 @@ var Player = {
       this.moveT = Math.min(1, this.moveT + dt / CFG.LANE_TIME);
       var e = easeOutBack(this.moveT) * 0.12 + easeOutQuint(this.moveT) * 0.88;
       this.xF = lerp(this.fromF, this.toF, e);
-      if (active && this.alive) {
-        var d = this.dims();
-        VFX.pushSwitch(this.x(), this.y(), d.rx * 0.86, d.ry * 0.86);
-      }
+      if (active && this.alive) VFX.trackDash(this.x(), this.y());
+      if (this.moveT >= 1) VFX.releaseDash();
     } else { this.xF = this.toF; }
 
     /* dust kicked up along the ground while crouching */
@@ -1098,19 +1142,15 @@ var Player = {
     }
   },
 
-  /* elliptical hitbox: crouching genuinely lowers the profile */
+  /* the hitbox follows the drawn body: ducking makes the marble smaller */
   box: function () {
-    var r = playerRadius();
-    return {
-      x: this.x(), y: this.y(),
-      rx: r * (1 + 0.20 * this.crouchAmt) * CFG.HITBOX_FORGIVE,
-      ry: r * (1 - 0.36 * this.crouchAmt) * CFG.HITBOX_FORGIVE
-    };
+    var r = playerRadius() * (1 - CFG.CROUCH_SHRINK * this.crouchAmt) * CFG.HITBOX_FORGIVE;
+    return { x: this.x(), y: this.y(), rx: r, ry: r };
   },
 
   draw: function () {
     if (!this.alive) return;
-    var r = playerRadius(), x = this.x(), y = this.y();
+    var x = this.x(), y = this.y();
     var c = this.crouchAmt;
     var pop = this.spawnT < 1 ? easeOutBack(this.spawnT) : 1;
 
@@ -1118,6 +1158,7 @@ var Player = {
     var m = this.moveT < 1 ? Math.sin(this.moveT * PI) : 0;
     var d = this.dims();
     var rx = d.rx * pop, ry = d.ry * pop;
+    var rr = Math.min(rx, ry);          /* the drawn size, ducked or not */
     var tilt = this.dir * m * 0.20;
 
     var alpha = 1;
@@ -1134,11 +1175,11 @@ var Player = {
       ctx.strokeStyle = '#000'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
       for (var i = 0; i < 3; i++) {
         var off = (i - 1) * ry * 0.62;
-        var jt = Math.sin(App.time * 26 + i * 1.7) * r * 0.14;
-        var len = r * (0.42 + 0.20 * Math.abs(Math.sin(App.time * 18 + i)));
+        var jt = Math.sin(App.time * 26 + i * 1.7) * rr * 0.14;
+        var len = rr * (0.52 + 0.24 * Math.abs(Math.sin(App.time * 18 + i)));
         ctx.beginPath();
-        ctx.moveTo(-rx - r * 0.30 + jt, off); ctx.lineTo(-rx - r * 0.30 - len + jt, off);
-        ctx.moveTo(rx + r * 0.30 - jt, off); ctx.lineTo(rx + r * 0.30 + len - jt, off);
+        ctx.moveTo(-rx - rr * 0.34 + jt, off); ctx.lineTo(-rx - rr * 0.34 - len + jt, off);
+        ctx.moveTo(rx + rr * 0.34 - jt, off); ctx.lineTo(rx + rr * 0.34 + len - jt, off);
         ctx.stroke();
       }
       ctx.globalAlpha = alpha;
@@ -1151,7 +1192,7 @@ var Player = {
     ctx.fillStyle = mb.color; ctx.fill();
 
     /* the device inside it, turning with the ground the marble has covered */
-    var r0 = Math.max(1, r * pop * this.scaleMul);
+    var r0 = Math.max(1, rr);
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(0, 0, Math.max(1, rx), Math.max(1, ry), 0, 0, TAU);
@@ -1161,7 +1202,7 @@ var Player = {
     drawMarblePattern(mb.pattern, r0);
     ctx.restore();
 
-    ctx.lineWidth = Math.max(1.5, r * 0.085);
+    ctx.lineWidth = Math.max(1.4, rr * 0.085);
     ctx.strokeStyle = '#000'; ctx.stroke();
 
     /* two stacked downward chevrons while crouching */
@@ -1169,9 +1210,9 @@ var Player = {
     if (c > 0.05) {
       ctx.globalAlpha = alpha * c;
       ctx.strokeStyle = '#000';
-      ctx.lineWidth = Math.max(1.5, r * 0.11);
+      ctx.lineWidth = Math.max(1.4, rr * 0.13);
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      var w = r * 0.36, h = r * 0.20, gap = r * 0.30;
+      var w = rr * 0.40, h = rr * 0.22, gap = rr * 0.34;
       for (var k = 0; k < 2; k++) {
         var yy = -gap * 0.5 + k * gap - h * 0.2;
         ctx.beginPath();
@@ -1866,7 +1907,7 @@ function fx(id) {
 var HOME_DEF = [
   { id: 'howto', ang: -0.98, rf: 0.52, color: '#F2B705', text: '#000', key: 'circleHowTo' },
   { id: 'settings', ang: 2.24, rf: 0.52, color: '#3B5BDB', text: '#fff', key: 'circleSettings' },
-  { id: 'marble', ang: -1.95, rf: 0.52, color: null, text: null, key: 'circleMarble' },
+  { id: 'marble', ang: -1.95, rf: 0.52, color: '#F2600C', text: '#fff', key: 'circleMarble' },
   { id: 'deco1', ang: -2.55, rf: 0.20, color: '#0FA3A3', text: null },
   { id: 'deco2', ang: 0.62, rf: 0.135, color: '#E5487B', text: null }
 ];
@@ -1880,10 +1921,8 @@ function homeCircles() {
   for (var i = 0; i < HOME_DEF.length; i++) {
     var d = HOME_DEF[i], r = R * d.rf;
     var f = 1 + (d.rf > 0.4 ? 0 : 0.12);
-    /* the marble button wears whatever marble is currently chosen */
-    var mb = d.id === 'marble' ? marble() : null;
     out.push({
-      id: d.id, r: r, color: mb ? mb.color : d.color, text: mb ? mb.ink : d.text, key: d.key,
+      id: d.id, r: r, color: d.color, text: d.text, key: d.key,
       x: clamp(cx + Math.cos(d.ang) * ring * f, r + 8, VIEW.w - r - 8),
       y: clamp(cy + Math.sin(d.ang) * ring * f, r + 8 + INSET.t, VIEW.h - r - 8 - INSET.b)
     });
@@ -2088,7 +2127,7 @@ function drawScene() {
   drawHorizon();
   drawEdges();
   if (!Run.wall) {
-    VFX.drawSwitchTrail();
+    VFX.drawDashes();
     VFX.drawRipples();
     Player.draw();
     Obstacles.drawOverhead();     /* a barrier you duck under passes over you */
