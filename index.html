@@ -692,6 +692,13 @@ var Sound = {
         this.tone({ f0: 523, dur: .1, type: 'triangle', peak: .14 });
         this.tone({ f0: 784, dur: .18, type: 'triangle', peak: .13, delay: .08 });
         break;
+      case 'boost':
+        this.tone({ f0: 320, f1: 880, dur: .22, type: 'triangle', peak: .17 });
+        this.tone({ f0: 640, f1: 1760, dur: .18, type: 'sine', peak: .09, delay: .04 });
+        break;
+      case 'boostFar':
+        this.tone({ f0: 300, f1: 760, dur: .14, type: 'sine', peak: .06 });
+        break;
       case 'bump':
         this.noise({ dur: .12, peak: .3, cut: 1600, cut2: 400 });
         this.tone({ f0: 220, f1: 130, dur: .16, type: 'square', peak: .16 });
@@ -752,6 +759,13 @@ var CFG = {
   RACERS:           6,      /* one human, five rivals */
   GRID_ROW:         2.9,    /* metres between the two rows of the starting grid */
   GRID_IMMUNITY:    1.2,    /* seconds of room to breathe as the field spreads */
+  ENTRY_DIST:       15,     /* metres a racer rolls in from during the countdown */
+  ENTRY_TIME:       1.9,    /* seconds that roll takes */
+  ENTRY_STAGGER:    0.08,   /* seconds between one racer setting off and the next */
+  BOOST_SCALE:      1.45,   /* how much ground a boosted racer gains */
+  BOOST_TIME:       1.1,    /* seconds the shove forward lasts */
+  MOVER_PERIOD:     1.7,    /* seconds a moving square takes to cross and back */
+  SHUTTLE_PERIOD:   1.05,   /* the quick one */
   BUMP_RANGE:       2.6,    /* metres of overlap needed for contact to make sense */
   BUMP_COOLDOWN:    0.22,   /* seconds before a racer can trade contact again */
   BUMP_SLOW_TIME:   2.0,    /* seconds a shoved racer is held back */
@@ -1116,7 +1130,8 @@ function Obstacle(kind, cxF, wF, hM, crouch, lanes, wd) {
   this.crouch = !!crouch; this.lanes = lanes; this.wd = wd;
   this.move = null;               /* set for moving squares */
   this.lastCxF = cxF;
-  this.seen = {};                 /* which racers have already been swept past */
+  this.harmful = true;            /* false for the boost pad, which helps you */
+  this.seen = {};                 /* which racers this one has already acted on */
 }
 /* Moving squares travel between two neighbouring columns, so the third column
    is always a guaranteed way through. Their position is a function of the
@@ -1157,11 +1172,22 @@ var Obstacles = {
         [entry.lane, entry.lane + 1], wd));
     } else if (entry.kind === 'bar3') {
       out.push(new Obstacle('bar3', 0.5, 1, colM * 0.50, true, [0, 1, 2], wd));
-    } else if (entry.kind === 'mover' || entry.kind === 'shuttle') {
-      var mv = new Obstacle('mover', laneCenterF(entry.lane), 0.74 / 3, colM * 0.74,
-        false, entry.lanes, wd);
+    } else if (entry.kind === 'squareC') {
+      /* the same black square, but hung overhead: shallower along the track,
+         marked with the chevrons that mean "duck", and only passable that way */
+      out.push(new Obstacle('squareC', laneCenterF(entry.lane), 0.78 / 3, colM * 0.58,
+        true, [entry.lane], wd));
+    } else if (entry.kind === 'boost') {
+      var bs = new Obstacle('boost', laneCenterF(entry.lane), 0.58 / 3, colM * 0.58,
+        false, [entry.lane], wd);
+      bs.harmful = false;
+      out.push(bs);
+    } else if (entry.kind === 'mover' || entry.kind === 'shuttle' || entry.kind === 'moverC') {
+      var duck = entry.kind === 'moverC';
+      var mv = new Obstacle(duck ? 'moverC' : 'mover', laneCenterF(entry.lane),
+        0.74 / 3, colM * (duck ? 0.58 : 0.74), duck, entry.lanes, wd);
       mv.move = { a: entry.lane, b: entry.to, phase: Math.random(),
-        period: entry.kind === 'shuttle' ? 1.5 : 2.6 };
+        period: entry.kind === 'shuttle' ? CFG.SHUTTLE_PERIOD : CFG.MOVER_PERIOD };
       out.push(mv);
     }
     for (var j = 0; j < out.length; j++) this.list.push(out[j]);
@@ -1210,10 +1236,66 @@ var Obstacles = {
           ctx.globalAlpha = 1;
         }
       }
+      if (!o.harmful) { this.drawBoost(r); continue; }
       ctx.fillStyle = '#000';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       if (o.crouch) this.drawChevrons(o, r);
+      /* the overhead squares carry a lit strip along the edge you pass under,
+         so they read as hanging rather than sitting in the lane */
+      if (o.kind === 'squareC' || o.kind === 'moverC') this.drawClearance(r);
     }
+  },
+  /* a shiny yellow pad with two arrows pointing the way you are going */
+  drawBoost: function (r) {
+    var g = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+    g.addColorStop(0, '#FFE680');
+    g.addColorStop(0.42, BOOST_INK);
+    g.addColorStop(1, '#D89400');
+    ctx.fillStyle = g;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+
+    /* a highlight travelling across the face, off the shared clock so every
+       racer sees the same glint at the same moment */
+    if (!Settings.reduced) {
+      var k = (Race.clock * 0.7) % 1;
+      var bx = r.x - r.w * 0.7 + k * r.w * 2.4;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = '#FFFBE0';
+      ctx.beginPath();
+      ctx.moveTo(bx, r.y + r.h);
+      ctx.lineTo(bx + r.w * 0.20, r.y + r.h);
+      ctx.lineTo(bx + r.w * 0.50, r.y);
+      ctx.lineTo(bx + r.w * 0.30, r.y);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    var lw = Math.max(1.4, r.w * 0.05);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = lw;
+    ctx.strokeRect(r.x + lw / 2, r.y + lw / 2, r.w - lw, r.h - lw);
+
+    /* two arrows, stacked, pointing up the track */
+    var cx = r.x + r.w / 2;
+    var aw = r.w * 0.24, ah = r.h * 0.17, gap = r.h * 0.26;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(2, r.w * 0.09);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (var i = 0; i < 2; i++) {
+      var cy = r.y + r.h * 0.5 + (i - 0.5) * gap + ah * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - aw, cy); ctx.lineTo(cx, cy - ah); ctx.lineTo(cx + aw, cy);
+      ctx.stroke();
+    }
+  },
+  drawClearance: function (r) {
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(r.x + r.w * 0.10, r.y + r.h - Math.max(2, r.h * 0.12),
+      r.w * 0.80, Math.max(2, r.h * 0.12));
+    ctx.globalAlpha = 1;
   },
   /* redrawn over a ducking racer so it genuinely reads as passing underneath */
   drawOverhead: function () {
@@ -1283,11 +1365,25 @@ function E_bar2(start, crouchable) {
     safe: crouchable ? [0, 1, 2] : allBut([start, start + 1]) };
 }
 function E_bar3() { return { kind: 'bar3', crouch: true, safe: [0, 1, 2] }; }
+/* an overhead square: every column stays open, because ducking clears it */
+function E_squareC(lane) {
+  return { kind: 'squareC', lane: lane, crouch: true, safe: [0, 1, 2] };
+}
+/* the boost pad blocks nothing at all — it is somewhere to aim for */
+function E_boost(lane) {
+  return { kind: 'boost', lane: lane, crouch: false, safe: [0, 1, 2] };
+}
 function E_mover(a, b, shuttle) {
   var lo = Math.min(a, b), hi = Math.max(a, b), span = [];
   for (var l = lo; l <= hi; l++) span.push(l);
   return { kind: shuttle ? 'shuttle' : 'mover', lane: a, to: b, lanes: span,
     crouch: false, safe: allBut(span) };
+}
+/* a moving square you go under rather than around */
+function E_moverC(a, b) {
+  var lo = Math.min(a, b), hi = Math.max(a, b), span = [];
+  for (var l = lo; l <= hi; l++) span.push(l);
+  return { kind: 'moverC', lane: a, to: b, lanes: span, crouch: true, safe: [0, 1, 2] };
 }
 
 /* the roll table: weights shift with speed, nothing else is scripted */
@@ -1309,7 +1405,18 @@ var KINDS = [
       return E_mover(a, b, false);
     } },
   { id: 'shuttle', min: 1.35, w: function (m) { return 5 + (m - 1.35) * 10; },
-    make: function () { var a = randInt(0, 1); return E_mover(a, a + 1, true); } }
+    make: function () { var a = randInt(0, 1); return E_mover(a, a + 1, true); } },
+  { id: 'squareC', min: 1.05, w: function (m) { return 10; },
+    make: function (last) { return E_squareC(rollLane(last)); } },
+  { id: 'moverC',  min: 1.30, w: function (m) { return 6 + (m - 1.30) * 8; },
+    make: function () {
+      var a = randInt(0, 2), b;
+      if (a === 1) b = Math.random() < .5 ? 0 : 2; else b = 1;
+      return E_moverC(a, b);
+    } },
+  /* uncommon, but often enough to be worth watching for */
+  { id: 'boost',   min: 1.00, w: function (m) { return 4; },
+    make: function (last) { return E_boost(rollLane(last)); } }
 ];
 function rollLane(last) {
   var l = randInt(0, 2);
@@ -1354,7 +1461,7 @@ var Gen = {
     while (this.queue.length < 3) {
       var k = this.roll(mult);
       var e = k.make(this.lastLane);
-      e.gap = this.rollGap();
+      e.gap = k.id === 'boost' ? rand(1.9, 2.6) : this.rollGap();
       e.wall = !!k.wall;
       this.lastKind = k.id;
       this.lastLane = (e.lane === undefined) ? -1 : e.lane;
@@ -1367,7 +1474,8 @@ var Gen = {
   fairGap: function (a, b) {
     var g = CFG.REACTION_BASE + laneDistance(a.safe, b.safe) * CFG.REACTION_LANE;
     if (a.crouch) g += CFG.CROUCH_RELEASE;
-    if (a.kind === 'mover' || a.kind === 'shuttle') g += CFG.CROUCH_RELEASE;
+    if (a.kind === 'mover' || a.kind === 'shuttle' || a.kind === 'moverC') g += CFG.CROUCH_RELEASE;
+    if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
     return g;
   },
 
@@ -1402,13 +1510,13 @@ var AI_LEVELS = {
   /* look is capped at the track a racer can actually see ahead of itself, so
      no level is ever reacting to something off screen */
   easy:   { react: [0.34, 0.52], look: 9,  err: 0.34, aggr: 0.10, defend: 0.10,
-            waves: 1, duck: 0.60, lead: 0.55 },
+            waves: 1, duck: 0.60, lead: 0.55, greed: 0.15 },
   normal: { react: [0.19, 0.30], look: 14, err: 0.16, aggr: 0.34, defend: 0.38,
-            waves: 2, duck: 0.88, lead: 0.75 },
+            waves: 2, duck: 0.88, lead: 0.75, greed: 0.45 },
   hard:   { react: [0.11, 0.18], look: 19, err: 0.055, aggr: 0.60, defend: 0.70,
-            waves: 3, duck: 0.97, lead: 0.95 },
+            waves: 3, duck: 0.97, lead: 0.95, greed: 0.78 },
   brutal: { react: [0.07, 0.11], look: 22, err: 0.015, aggr: 0.86, defend: 0.93,
-            waves: 4, duck: 1.00, lead: 1.15 }
+            waves: 4, duck: 1.00, lead: 1.15, greed: 1.00 }
 };
 var AI_ORDER = ['easy', 'normal', 'hard', 'brutal'];
 function aiLevel() { return AI_LEVELS[Settings.cpu] || AI_LEVELS.normal; }
@@ -1422,6 +1530,9 @@ function Racer(id, human, marbleKey) {
   this.crouch = false; this.crouchAmt = 0;
   this.alive = true; this.spawnT = 1; this.immune = 0; this.immuneExt = 0;
   this.slow = 0;                 /* bump slowdown, seconds remaining */
+  this.boost = 0;                /* speed-pad boost, seconds remaining */
+  this.entryD = 0;               /* how far back it still is on the starting roll */
+  this.entryFrom = 0; this.entryDelay = 0;
   this.bumpCd = 0;               /* short guard against repeat contacts */
   this.hitFlash = 0;
   this.respawnT = 0; this.collisions = 0; this.finished = false;
@@ -1437,6 +1548,7 @@ Racer.prototype.place = function (lane, d) {
   this.crouch = false; this.crouchAmt = 0;
   this.alive = true; this.spawnT = 1;
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
+  this.boost = 0; this.entryD = 0;
   this.yOff = 0; this.scaleMul = 1;
   if (d !== undefined) this.d = d;
   if (this.ai) { this.ai.next = 0; this.ai.duckFor = null; }
@@ -1448,11 +1560,13 @@ Racer.prototype.x = function () { return PF.x + this.xF * PF.w; };
 /* the camera rides the human racer by definition, so that racer sits on its
    mark exactly — the rest are placed relative to it */
 Racer.prototype.y = function () {
-  if (this.human) return PF.y + CFG.PLAYER_Y * PF.h + this.yOff;
-  return screenY(this.d) + this.yOff;
+  if (this.human) {
+    return PF.y + (CFG.PLAYER_Y - this.entryD / CFG.METERS_VISIBLE) * PF.h + this.yOff;
+  }
+  return screenY(this.d + this.entryD) + this.yOff;
 };
 Racer.prototype.onCamera = function () {
-  var yn = yNof(this.d);
+  var yn = yNof(this.d + this.entryD);
   return yn > -0.15 && yn < 1.15;
 };
 Racer.prototype.radiusPx = function () {
@@ -1465,6 +1579,7 @@ Racer.prototype.marbleDef = function () { return MARBLES[this.marble] || MARBLES
    shared multiplier: a timed status effect, never a permanent change */
 Racer.prototype.speedScale = function () {
   var s = 1;
+  if (this.boost > 0) s *= CFG.BOOST_SCALE;
   if (this.slow > 0) s *= CFG.BUMP_SLOW_SCALE;
   if (!this.alive) s *= CFG.DOWNED_SCALE;
   return s;
@@ -1509,6 +1624,7 @@ Racer.prototype.slideTo = function (lane, dir, quiet) {
 
 Racer.prototype.update = function (dt, active) {
   if (this.slow > 0) this.slow = Math.max(0, this.slow - dt);
+  if (this.boost > 0) this.boost = Math.max(0, this.boost - dt);
   if (this.bumpCd > 0) this.bumpCd = Math.max(0, this.bumpCd - dt);
   if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
 
@@ -1612,7 +1728,7 @@ Racer.prototype.draw = function () {
   ctx.ellipse(0, 0, Math.max(1, rx), Math.max(1, ry), 0, 0, TAU);
   ctx.clip();
   ctx.scale(Math.max(0.05, rx / r0), Math.max(0.05, ry / r0));
-  ctx.rotate(this.d * CFG.ROLL_RATE);
+  ctx.rotate((this.d + this.entryD) * CFG.ROLL_RATE);
   drawMarblePattern(mb.pattern, r0);
   ctx.restore();
 
@@ -1670,7 +1786,7 @@ function racerHits(p, o) {
 var Player = null;          /* the human racer, once the grid is built */
 
 var Race = {
-  racers: [], human: null, camD: 0, clock: 0, standings: [], finishOrder: [],
+  racers: [], human: null, camD: 0, clock: 0, standings: [], finishOrder: [], entryT: 0,
 
   build: function () {
     this.racers.length = 0;
@@ -1714,10 +1830,29 @@ var Race = {
       p.place(g.lane, -g.back * CFG.GRID_ROW);
       p.collisions = 0; p.finished = false; p.respawnT = 0; p.hitFlash = 0;
       p.result = 0;
+      /* they roll up onto the grid rather than appearing on it */
+      p.entryFrom = -CFG.ENTRY_DIST;
+      p.entryD = p.entryFrom;
+      p.entryDelay = i * CFG.ENTRY_STAGGER;
       if (p.ai) { p.ai.next = rand(0, 0.3); p.ai.want = g.lane; p.ai.duckFor = null; }
     }
+    this.entryT = 0;
     this.camD = this.human.d;
     this.rank();
+  },
+
+  /* the countdown roll: every racer eases up into its slot and settles there
+     well before GO, turning as it comes so it reads as rolling rather than
+     sliding. Nothing else about them is live while this runs. */
+  updateEntry: function (dt) {
+    this.entryT += dt;
+    for (var i = 0; i < this.racers.length; i++) {
+      var p = this.racers[i];
+      if (!p.entryFrom) continue;
+      var k = clamp((this.entryT - p.entryDelay) / CFG.ENTRY_TIME, 0, 1);
+      p.entryD = p.entryFrom * (1 - easeOutCubic(k));
+      if (k >= 1) { p.entryD = 0; p.entryFrom = 0; }
+    }
   },
 
   /* the order racers actually crossed, which is not the order they are
@@ -1810,6 +1945,17 @@ var Race = {
     this.bumpFX(p, blocker, dir);
     return true;
   },
+  /* the speed pad: a short, timed push, refreshed rather than stacked */
+  shoveForward: function (p) {
+    p.boost = CFG.BOOST_TIME;
+    if (p.human) { Sound.play('boost'); VFX.addShake(3); }
+    else if (p.onCamera()) Sound.play('boostFar');
+    if (!p.onCamera()) return;
+    var x = p.x(), y = p.y(), r = playerRadius();
+    VFX.ripple(x, y, r * 0.6, r * 3.2, BOOST_INK, .45, 2.4);
+    VFX.burst(x, y, p.human ? 16 : 8, { color: BOOST_INK, dir: -PI / 2,
+      spMin: 140, spMax: 460, sizeMax: 3.4, lifeMax: .5, streak: true, world: true });
+  },
   slowDown: function (q) {
     /* refreshed, never stacked */
     q.slow = CFG.BUMP_SLOW_TIME;
@@ -1860,7 +2006,7 @@ var Race = {
     var list = Obstacles.list;
     for (var i = 0; i < list.length; i++) {
       var o = list[i];
-      if (!o.blocks(lane)) continue;
+      if (!o.harmful || !o.blocks(lane)) continue;
       if (o.wd + o.hM < p.d) continue;                 /* already behind */
       var gap = o.wd - p.d - p.radiusM();
       if (gap < 0) gap = 0;
@@ -1904,6 +2050,7 @@ var Race = {
     var near = Obstacles.near(p.d, 3, 2);
     for (var i = 0; i < near.length; i++) {
       var o = near[i];
+      if (!o.harmful) continue;
       if (o.crouch && p.crouch) continue;
       if (racerHits(p, o)) return true;
       if (!o.crouch && o.blocks(p.lane)) {
@@ -1935,10 +2082,17 @@ var Race = {
       p.d += CFG.BASE_SPEED * mult * p.speedScale() * dt;
       p.update(dt, true);
 
-      if (p.alive && p.immune <= 0) {
+      if (p.alive) {
         var near = Obstacles.near(p.d, 2, 2);
         for (var k = 0; k < near.length; k++) {
           var o = near[k];
+          if (!o.harmful) {
+            /* a pad, not a pickup: it stays in the world for everyone else,
+               and it only shoves any given racer along once */
+            if (!o.seen[p.id] && racerHits(p, o)) { o.seen[p.id] = 1; this.shoveForward(p); }
+            continue;
+          }
+          if (p.immune > 0) continue;
           if (o.crouch && p.crouch) continue;
           if (racerHits(p, o)) { this.destroy(p, 'hazard'); break; }
         }
@@ -2028,6 +2182,11 @@ var AI = {
       if (!o.blocks(lane)) continue;
       var prox = 1 - clamp(gap / look, 0, 1);          /* nearer hurts more */
       var weight = 1 / waves;                          /* the wave in front matters most */
+      if (!o.harmful) {
+        /* worth steering into, and the sharper racers know it */
+        cost -= 8 * prox * weight * L.greed;
+        continue;
+      }
       if (o.crouch) {
         cost += 4 * prox * weight * (1 - L.duck);      /* a reliable ducker barely cares */
       } else {
@@ -2128,7 +2287,8 @@ var Run = {
   /* ---------- per frame ---------- */
   update: function (dt) {
     if (App.state === ST.COUNTDOWN) {
-      /* nobody moves, human or otherwise, until GO */
+      /* nobody races until GO — but they do roll up onto the grid */
+      Race.updateEntry(dt);
       for (var i = 0; i < Race.racers.length; i++) Race.racers[i].update(dt, false);
       this.countT += dt;
       while (this.countT >= CFG.COUNT_STEP) {
@@ -2564,6 +2724,9 @@ function drawEdges() {
   g2.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g2; ctx.fillRect(PF.x + PF.w - w, PF.y, w, PF.h);
 }
+/* the speed pad: the one warm thing on the track */
+var BOOST_INK = '#F5C518';
+
 /* the finish wall's palette: solid, saturated, and never two at once */
 var WALL_COLORS = ['#E5484D', '#F5A524', '#30A46C', '#00A2C7', '#3E63DD', '#8E4EC6'];
 var WALL_HOLD = 0.40, WALL_FADE = 0.52;   /* seconds held, seconds crossfading */
