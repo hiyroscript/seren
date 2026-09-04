@@ -1429,10 +1429,13 @@ var Gen = {
   },
   stop: function () { this.enabled = false; },
 
-  gapScale: function (mult) { return lerp(1.18, 0.92, clamp((mult - 1) / 1, 0, 1)); },
+  /* spacing, in seconds of travel. The fair-gap floor below still guarantees
+     everything is passable; this only tightens the stretches that were roomier
+     than they had to be. */
+  gapScale: function (mult) { return lerp(1.08, 0.86, clamp((mult - 1) / 1, 0, 1)); },
   rollGap: function () {
-    if (Math.random() < 0.12) return rand(1.75, 2.25);
-    return rand(0.66, 1.5);
+    if (Math.random() < 0.09) return rand(1.6, 2.1);       /* the odd breather */
+    return rand(0.58, 1.32);
   },
 
   roll: function (mult) {
@@ -1767,42 +1770,88 @@ Racer.prototype.draw = function () {
   if (this.bubble > 0) this.drawBubble();
 };
 
-/* a soap bubble: a thin film with an iridescent rim and one highlight, so it
-   reads as a shell around the marble rather than a ring drawn on the track */
+/* A soap bubble around the marble. What sells it is not colour but the way a
+   film gathers at the edge and stays almost invisible through the middle: the
+   marble is seen *through* it, the rim catches the light, and a couple of
+   highlights sit on the curve of a sphere rather than on a flat ring. */
 Racer.prototype.drawBubble = function () {
-  var base = playerRadius() * 1.95;
+  var base = playerRadius() * 2.05;
   var k = 1 - clamp(this.bubble / CFG.BUBBLE_TIME, 0, 1);   /* 0 fresh, 1 about to go */
-  var grow = 1 + 0.12 * easeInCubic(k);                     /* it swells before it goes */
+  var grow = 1 + 0.11 * easeInCubic(k);                     /* it swells before it goes */
   var pop = this.spawnT < 1 ? easeOutBack(this.spawnT) : 1;
-  var wob = 1 + Math.sin(App.time * 4.2 + this.id) * 0.04;
-  var rx = base * grow * pop * wob, ry = base * grow * pop / wob;
+  var t = App.time, id = this.id;
+  /* two axes wobbling out of phase, the way a real one never holds still */
+  var rx = base * grow * pop * (1 + Math.sin(t * 3.1 + id) * 0.045);
+  var ry = base * grow * pop * (1 + Math.sin(t * 2.3 + id * 1.7 + 1.1) * 0.045);
   var x = this.x(), y = this.y();
-  if (rx < 1 || ry < 1) return;
+  if (rx < 2 || ry < 2) return;
+  var fade = 1 - k * 0.25;
 
   ctx.save();
-  ctx.globalAlpha = 0.92 * (1 - k * 0.3);
-  var g = ctx.createRadialGradient(x - rx * 0.3, y - ry * 0.35, rx * 0.08, x, y, rx);
-  g.addColorStop(0, 'rgba(255,255,255,0.05)');
-  g.addColorStop(0.7, 'rgba(255,255,255,0.10)');
-  g.addColorStop(1, 'rgba(255,255,255,0.32)');
+  ctx.globalAlpha = fade;
+
+  /* the film: all but invisible through the middle, gathering hard at the
+     edge. This is the whole trick — it is what makes the marble read as being
+     inside a sphere rather than behind a disc. */
+  var g = ctx.createRadialGradient(x, y, rx * 0.05, x, y, rx);
+  g.addColorStop(0,     'rgba(255,255,255,0.03)');
+  g.addColorStop(0.58,  'rgba(255,255,255,0.06)');
+  g.addColorStop(0.84,  'rgba(255,255,255,0.18)');
+  g.addColorStop(0.965, 'rgba(255,255,255,0.62)');
+  g.addColorStop(1,     'rgba(255,255,255,0.12)');
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.fill();
 
-  var hue = (App.time * 55 + this.id * 40) % 360;
-  var segs = Settings.reduced ? 4 : 10;
-  ctx.lineWidth = Math.max(1.2, base * 0.045);
-  for (var i = 0; i < segs; i++) {
-    ctx.strokeStyle = 'hsla(' + ((hue + i * (360 / segs)) % 360).toFixed(0) + ',88%,72%,0.8)';
-    ctx.beginPath();
-    ctx.ellipse(x, y, rx, ry, 0, i / segs * TAU, (i + 1.05) / segs * TAU);
-    ctx.stroke();
+  /* iridescence: soft patches of colour drifting in the film, never a ring of
+     stripes. Clipped to the bubble so it stays inside the skin. */
+  if (!Settings.reduced) {
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.clip();
+    var hue = (t * 34 + id * 63) % 360;
+    for (var i = 0; i < 3; i++) {
+      var ang = t * 0.55 + i * TAU / 3 + id;
+      var px = x + Math.cos(ang) * rx * 0.52;
+      var py = y + Math.sin(ang) * ry * 0.52;
+      var h = (hue + i * 118) % 360;
+      var ig = ctx.createRadialGradient(px, py, 0, px, py, rx * 0.8);
+      ig.addColorStop(0, 'hsla(' + h.toFixed(0) + ',95%,70%,0.34)');
+      ig.addColorStop(0.6, 'hsla(' + h.toFixed(0) + ',95%,70%,0.10)');
+      ig.addColorStop(1, 'hsla(' + h.toFixed(0) + ',95%,70%,0)');
+      ctx.fillStyle = ig;
+      ctx.fillRect(x - rx, y - ry, rx * 2, ry * 2);
+    }
+    ctx.restore();
   }
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = Math.max(1.4, base * 0.06);
+
+  /* the skin itself, and a fainter line inside it: the far side of the sphere
+     showing through, which is what stops it reading as a flat hoop */
+  ctx.lineWidth = Math.max(1, base * 0.032);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.stroke();
+  ctx.lineWidth = Math.max(0.8, base * 0.018);
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.beginPath(); ctx.ellipse(x, y, rx * 0.87, ry * 0.87, 0, 0, TAU); ctx.stroke();
+
+  /* where the light sits on it: one broad sweep on the upper left, one small
+     hard glint, and a dim bounce on the lower right */
   ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1.4, base * 0.07);
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
   ctx.beginPath();
-  ctx.ellipse(x, y, rx * 0.76, ry * 0.76, 0, -2.5, -1.65);
+  ctx.ellipse(x, y, rx * 0.80, ry * 0.80, 0, -2.62, -1.78);
   ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.beginPath();
+  ctx.ellipse(x - rx * 0.42, y - ry * 0.46, rx * 0.13, ry * 0.10, -0.7, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+  ctx.lineWidth = Math.max(1, base * 0.045);
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx * 0.78, ry * 0.78, 0, 0.55, 1.15);
+  ctx.stroke();
+
   ctx.restore();
   ctx.globalAlpha = 1;
 };
