@@ -692,6 +692,13 @@ var Sound = {
         this.tone({ f0: 523, dur: .1, type: 'triangle', peak: .14 });
         this.tone({ f0: 784, dur: .18, type: 'triangle', peak: .13, delay: .08 });
         break;
+      case 'pop':
+        this.tone({ f0: 1400, f1: 420, dur: .1, type: 'sine', peak: .13 });
+        this.noise({ dur: .07, peak: .1, cut: 4200, cut2: 900 });
+        break;
+      case 'popFar':
+        this.tone({ f0: 1200, f1: 420, dur: .08, type: 'sine', peak: .05 });
+        break;
       case 'boost':
         this.tone({ f0: 320, f1: 880, dur: .22, type: 'triangle', peak: .17 });
         this.tone({ f0: 640, f1: 1760, dur: .18, type: 'sine', peak: .09, delay: .04 });
@@ -770,8 +777,7 @@ var CFG = {
   BUMP_COOLDOWN:    0.22,   /* seconds before a racer can trade contact again */
   BUMP_SLOW_TIME:   2.0,    /* seconds a shoved racer is held back */
   BUMP_SLOW_SCALE:  0.62,   /* how much ground a shoved racer loses */
-  DOWNED_SCALE:     0.55,   /* a destroyed racer drifts while it waits to respawn */
-  SAFE_CLEARANCE_M: 9,      /* metres of clear track needed to respawn into */
+  BUBBLE_TIME:      1.25,   /* seconds the respawn bubble carries a racer clear */
 
   /* player */
   PLAYER_Y:         0.845,  /* fraction of playfield height */
@@ -1172,11 +1178,6 @@ var Obstacles = {
         [entry.lane, entry.lane + 1], wd));
     } else if (entry.kind === 'bar3') {
       out.push(new Obstacle('bar3', 0.5, 1, colM * 0.50, true, [0, 1, 2], wd));
-    } else if (entry.kind === 'squareC') {
-      /* the same black square, but hung overhead: shallower along the track,
-         marked with the chevrons that mean "duck", and only passable that way */
-      out.push(new Obstacle('squareC', laneCenterF(entry.lane), 0.78 / 3, colM * 0.58,
-        true, [entry.lane], wd));
     } else if (entry.kind === 'boost') {
       var bs = new Obstacle('boost', laneCenterF(entry.lane), 0.58 / 3, colM * 0.58,
         false, [entry.lane], wd);
@@ -1242,7 +1243,7 @@ var Obstacles = {
       if (o.crouch) this.drawChevrons(o, r);
       /* the overhead squares carry a lit strip along the edge you pass under,
          so they read as hanging rather than sitting in the lane */
-      if (o.kind === 'squareC' || o.kind === 'moverC') this.drawClearance(r);
+      if (o.kind === 'moverC') this.drawClearance(r);
     }
   },
   /* a shiny yellow pad with two arrows pointing the way you are going */
@@ -1365,10 +1366,6 @@ function E_bar2(start, crouchable) {
     safe: crouchable ? [0, 1, 2] : allBut([start, start + 1]) };
 }
 function E_bar3() { return { kind: 'bar3', crouch: true, safe: [0, 1, 2] }; }
-/* an overhead square: every column stays open, because ducking clears it */
-function E_squareC(lane) {
-  return { kind: 'squareC', lane: lane, crouch: true, safe: [0, 1, 2] };
-}
 /* the boost pad blocks nothing at all — it is somewhere to aim for */
 function E_boost(lane) {
   return { kind: 'boost', lane: lane, crouch: false, safe: [0, 1, 2] };
@@ -1406,8 +1403,6 @@ var KINDS = [
     } },
   { id: 'shuttle', min: 1.35, w: function (m) { return 5 + (m - 1.35) * 10; },
     make: function () { var a = randInt(0, 1); return E_mover(a, a + 1, true); } },
-  { id: 'squareC', min: 1.05, w: function (m) { return 10; },
-    make: function (last) { return E_squareC(rollLane(last)); } },
   { id: 'moverC',  min: 1.30, w: function (m) { return 6 + (m - 1.30) * 8; },
     make: function () {
       var a = randInt(0, 2), b;
@@ -1531,6 +1526,8 @@ function Racer(id, human, marbleKey) {
   this.alive = true; this.spawnT = 1; this.immune = 0; this.immuneExt = 0;
   this.slow = 0;                 /* bump slowdown, seconds remaining */
   this.boost = 0;                /* speed-pad boost, seconds remaining */
+  this.bubble = 0;               /* respawn bubble, seconds remaining */
+  this.bubbleT = 0; this.coasting = false;
   this.entryD = 0;               /* how far back it still is on the starting roll */
   this.entryFrom = 0; this.entryDelay = 0;
   this.bumpCd = 0;               /* short guard against repeat contacts */
@@ -1548,7 +1545,8 @@ Racer.prototype.place = function (lane, d) {
   this.crouch = false; this.crouchAmt = 0;
   this.alive = true; this.spawnT = 1;
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
-  this.boost = 0; this.entryD = 0;
+  this.boost = 0; this.entryD = 0; this.bubble = 0; this.bubbleT = 0;
+  this.coasting = false;
   this.yOff = 0; this.scaleMul = 1;
   if (d !== undefined) this.d = d;
   if (this.ai) { this.ai.next = 0; this.ai.duckFor = null; }
@@ -1578,10 +1576,12 @@ Racer.prototype.marbleDef = function () { return MARBLES[this.marble] || MARBLES
 /* how fast this racer is covering ground right now, as a fraction of the
    shared multiplier: a timed status effect, never a permanent change */
 Racer.prototype.speedScale = function () {
+  /* eliminated: the world stops dead for this racer and does not start again
+     until it is back on the track. Everyone else carries on without it. */
+  if (!this.alive) return this.coasting ? 1 : 0;
   var s = 1;
   if (this.boost > 0) s *= CFG.BOOST_SCALE;
   if (this.slow > 0) s *= CFG.BUMP_SLOW_SCALE;
-  if (!this.alive) s *= CFG.DOWNED_SCALE;
   return s;
 };
 
@@ -1692,7 +1692,11 @@ Racer.prototype.draw = function () {
   var tilt = this.dir * m * 0.20;
 
   var alpha = 1;
-  if (this.immune > 0) alpha = 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(App.time * 26));
+  /* inside the bubble the marble is solid: the shell is the signal, and a
+     blinking marble underneath it would only read as noise */
+  if (this.immune > 0 && this.bubble <= 0) {
+    alpha = 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(App.time * 26));
+  }
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -1757,6 +1761,48 @@ Racer.prototype.draw = function () {
     ctx.globalAlpha = alpha;
   }
 
+  ctx.restore();
+  ctx.globalAlpha = 1;
+
+  if (this.bubble > 0) this.drawBubble();
+};
+
+/* a soap bubble: a thin film with an iridescent rim and one highlight, so it
+   reads as a shell around the marble rather than a ring drawn on the track */
+Racer.prototype.drawBubble = function () {
+  var base = playerRadius() * 1.95;
+  var k = 1 - clamp(this.bubble / CFG.BUBBLE_TIME, 0, 1);   /* 0 fresh, 1 about to go */
+  var grow = 1 + 0.12 * easeInCubic(k);                     /* it swells before it goes */
+  var pop = this.spawnT < 1 ? easeOutBack(this.spawnT) : 1;
+  var wob = 1 + Math.sin(App.time * 4.2 + this.id) * 0.04;
+  var rx = base * grow * pop * wob, ry = base * grow * pop / wob;
+  var x = this.x(), y = this.y();
+  if (rx < 1 || ry < 1) return;
+
+  ctx.save();
+  ctx.globalAlpha = 0.92 * (1 - k * 0.3);
+  var g = ctx.createRadialGradient(x - rx * 0.3, y - ry * 0.35, rx * 0.08, x, y, rx);
+  g.addColorStop(0, 'rgba(255,255,255,0.05)');
+  g.addColorStop(0.7, 'rgba(255,255,255,0.10)');
+  g.addColorStop(1, 'rgba(255,255,255,0.32)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU); ctx.fill();
+
+  var hue = (App.time * 55 + this.id * 40) % 360;
+  var segs = Settings.reduced ? 4 : 10;
+  ctx.lineWidth = Math.max(1.2, base * 0.045);
+  for (var i = 0; i < segs; i++) {
+    ctx.strokeStyle = 'hsla(' + ((hue + i * (360 / segs)) % 360).toFixed(0) + ',88%,72%,0.8)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, i / segs * TAU, (i + 1.05) / segs * TAU);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = Math.max(1.4, base * 0.06);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx * 0.76, ry * 0.76, 0, -2.5, -1.65);
+  ctx.stroke();
   ctx.restore();
   ctx.globalAlpha = 1;
 };
@@ -1976,6 +2022,7 @@ var Race = {
   destroy: function (p, cause) {
     if (!p.alive || p.immune > 0) return;
     p.alive = false;
+    p.coasting = false;
     p.crouchAmt = 0;
     p.collisions++;
     p.lastCause = cause;
@@ -2018,30 +2065,70 @@ var Race = {
     return best;
   },
 
+  /* A racer comes back exactly where it went down, wrapped in a bubble. The
+     bubble is what makes that safe: nothing can touch it, and it carries the
+     racer into open track before setting it down. */
   tryRespawn: function (p) {
-    var bestLane = 1, bestScore = -1;
+    var bestLane = p.lane, bestScore = -1e9;
     for (var l = 0; l < 3; l++) {
-      var c = this.clearance(p, l) - Math.abs(l - 1) * 0.4;
+      var c = this.clearance(p, l) - Math.abs(l - p.lane) * 0.4;
       if (c > bestScore) { bestScore = c; bestLane = l; }
     }
-    if (bestScore < CFG.SAFE_CLEARANCE_M) { p.respawnT = 0.12; return false; }
     var d = p.d;
     p.place(bestLane);
     p.d = d;
     p.spawnT = 0;
     p.immune = CFG.IMMUNITY_TIME;
     p.immuneExt = 0;
+    p.bubble = CFG.BUBBLE_TIME;
+    p.bubbleT = 0;
     if (p.human) {
-      p.crouch = Input.crouchHeld;
       Sound.play('respawn');
       App.set(ST.PLAYING);
     }
     if (p.onCamera()) {
       var x = p.x(), y = p.y(), r = playerRadius();
-      VFX.ripple(x, y, r * 2.6, r * 0.9, '#000', .45, 2);
-      VFX.burst(x, y, p.human ? 10 : 6, { color: '#000', spMin: 40, spMax: 130, sizeMax: 3, lifeMax: .5 });
+      VFX.ripple(x, y, r * 3.0, r * 1.2, BUBBLE_INK, .5, 2.2);
     }
     return true;
+  },
+
+  /* the bubble reads the track for the racer inside it and drifts toward
+     whichever column has the most room, then lets go */
+  steerBubble: function (p, dt) {
+    p.crouch = false;
+    p.bubble = Math.max(0, p.bubble - dt);
+    if (p.bubble <= 0) { this.popBubble(p); return; }
+
+    p.bubbleT -= dt;
+    if (p.bubbleT > 0 || p.moveT < 1) return;
+    p.bubbleT = 0.22;
+    var best = p.lane, score = -1e9;
+    for (var l = 0; l < 3; l++) {
+      var c = this.clearance(p, l) - Math.abs(l - p.lane) * 0.9;
+      if (c > score) { score = c; best = l; }
+    }
+    if (best !== p.lane) {
+      var dir = best > p.lane ? 1 : -1;
+      p.slideTo(p.lane + dir, dir, true);      /* a drift, not a dash */
+    }
+  },
+  popBubble: function (p) {
+    if (p.bubble > 0) return;
+    p.bubbleT = 0;
+    if (!p.onCamera()) return;
+    var x = p.x(), y = p.y(), r = playerRadius();
+    if (p.human) Sound.play('pop'); else Sound.play('popFar');
+    VFX.ripple(x, y, r * 1.9, r * 3.2, BUBBLE_INK, .55, 2.2);
+    for (var i = 0; i < (Settings.reduced ? 3 : 9); i++) {
+      var a = rand(0, TAU), sp = rand(70, 240);
+      VFX.parts.push({
+        x: x + Math.cos(a) * r * 1.7, y: y + Math.sin(a) * r * 1.7,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0, max: rand(.25, .5), size: rand(1.4, 3.2),
+        color: BUBBLE_INK, drag: 2.2, grav: 0, streak: false, a0: .8
+      });
+    }
   },
 
   /* is this racer inside — or about to be inside — something lethal? */
@@ -2071,6 +2158,7 @@ var Race = {
     for (i = 0; i < this.racers.length; i++) {
       p = this.racers[i];
       if (p.finished) continue;
+      if (p.bubble > 0) { this.steerBubble(p, dt); continue; }
       if (p.ai && p.alive) AI.think(p, dt);
     }
 
@@ -2430,6 +2518,7 @@ var Run = {
       Player.place(1); Player.d = d; Player.spawnT = 1;
     }
     Player.crouch = false;
+    Player.coasting = false;
     Player.immune = 999;                 /* the finish is not a place to die */
     this.seq = { t: 0, fromX: Player.x(), soundDone: false, particleT: 0 };
   },
@@ -2492,6 +2581,7 @@ var Run = {
       /* absorbed, but the camera still has to ride the wall over the last of
          the world, so this racer keeps covering ground and never respawns */
       Player.alive = false;
+      Player.coasting = true;         /* the finish is the one time a downed racer moves */
       Player.respawnT = 1e9;
       Race.finish(Player);
     }
@@ -2726,6 +2816,8 @@ function drawEdges() {
 }
 /* the speed pad: the one warm thing on the track */
 var BOOST_INK = '#F5C518';
+/* the respawn bubble */
+var BUBBLE_INK = '#8FE3F0';
 
 /* the finish wall's palette: solid, saturated, and never two at once */
 var WALL_COLORS = ['#E5484D', '#F5A524', '#30A46C', '#00A2C7', '#3E63DD', '#8E4EC6'];
@@ -2896,7 +2988,9 @@ var Input = {
 
   /* gameplay input is dead until the countdown has fully finished */
   canPlay: function () {
-    return !App.blocked && (App.state === ST.PLAYING || App.state === ST.RESPAWNING);
+    if (App.blocked) return false;
+    if (Player && Player.bubble > 0) return false;    /* the bubble is steering */
+    return App.state === ST.PLAYING || App.state === ST.RESPAWNING;
   },
   canPause: function () {
     return !App.blocked && (App.state === ST.PLAYING || App.state === ST.RESPAWNING ||
@@ -3265,7 +3359,7 @@ function update(dt) {
   Input.tick(dt);
 
   if (App.state === ST.PLAYING || App.state === ST.RESPAWNING) {
-    var want = Input.crouchHeld && Player.alive;
+    var want = Input.crouchHeld && Player.alive && Player.bubble <= 0;
     if (want !== Player.crouch) {
       Player.crouch = want;
       Sound.play(want ? 'crouchIn' : 'crouchOut');
