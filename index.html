@@ -771,6 +771,7 @@ var CFG = {
   ENTRY_STAGGER:    0.08,   /* seconds between one racer setting off and the next */
   BOOST_SCALE:      1.55,   /* how much ground a boosted racer gains */
   BOOST_TIME:       1.35,   /* seconds the shove forward lasts */
+  BOOST_FLASH:      0.32,   /* seconds a pad stays lit after it fires */
   MOVER_PERIOD:     1.7,    /* seconds a moving square takes to cross and back */
   SHUTTLE_PERIOD:   1.05,   /* the quick one */
   BUMP_RANGE:       2.6,    /* metres of overlap needed for contact to make sense */
@@ -1137,6 +1138,7 @@ function Obstacle(kind, cxF, wF, hM, crouch, lanes, wd) {
   this.move = null;               /* set for moving squares */
   this.lastCxF = cxF;
   this.harmful = true;            /* false for the boost pad, which helps you */
+  this.flash = 0;                 /* a pad lights up for a moment when it fires */
   this.seen = {};                 /* which racers this one has already acted on */
 }
 /* Moving squares travel between two neighbouring columns, so the third column
@@ -1201,6 +1203,7 @@ var Obstacles = {
     for (var i = this.list.length - 1; i >= 0; i--) {
       var o = this.list[i];
       o.advance();
+      if (o.flash > 0) o.flash = Math.max(0, o.flash - dt);
       if (o.wd + o.hM < behind) this.list.splice(i, 1);
     }
   },
@@ -1236,14 +1239,27 @@ var Obstacles = {
           ctx.globalAlpha = 1;
         }
       }
-      if (!o.harmful) { this.drawBoost(r); continue; }
+      if (!o.harmful) { this.drawBoost(o, r); continue; }
       ctx.fillStyle = '#000';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       if (o.crouch) this.drawChevrons(o, r);
     }
   },
   /* a shiny yellow pad with two arrows pointing the way you are going */
-  drawBoost: function (r) {
+  drawBoost: function (o, r) {
+    /* a glow around it, so it is worth spotting from further up the track */
+    if (!Settings.reduced) {
+      var pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(Race.clock * 4.2 + o.wd));
+      var spread = r.w * 0.75;
+      var halo = ctx.createRadialGradient(
+        r.x + r.w / 2, r.y + r.h / 2, r.w * 0.3,
+        r.x + r.w / 2, r.y + r.h / 2, r.w / 2 + spread);
+      halo.addColorStop(0, 'rgba(245,197,24,' + (0.40 * pulse).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(245,197,24,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(r.x - spread, r.y - spread, r.w + spread * 2, r.h + spread * 2);
+    }
+
     var g = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
     g.addColorStop(0, '#FFE680');
     g.addColorStop(0.42, BOOST_INK);
@@ -1267,6 +1283,15 @@ var Obstacles = {
       ctx.lineTo(bx + r.w * 0.30, r.y);
       ctx.closePath(); ctx.fill();
       ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    /* just fired: the whole face lights up and fades back down */
+    if (o.flash > 0) {
+      var f = o.flash / CFG.BOOST_FLASH;
+      ctx.globalAlpha = 0.85 * f;
+      ctx.fillStyle = '#FFFDEB';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.globalAlpha = 1;
     }
 
@@ -2072,15 +2097,27 @@ var Race = {
     return true;
   },
   /* the speed pad: a short, timed push, refreshed rather than stacked */
-  shoveForward: function (p) {
+  shoveForward: function (p, o) {
     p.boost = CFG.BOOST_TIME;
-    if (p.human) { Sound.play('boost'); VFX.addShake(3); }
+    if (o) o.flash = CFG.BOOST_FLASH;          /* the pad lights up as it fires */
+    if (p.human) { Sound.play('boost'); VFX.addShake(7); }
     else if (p.onCamera()) Sound.play('boostFar');
     if (!p.onCamera()) return;
     var x = p.x(), y = p.y(), r = playerRadius();
-    VFX.ripple(x, y, r * 0.6, r * 3.2, BOOST_INK, .45, 2.4);
-    VFX.burst(x, y, p.human ? 16 : 8, { color: BOOST_INK, dir: -PI / 2,
-      spMin: 140, spMax: 460, sizeMax: 3.4, lifeMax: .5, streak: true, world: true });
+    var big = p.human ? 1 : 0.55;
+
+    /* two rings racing out of it, a pale flash inside them, and a fan of
+       streaks thrown up the track behind the racer */
+    VFX.ripple(x, y, r * 0.4, r * 5.0 * big, BOOST_INK, .55, 3.6);
+    VFX.ripple(x, y, r * 0.3, r * 3.0 * big, '#FFF3B0', .4, 2.2);
+    VFX.burst(x, y, Math.round(28 * big), { color: BOOST_INK, dir: -PI / 2,
+      spMin: 240, spMax: 700, sizeMax: 4.4, lifeMax: .66, streak: true, world: true });
+    VFX.burst(x, y, Math.round(12 * big), { color: '#FFF3B0',
+      spMin: 90, spMax: 320, sizeMax: 3.2, lifeMax: .5, world: true });
+    if (p.human) {
+      /* and the lane it happened in flares for a moment */
+      VFX.ripple(x, y, r * 1.2, r * 8, BOOST_INK, .22, 6);
+    }
   },
   slowDown: function (q) {
     /* refreshed, never stacked */
@@ -2258,7 +2295,7 @@ var Race = {
           if (!o.harmful) {
             /* a pad, not a pickup: it stays in the world for everyone else,
                and it only shoves any given racer along once */
-            if (!o.seen[p.id] && racerHits(p, o)) { o.seen[p.id] = 1; this.shoveForward(p); }
+            if (!o.seen[p.id] && racerHits(p, o)) { o.seen[p.id] = 1; this.shoveForward(p, o); }
             continue;
           }
           if (p.immune > 0) continue;
@@ -2563,9 +2600,7 @@ var Run = {
   onSpeedUp: function () {
     Sound.play('speedUp');
     var x = PF.x + PF.w / 2, y = PF.y + PF.h * CFG.PLAYER_Y;
-    VFX.ripple(x, y, PF.w * 0.1, PF.w * 0.9, accent(1), .6, 2.4);
-    VFX.ripple(x, y, PF.w * 0.05, PF.w * 0.55, '#000', .45, 1.2);
-    VFX.burst(x, y, 14, { color: accent(1), spMin: 120, spMax: 460,
+    VFX.burst(x, y, 18, { color: accent(1), spMin: 120, spMax: 500,
       sizeMax: 3.4, lifeMax: .6, streak: true, world: true });
   },
 
@@ -3460,7 +3495,6 @@ function update(dt) {
         var pr = playerRadius();
         VFX.burst(Player.x(), Player.y() + pr * 0.6, 9,
           { color: '#000', dir: PI / 2, spMax: 160, sizeMax: 2.6, lifeMax: .38, world: true });
-        VFX.ripple(Player.x(), Player.y() + pr * 0.5, pr * 0.5, pr * 2.6, accent(1), .34, 1.8);
       }
     }
   }
