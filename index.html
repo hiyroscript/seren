@@ -996,17 +996,17 @@ var VFX = {
   /* ---- the dash a marble throws off as it crosses to another column ----
      A single horizontal streak, laid from the column it left to its own
      trailing edge. It exists only for the switch and the moment after it. */
-  dashes: [], liveDash: null,
+  dashes: [],
+  /* the dash is handed back to the racer that started it: six racers change
+     column at once, and a single shared "live" dash meant all but the last of
+     them stopped being followed and never got drawn */
   startDash: function (x, y, dir, r, color) {
-    this.liveDash = { x0: x, x1: x, y: y, dir: dir, r: r, t: 0, max: CFG.DASH_TIME,
+    var d = { x0: x, x1: x, y: y, dir: dir, r: r, t: 0, max: CFG.DASH_TIME,
       color: color || marble().color };
-    this.dashes.push(this.liveDash);
-    if (this.dashes.length > 3) this.dashes.shift();
+    this.dashes.push(d);
+    if (this.dashes.length > 12) this.dashes.shift();
+    return d;
   },
-  trackDash: function (x, y) {
-    if (this.liveDash) { this.liveDash.x1 = x; this.liveDash.y = y; }
-  },
-  releaseDash: function () { this.liveDash = null; },
   drawDashes: function () {
     if (!this.dashes.length) return;
     for (var i = 0; i < this.dashes.length; i++) {
@@ -1044,10 +1044,7 @@ var VFX = {
     }
     for (i = this.dashes.length - 1; i >= 0; i--) {
       var d = this.dashes[i]; d.t += dt;
-      if (d.t >= d.max) {
-        if (this.liveDash === d) this.liveDash = null;
-        this.dashes.splice(i, 1);
-      }
+      if (d.t >= d.max) this.dashes.splice(i, 1);
     }
     for (i = this.lines.length - 1; i >= 0; i--) {
       var l = this.lines[i]; l.y += l.v * dt; l.life += dt;
@@ -1057,7 +1054,7 @@ var VFX = {
   },
   clear: function () {
     this.parts.length = 0; this.ripples.length = 0; this.lines.length = 0;
-    this.dashes.length = 0; this.liveDash = null; this.shake = 0; this.moteAcc = 0;
+    this.dashes.length = 0; this.shake = 0; this.moteAcc = 0;
   },
 
   drawParticles: function () {
@@ -1519,7 +1516,7 @@ function Racer(id, human, marbleKey) {
   this.bumpCd = 0;               /* short guard against repeat contacts */
   this.hitFlash = 0;
   this.respawnT = 0; this.collisions = 0; this.finished = false;
-  this.dustT = 0; this.boostT = 0; this.yOff = 0; this.scaleMul = 1;
+  this.dustT = 0; this.boostT = 0; this.dash = null; this.yOff = 0; this.scaleMul = 1;
   this.ai = human ? null : { next: 0, want: 1, duckFor: null, duckOk: true, seen: 0 };
 }
 
@@ -1535,7 +1532,7 @@ Racer.prototype.place = function (lane, d) {
   this.crouch = false; this.crouchAmt = 0;
   this.alive = true; this.spawnT = 1;
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
-  this.boost = 0; this.entryD = 0; this.floating = false;
+  this.boost = 0; this.entryD = 0; this.floating = false; this.dash = null;
   this.bubble = 0; this.bubbleAge = 0; this.landing = 0;
   this.coasting = false;
   this.yOff = 0; this.scaleMul = 1;
@@ -1619,12 +1616,11 @@ Racer.prototype.slideTo = function (lane, dir, quiet) {
   if (!quiet && this.onCamera()) {
     if (this.human) Sound.play(dir > 0 ? 'laneR' : 'laneL');
     var r = playerRadius();
-    VFX.startDash(this.x(), this.y(), dir, this.dims().rx, this.marbleDef().color);
+    this.dash = VFX.startDash(this.x(), this.y(), dir, this.dims().rx, this.marbleDef().color);
     VFX.burst(this.x() - dir * r * 0.5, this.y() + r * 0.5, this.human ? 7 : 4, {
       color: '#000', dir: PI / 2 - dir * 0.9, spMin: 60, spMax: 210,
       sizeMax: 2.6, lifeMax: .34, streak: true, a0: .6, world: true
     });
-    VFX.ripple(this.x(), this.y(), r * 0.7, r * 1.9, '#000', .3, 1.2);
   }
 };
 
@@ -1639,8 +1635,8 @@ Racer.prototype.update = function (dt, active) {
     this.moveT = Math.min(1, this.moveT + dt / CFG.LANE_TIME);
     var e = easeOutBack(this.moveT) * 0.12 + easeOutQuint(this.moveT) * 0.88;
     this.xF = lerp(this.fromF, this.toF, e);
-    if (active && this.alive && this.onCamera()) VFX.trackDash(this.x(), this.y());
-    if (this.moveT >= 1) VFX.releaseDash();
+    if (this.dash) { this.dash.x1 = this.x(); this.dash.y = this.y(); }
+    if (this.moveT >= 1) this.dash = null;
   } else { this.xF = this.toF; }
 
   /* a boosted racer throws off sparks in the pad's colour */
@@ -1915,6 +1911,7 @@ var Player = null;          /* the human racer, once the grid is built */
 
 var Race = {
   racers: [], human: null, camD: 0, clock: 0, standings: [], finishOrder: [], entryT: 0,
+  camLock: false,
 
   build: function () {
     this.racers.length = 0;
@@ -1965,6 +1962,7 @@ var Race = {
       if (p.ai) { p.ai.next = rand(0, 0.3); p.ai.want = g.lane; p.ai.duckFor = null; }
     }
     this.entryT = 0;
+    this.camLock = false;
     this.camD = this.human.d;
     this.rank();
   },
@@ -2276,7 +2274,7 @@ var Race = {
 
     /* two racers must never settle into the same column at the same distance */
     this.separate();
-    this.camD = this.human.d;
+    if (!this.camLock) this.camD = this.human.d;
     this.rank();
   },
 
@@ -2586,9 +2584,17 @@ var Run = {
     if (!this.wall) return Infinity;
     return this.wall.d - Player.d;
   },
-  /* has the slab run past the last pixel of the world? */
+  /* The face of the wall, in screen pixels. Up to the finish it is simply
+     where the world puts it. Once the camera locks it is pinned just above the
+     frame — the racer travels the last hundred metres up to it, rather than it
+     being dragged down to the racer — and after that it sweeps over everything. */
+  wallEdgeY: function () {
+    if (!this.wall) return -1e9;
+    if (this.seq) return this.seq.edge;
+    return screenY(this.wall.d);
+  },
   wallCovered: function () {
-    return !!this.wall && screenY(this.wall.d) >= VIEW.h + 24;
+    return !!this.wall && this.wallEdgeY() >= VIEW.h + 24;
   },
 
   beginFinish: function () {
@@ -2602,8 +2608,16 @@ var Run = {
     }
     Player.crouch = false;
     Player.coasting = false;
+    Player.floating = false;             /* the finish takes over from the bubble */
+    Player.bubble = 0; Player.landing = 0; Player.bubbleAge = 0;
     Player.immune = 999;                 /* the finish is not a place to die */
-    this.seq = { t: 0, fromX: Player.x(), soundDone: false, particleT: 0 };
+    /* the world holds still from here: the last hundred metres are the racer's
+       to cover, and the camera stays put to show them covering it */
+    Race.camLock = true;
+    this.seq = {
+      t: 0, k: 0, fromX: Player.x(), startD: Player.d,
+      edge: PF.y - PF.h * 0.02, soundDone: false, particleT: 0
+    };
   },
 
   updateFinish: function (dt) {
@@ -2611,44 +2625,39 @@ var Run = {
     if (!s || !this.wall) return;
     s.t += dt;
 
-    /* the track keeps running: the wall closes the gap at exactly the speed of
-       the world, so the hundred metres are real metres */
+    /* everything else carries on: the rivals keep racing, the hazards keep
+       moving. Only the camera has stopped, so on screen the world holds still
+       and the racer is the thing that moves. */
     Race.tickClock(dt);
     Obstacles.update(dt);
     Race.update(dt, this.mult);
     this.retireFinishers();
-    var moved = Player.d - this.distance;
     this.distance = Player.d;
-    VFX.scrollWorld(metresToPx(moved));
 
     var home = PF.y + CFG.PLAYER_Y * PF.h;
-    var edge = screenY(this.wall.d);                 /* the face, in screen pixels */
     var r = playerRadius();
-
-    /* two stages of the same pull. Over the hundred metres the marble is drawn
-       forward off its mark; once the face is actually on screen it takes over
-       and the marble is pulled into it. */
-    var gapK = clamp(1 - this.wallGap() / CFG.SUCTION_DISTANCE, 0, 1);
-    var closeK = clamp(1 - (home - edge) / (PF.h * 0.92), 0, 1);
-    var e = easeInCubic(closeK);
-    var driftY = home - PF.h * 0.17 * easeInCubic(gapK);
+    /* how much of the last hundred metres this racer has actually covered.
+       Kept one-way: a rival nudging it clear during separation must not make
+       the glide stutter backwards. */
+    s.k = Math.max(s.k, clamp((Player.d - s.startD) / CFG.SUCTION_DISTANCE, 0, 1));
+    var k = s.k, e = easeInCubic(k);
 
     Player.xF = (lerp(s.fromX, PF.x + PF.w / 2, e) - PF.x) / PF.w;
-    Player.yOff = lerp(driftY, edge - r, e) - home;
+    Player.yOff = lerp(home, s.edge - r * 0.9, e) - home;
     Player.scaleMul = 1 - 0.97 * e;
     Player.moveT = 1; Player.toF = Player.xF; Player.fromF = Player.xF;
 
     /* everything loose on the track is dragged the same way */
-    var tx = PF.x + PF.w / 2, ty = Math.max(edge, PF.y - PF.h * 0.12);
+    var tx = PF.x + PF.w / 2, ty = Math.max(s.edge, PF.y - PF.h * 0.12);
     s.particleT -= dt;
     if (s.particleT <= 0 && Player.alive) {
       s.particleT = 0.02;
-      var n = Settings.reduced ? 1 : 2 + Math.round(gapK * 2);
+      var n = Settings.reduced ? 1 : 2 + Math.round(k * 2);
       for (var i = 0; i < n; i++) {
         var ang = rand(0, TAU), dist = rand(PF.w * 0.35, PF.w * 0.95);
         var px = tx + Math.cos(ang) * dist, py = home + Math.sin(ang) * dist * 0.8;
         var toA = Math.atan2(ty - py, tx - px);
-        var sp = rand(400, 780) * (0.6 + gapK * 0.8);
+        var sp = rand(400, 780) * (0.6 + k * 0.8);
         VFX.parts.push({
           x: px, y: py, vx: Math.cos(toA) * sp, vy: Math.sin(toA) * sp,
           life: 0, max: rand(.35, .6), size: rand(1.5, 3.4), color: '#000',
@@ -2656,17 +2665,18 @@ var Run = {
         });
       }
     }
-    if (!Settings.reduced && Player.alive) VFX.addShake(0.6 + 2.4 * closeK);
+    if (!Settings.reduced && Player.alive) VFX.addShake(0.6 + 2.4 * k);
 
-    /* absorbed: the marble is gone and the slab is all there is */
+    /* absorbed: the racer is gone, and the slab comes down over the rest */
     if (e >= 0.97 && Player.alive) {
       if (!s.soundDone) { s.soundDone = true; Sound.play('complete'); }
-      /* absorbed, but the camera still has to ride the wall over the last of
-         the world, so this racer keeps covering ground and never respawns */
       Player.alive = false;
-      Player.coasting = true;         /* the finish is the one time a downed racer moves */
+      Player.coasting = true;
       Player.respawnT = 1e9;
       Race.finish(Player);
+    }
+    if (!Player.alive) {
+      s.edge += metresToPx(CFG.BASE_SPEED * this.mult * dt * 1.4);
     }
     if (App.state === ST.FINISH && !Player.alive && (this.wallCovered() || s.t >= 14)) {
       App.set(ST.COMPLETED);
@@ -2823,7 +2833,7 @@ var RUNG_M = 3.4, DASH_M = 2.2;
 
 /* walk the rungs of a given world spacing from the bottom of the field upward */
 function eachRung(stepM, fn) {
-  var d0 = Run.distance;
+  var d0 = Race.camD;
   var k = Math.floor((d0 + (CFG.PLAYER_Y - 1.06) * CFG.METERS_VISIBLE) / stepM);
   for (var n = 0; n < 48; n++, k++) {
     var yN = CFG.PLAYER_Y - (k * stepM - d0) / CFG.METERS_VISIBLE;
@@ -2908,7 +2918,7 @@ var WALL_HOLD = 0.40, WALL_FADE = 0.52;   /* seconds held, seconds crossfading *
 
 function drawFinishWall() {
   var w = Run.wall; if (!w) return;
-  var bottom = screenY(w.d);            /* the face, wherever the camera is */
+  var bottom = Run.wallEdgeY();         /* the face, wherever the camera is */
   if (!(bottom > -1)) return;
 
   /* One blank slab, one colour at a time: it holds, then crossfades into the
