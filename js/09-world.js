@@ -65,8 +65,10 @@ var Obstacles = {
         [entry.lane, entry.lane + 1], wd));
     } else if (entry.kind === 'bar3') {
       out.push(new Obstacle('bar3', 0.5, 1, colM * 0.50, true, [0, 1, 2], wd));
-    } else if (entry.kind === 'boost') {
-      var bs = new Obstacle('boost', laneCenterF(entry.lane), 0.58 / 3, colM * 1.15,
+    } else if (entry.kind === 'boost' || entry.kind === 'superBoost') {
+      var strong = entry.kind === 'superBoost';
+      var bs = new Obstacle(entry.kind, laneCenterF(entry.lane), (strong ? 0.42 : 0.58) / 3,
+        colM * (strong ? 0.42 : 1.15),
         false, [entry.lane], wd);
       bs.harmful = false;
       out.push(bs);
@@ -130,8 +132,10 @@ var Obstacles = {
       if (o.crouch) this.drawChevrons(o, r);
     }
   },
-  /* a shiny yellow pad with two arrows pointing the way you are going */
+  /* yellow pads and compact purple-blue pads share the forward chevrons */
   drawBoost: function (o, r) {
+    var strong = o.kind === 'superBoost';
+    var rgb = strong ? '123,69,245' : '245,197,24';
     /* a glow around it, so it is worth spotting from further up the track */
     if (!Settings.reduced) {
       var pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(Race.clock * 4.2 + o.wd));
@@ -139,16 +143,24 @@ var Obstacles = {
       var halo = ctx.createRadialGradient(
         r.x + r.w / 2, r.y + r.h / 2, r.w * 0.3,
         r.x + r.w / 2, r.y + r.h / 2, r.w / 2 + spread);
-      halo.addColorStop(0, 'rgba(245,197,24,' + (0.40 * pulse).toFixed(3) + ')');
-      halo.addColorStop(1, 'rgba(245,197,24,0)');
+      halo.addColorStop(0, 'rgba(' + rgb + ',' + (0.40 * pulse).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(' + rgb + ',0)');
       ctx.fillStyle = halo;
       ctx.fillRect(r.x - spread, r.y - spread, r.w + spread * 2, r.h + spread * 2);
     }
 
     var g = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
-    g.addColorStop(0, '#FFE680');
-    g.addColorStop(0.42, BOOST_INK);
-    g.addColorStop(1, '#D89400');
+    if (strong) {
+      /* The colour boundary flows smoothly; reduced motion holds it still. */
+      var blend = Settings.reduced ? 0.5 : 0.5 + 0.22 * Math.sin(Race.clock * 2.4);
+      g.addColorStop(0, '#A435F5');
+      g.addColorStop(blend, '#704CF5');
+      g.addColorStop(1, '#168BFF');
+    } else {
+      g.addColorStop(0, '#FFE680');
+      g.addColorStop(0.42, BOOST_INK);
+      g.addColorStop(1, '#D89400');
+    }
     ctx.fillStyle = g;
     ctx.fillRect(r.x, r.y, r.w, r.h);
 
@@ -160,7 +172,7 @@ var Obstacles = {
       ctx.save();
       ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
       ctx.globalAlpha = 0.55;
-      ctx.fillStyle = '#FFFBE0';
+      ctx.fillStyle = strong ? '#EEE8FF' : '#FFFBE0';
       ctx.beginPath();
       ctx.moveTo(bx, r.y + r.h);
       ctx.lineTo(bx + r.w * 0.20, r.y + r.h);
@@ -187,7 +199,7 @@ var Obstacles = {
     /* arrows stacked up the length of it, pointing the way you are going */
     var cx = r.x + r.w / 2;
     var aw = r.w * 0.24, ah = r.w * 0.20, gap = r.h * 0.26;
-    ctx.strokeStyle = '#000';
+    ctx.strokeStyle = strong ? '#FFF' : '#000';
     ctx.lineWidth = Math.max(2, r.w * 0.09);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     for (var i = 0; i < 3; i++) {

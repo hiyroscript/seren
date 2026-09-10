@@ -15,6 +15,9 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
 - Change column to dodge the black shapes. A square blocks one column.
 - Barriers marked with white chevrons can only be passed by crouching.
 - Boost pads (yellow) shove you forward — steer into them.
+- Rare purple-to-blue square pads are smaller and give twice the yellow pad’s added
+  speed (+110% instead of +55%) for the same 1.35 seconds. Their gradient animates
+  unless reduced motion is enabled. Pads refresh the effect without stacking.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the

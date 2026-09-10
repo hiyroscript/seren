@@ -24,6 +24,7 @@ var CFG = {
   ENTRY_TIME:       1.9,    /* seconds that roll takes */
   ENTRY_STAGGER:    0.08,   /* seconds between one racer setting off and the next */
   BOOST_SCALE:      1.55,   /* how much ground a boosted racer gains */
+  SUPER_BOOST_POWER: 2,    /* twice the added speed, for the same duration */
   BOOST_TIME:       1.35,   /* seconds the shove forward lasts */
   BOOST_FLASH:      0.32,   /* seconds a pad stays lit after it fires */
   MOVER_PERIOD:     1.7,    /* seconds a moving square takes to cross and back */

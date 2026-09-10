@@ -32,6 +32,7 @@ function Racer(id, human, marbleKey) {
   this.crouch = false; this.crouchAmt = 0;
   this.alive = true; this.spawnT = 1; this.immune = 0; this.immuneExt = 0;
   this.slow = 0;                 /* bump slowdown, seconds remaining */
+  this.boostPower = 1;
   this.boost = 0;                /* speed-pad boost, seconds remaining */
   this.floating = false;         /* in a bubble at all */
   this.bubble = 0;               /* guaranteed carry left, seconds */
@@ -59,6 +60,7 @@ Racer.prototype.place = function (lane, d) {
   this.crouch = false; this.crouchAmt = 0;
   this.alive = true; this.spawnT = 1;
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
+  this.boostPower = 1;
   this.boost = 0; this.entryD = 0; this.floating = false; this.dash = null;
   this.bubble = 0; this.bubbleAge = 0; this.landing = 0;
   this.coasting = false;
@@ -103,6 +105,9 @@ Racer.prototype.radiusPx = function () {
 Racer.prototype.radiusM = function () { return pxToMetres(this.radiusPx()); };
 Racer.prototype.marbleDef = function () { return MARBLES[this.marble] || MARBLES.blue; };
 
+Racer.prototype.boostColor = function () {
+  return this.boostPower > 1 ? '#704CF5' : BOOST_INK;
+};
 /* how fast this racer is covering ground right now, as a fraction of the
    shared multiplier: a timed status effect, never a permanent change */
 Racer.prototype.speedScale = function () {
@@ -110,7 +115,7 @@ Racer.prototype.speedScale = function () {
      until it is back on the track. Everyone else carries on without it. */
   if (!this.alive) return this.coasting ? 1 : 0;
   var s = 1;
-  if (this.boost > 0) s *= CFG.BOOST_SCALE;
+  if (this.boost > 0) s *= 1 + (CFG.BOOST_SCALE - 1) * this.boostPower;
   if (this.slow > 0) s *= CFG.BUMP_SLOW_SCALE;
   return s;
 };
@@ -175,7 +180,7 @@ Racer.prototype.update = function (dt, active) {
       VFX.parts.push({
         x: this.x() + rand(-bd.rx, bd.rx), y: this.y() + bd.ry * 0.7,
         vx: rand(-30, 30), vy: rand(140, 340), life: 0, max: rand(.2, .4),
-        size: rand(1.6, 3.2), color: BOOST_INK, drag: 1.6, grav: 0,
+        size: rand(1.6, 3.2), color: this.boostColor(), drag: 1.6, grav: 0,
         streak: true, a0: .95, w: true
       });
     }
@@ -256,13 +261,14 @@ Racer.prototype.draw = function () {
   ctx.translate(x, y);
   ctx.rotate(tilt);
 
-  /* boosted: a yellow flare around the marble for as long as the shove lasts */
+  /* boosted: a pad-coloured flare around the marble for as long as the shove lasts */
   if (bk > 0) {
-    var puls = 0.72 + 0.28 * Math.sin(App.time * 22);
+    var puls = Settings.reduced ? 1 : 0.72 + 0.28 * Math.sin(App.time * 22);
+    var rgb = this.boostPower > 1 ? '112,76,245' : '245,197,24';
     var gl = ctx.createRadialGradient(0, 0, rr * 0.45, 0, 0, rr * 2.15);
-    gl.addColorStop(0, 'rgba(245,197,24,' + (0.46 * bk * puls).toFixed(3) + ')');
-    gl.addColorStop(0.55, 'rgba(245,197,24,' + (0.20 * bk * puls).toFixed(3) + ')');
-    gl.addColorStop(1, 'rgba(245,197,24,0)');
+    gl.addColorStop(0, 'rgba(' + rgb + ',' + (0.46 * bk * puls).toFixed(3) + ')');
+    gl.addColorStop(0.55, 'rgba(' + rgb + ',' + (0.20 * bk * puls).toFixed(3) + ')');
+    gl.addColorStop(1, 'rgba(' + rgb + ',0)');
     ctx.fillStyle = gl;
     ctx.fillRect(-rr * 2.3, -rr * 2.3, rr * 4.6, rr * 4.6);
   }
@@ -315,7 +321,7 @@ Racer.prototype.draw = function () {
 
   /* and it trails chevrons behind it, pointing the way the pad sent it */
   if (bk > 0) {
-    ctx.strokeStyle = BOOST_INK;
+    ctx.strokeStyle = this.boostColor();
     ctx.lineWidth = Math.max(1.4, rr * 0.16);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (var b = 0; b < 3; b++) {
@@ -604,7 +610,10 @@ var Race = {
   },
   /* the speed pad: a short, timed push, refreshed rather than stacked */
   shoveForward: function (p, o) {
+    p.boostPower = o && o.kind === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1;
     p.boost = CFG.BOOST_TIME;
+    var ink = p.boostColor();
+    var pale = p.boostPower > 1 ? '#E4DCFF' : '#FFF3B0';
     if (o) o.flash = CFG.BOOST_FLASH;          /* the pad lights up as it fires */
     if (p.human) { Sound.play('boost'); VFX.addShake(7); }
     else if (p.onCamera()) Sound.play('boostFar');
@@ -614,15 +623,15 @@ var Race = {
 
     /* two rings racing out of it, a pale flash inside them, and a fan of
        streaks thrown up the track behind the racer */
-    VFX.ripple(x, y, r * 0.4, r * 5.0 * big, BOOST_INK, .55, 3.6);
-    VFX.ripple(x, y, r * 0.3, r * 3.0 * big, '#FFF3B0', .4, 2.2);
-    VFX.burst(x, y, Math.round(28 * big), { color: BOOST_INK, dir: -PI / 2,
+    VFX.ripple(x, y, r * 0.4, r * 5.0 * big, ink, .55, 3.6);
+    VFX.ripple(x, y, r * 0.3, r * 3.0 * big, pale, .4, 2.2);
+    VFX.burst(x, y, Math.round(28 * big), { color: ink, dir: -PI / 2,
       spMin: 240, spMax: 700, sizeMax: 4.4, lifeMax: .66, streak: true, world: true });
-    VFX.burst(x, y, Math.round(12 * big), { color: '#FFF3B0',
+    VFX.burst(x, y, Math.round(12 * big), { color: pale,
       spMin: 90, spMax: 320, sizeMax: 3.2, lifeMax: .5, world: true });
     if (p.human) {
       /* and the lane it happened in flares for a moment */
-      VFX.ripple(x, y, r * 1.2, r * 8, BOOST_INK, .22, 6);
+      VFX.ripple(x, y, r * 1.2, r * 8, ink, .22, 6);
     }
   },
   slowDown: function (q) {
