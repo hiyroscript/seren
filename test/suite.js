@@ -137,42 +137,43 @@ async function newPage(browser, opts) {
     const r = await page.evaluate(() => {
       Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
       App.set(ST.HOME); Run.begin();
-      /* Race.separate() nudges racers that share a lane out of each other, which
-         moves d without the speed formula having anything to do with it. Skip
-         only the frames where that was possible at all — a rival alive, in the
-         same lane, close enough to push — and demand the rest match exactly. */
-      const crowded = () => {
-        for (let n = 0; n < Race.racers.length; n++) {
-          const q = Race.racers[n];
-          if (q === Player || !q.alive || q.finished || q.inBubble()) continue;
-          if (q.lane === Player.lane && Math.abs(q.d - Player.d) < 6) return true;
+      /* Measured at the instant of the advance, not at the top of the frame.
+         Race.update settles every decision first — an AI lane change can shove
+         the player and slow it before anything moves — and then advances d and
+         immediately calls the racer's own update. Hooking that call catches the
+         speed actually in force, so no frame has to be skipped and none of the
+         later repositioning (separation, respawns) is in the way. */
+      let dAtFrameStart = 0, advanced = null, expected = null;
+      const ru = Racer.prototype.update;
+      Racer.prototype.update = function (dt) {
+        if (this === Player && advanced === null) {
+          advanced = Player.d - dAtFrameStart;
+          expected = CFG.BASE_SPEED * Run.mult * Player.speedScale() * dt;
         }
-        return false;
+        return ru.apply(this, arguments);
       };
-      let checked = 0, worst = 0, off = 0, skipped = 0;
+
+      let checked = 0, worst = 0, off = 0;
       for (let i = 0; i < 60 * 900; i++) {
-        const s0 = App.state, before = Player.d, g = Run.groundMult();
-        const stable = Player.alive && !Player.inBubble();
-        const m0 = Run.mult, near0 = crowded();
+        const s0 = App.state;
+        const alive0 = Player.alive && !Player.inBubble();
+        dAtFrameStart = Player.d; advanced = null; expected = null;
         update(1 / 60);
-        if ((s0 === ST.PLAYING || s0 === ST.RESPAWNING) && stable &&
-            Player.alive && !Player.inBubble() && Run.mult === m0) {
-          if (near0 || crowded()) { skipped++; }
-          else {
-            const err = Math.abs((Player.d - before) - CFG.BASE_SPEED * g / 60);
-            checked++;
-            if (err > 1e-9) off++;
-            if (err > worst) worst = err;
-          }
+        if ((s0 === ST.PLAYING || s0 === ST.RESPAWNING) && alive0 &&
+            Player.alive && !Player.inBubble() && advanced !== null) {
+          const err = Math.abs(advanced - expected);
+          checked++;
+          if (err > 1e-9) off++;
+          if (err > worst) worst = err;
         }
         if (App.state === ST.COMPLETED) break;
       }
-      return { checked, off, worst, skipped };
+      Racer.prototype.update = ru;
+      return { checked, off, worst };
     });
-    check('ground travel is exactly the multiplier whenever nothing else moved the racer',
-      r.checked > 3000 && r.off === 0,
-      r.off + ' of ' + r.checked + ' frames off (worst ' + r.worst.toExponential(2) +
-      'm), ' + r.skipped + ' skipped as crowded');
+    check('every frame of ground travel is exactly the multiplier, with no exceptions',
+      r.checked > 8000 && r.off === 0,
+      r.off + ' of ' + r.checked + ' frames off (worst ' + r.worst.toExponential(2) + 'm)');
     await page.close();
   }
 
