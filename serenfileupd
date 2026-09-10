@@ -270,10 +270,10 @@ Move:
 * safe-area information
 * viewport calculations
 * responsive canvas sizing
-* mobile/desktop playfield logic
+* mobile-device/computer playfield logic
 * coordinate/layout helpers that logically belong here
 
-Preserve iPhone/iPad/mobile viewport and safe-area behavior.
+Preserve mobile-device and computer viewport behavior exactly.
 
 ## 08-vfx.js
 
@@ -417,16 +417,17 @@ Rendering order matters and must remain visually identical.
 
 Move all gameplay input handling here.
 
-Preserve both mobile and desktop controls.
+Preserve both mobile-device and computer controls.
 
-Mobile:
+Mobile devices:
 
 * swipe left/right
 * swipe/down crouch behavior
 * pointer handling
 * multi-touch protections
+* touch behavior
 
-Desktop:
+Computers:
 
 * keyboard lane controls
 * crouch controls
@@ -488,11 +489,13 @@ Move the orientation gate here.
 
 Preserve the current behavior:
 
-* mobile SEREN requires portrait
-* desktop requires an appropriate landscape-sized window
-* gameplay is suspended when orientation is invalid
+* mobile devices require the game's intended mobile orientation
+* computers require the game's intended computer-window orientation/size
+* gameplay is suspended when orientation or window dimensions are invalid
 
 Do not remove this feature.
+
+Do not hard-code behavior for a specific brand or device model.
 
 ## 20-main-loop.js
 
@@ -559,28 +562,48 @@ Make only path-related or organization-related changes necessary for extraction.
 
 ---
 
-# MOBILE REQUIREMENTS
+# MOBILE DEVICE AND COMPUTER REQUIREMENTS
 
-SEREN is heavily mobile-oriented.
+SEREN must continue to work correctly across supported mobile devices and computers.
 
 Specifically protect:
 
-* iPhone Safari
-* iPadOS
-* Android browsers
-* `100dvh`
+* mobile browsers
+* computer browsers
+* responsive viewport handling
+* dynamic viewport sizing
 * safe-area insets
 * `viewport-fit=cover`
+* `100dvh`
 * touch-action behavior
-* pull-to-refresh prevention
 * gesture prevention
+* pull-to-refresh prevention where currently handled
 * pointer events
-* browser chrome resizing
+* mouse input
+* keyboard input
+* multi-touch handling
+* browser UI/chrome resizing
 * `visualViewport`
+* screen resizing
 * orientation changes
+* device-pixel-ratio handling
 * audio unlocking after a user gesture
+* canvas scaling
+* full-screen game layout
 
-Do not accidentally introduce page scrolling, zooming, text selection, or browser gestures during gameplay.
+Do not introduce device-specific assumptions unless they already exist in the source and are required to preserve current behavior.
+
+Do not accidentally introduce:
+
+* page scrolling during gameplay
+* unwanted browser zooming
+* text selection during gameplay
+* unwanted touch gestures
+* broken keyboard controls
+* incorrect canvas dimensions
+* incorrect safe-area spacing
+
+The refactored game should determine behavior from device capabilities, viewport dimensions, and the existing detection logic rather than being redesigned around any particular device brand.
 
 ---
 
@@ -642,8 +665,8 @@ Include:
 
 * short description
 * how to play
-* desktop controls
-* mobile controls
+* computer controls
+* mobile-device controls
 * repository structure
 * how to run locally
 * GitHub Pages deployment instructions
@@ -678,38 +701,42 @@ Check all of the following:
 7. Countdown works.
 8. Player can change lanes.
 9. Player can crouch.
-10. Mobile swipe input works.
-11. Desktop keyboard input works.
-12. Obstacles generate correctly.
-13. Moving obstacles work.
-14. Boost pads work.
-15. Five CPU racers appear and race.
-16. CPU difficulty selection works.
-17. Racer bumping/collisions work.
-18. Player collision works.
-19. Respawning works.
-20. Temporary immunity works.
-21. Speed progression works.
-22. HUD works.
-23. Pause/resume works.
-24. Restart works.
-25. Return Home works.
-26. Audio works after user interaction.
-27. Volume works.
-28. Mute works.
-29. Visual-effects setting works.
-30. Reduced-motion behavior works.
-31. Marble selection works and persists.
-32. English UI works.
-33. French UI works.
-34. Orientation gate works.
-35. iPhone safe areas remain correct.
-36. Resize behavior works.
-37. Tab/window visibility pause behavior works.
-38. Final stage begins correctly.
-39. Finish wall sequence works.
-40. Completion statistics display correctly.
-41. Play Again works.
+10. Mobile-device swipe input works.
+11. Computer keyboard input works.
+12. Mouse/pointer input works where applicable.
+13. Multi-touch behavior remains correct.
+14. Obstacles generate correctly.
+15. Moving obstacles work.
+16. Boost pads work.
+17. Five CPU racers appear and race.
+18. CPU difficulty selection works.
+19. Racer bumping/collisions work.
+20. Player collision works.
+21. Respawning works.
+22. Temporary immunity works.
+23. Speed progression works.
+24. HUD works.
+25. Pause/resume works.
+26. Restart works.
+27. Return Home works.
+28. Audio works after user interaction.
+29. Volume works.
+30. Mute works.
+31. Visual-effects setting works.
+32. Reduced-motion behavior works.
+33. Marble selection works and persists.
+34. English UI works.
+35. French UI works.
+36. Mobile-device orientation handling works.
+37. Computer window/orientation handling works.
+38. Mobile-device safe areas remain correct.
+39. Responsive resizing works.
+40. Dynamic viewport behavior works.
+41. Tab/window visibility pause behavior works.
+42. Final stage begins correctly.
+43. Finish wall sequence works.
+44. Completion statistics display correctly.
+45. Play Again works.
 
 Check the browser console for:
 
@@ -762,7 +789,7 @@ Then:
 7. Create .gitignore.
 8. Verify script loading order.
 9. Check for missing/duplicate declarations.
-10. Test the game.
+10. Test the game on mobile-device and computer layouts.
 11. Fix only regressions caused by the refactor.
 
 If you are operating as a coding agent with filesystem access, create/edit the files directly.
