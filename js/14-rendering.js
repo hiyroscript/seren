@@ -210,7 +210,7 @@ function drawHorizon() {
 
 /* the corridor tightens as the run accelerates */
 function drawEdges() {
-  var k = clamp((Run.mult - 1) / 1, 0, 1);
+  var k = speedK();
   var a = 0.05 + 0.10 * k;
   var w = PF.w * (0.06 + 0.05 * k);
   var g = ctx.createLinearGradient(PF.x, 0, PF.x + w, 0);

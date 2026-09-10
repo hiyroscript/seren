@@ -33,9 +33,15 @@ var Run = {
     return ['3', '2', '1', t('go')][clamp(this.countIdx, 0, 3)];
   },
 
-  speedN: function () { return CFG.BASE_SPEED * this.mult / CFG.METERS_VISIBLE; },
-  /* what the camera is actually doing, which is what the HUD reports */
+  /* what the camera is actually doing, which is what the HUD reports: the
+     shared multiplier *and* whatever the human racer's own status effects are
+     doing to it. A boost that reads 5.25x on the HUD is ground genuinely
+     passing at 5.25x. */
   shownMult: function () { return this.mult * (Player ? Player.speedScale() : 1); },
+  /* the speed of the ground in playfield heights per second — the one number
+     every moving backdrop takes its pace from, so nothing on screen can drift
+     away from the multiplier being reported */
+  speedN: function () { return CFG.BASE_SPEED * this.shownMult() / CFG.METERS_VISIBLE; },
 
   /* ---------- per frame ---------- */
   update: function (dt) {
@@ -93,17 +99,19 @@ var Run = {
     /* the camera rides the human racer: everything drawn scrolls by exactly
        as much ground as that racer covered */
     var moved = Player.d - before;
+    var shown = this.shownMult();       /* what that came to, and what the HUD says */
     this.distance = Player.d;
     VFX.scrollWorld(metresToPx(moved));
-    VFX.motes(dt, this.mult);
+    VFX.motes(dt, shown);
     this.passFX();
 
     var ms = Math.floor(this.distance / 100);
     if (ms > this.milestone) { this.milestone = ms; this.hudPulse = 1; }
 
-    /* --- ambient speed lines --- */
-    this.lineAcc += (0.34 + (this.mult - 1) * 1.6) * 40 * dt;
-    while (this.lineAcc >= 1) { this.lineAcc -= 1; VFX.spawnSpeedLine(this.mult); }
+    /* --- ambient speed lines: laid down at the rate the ground is actually
+       moving, so a boost thickens them and a stopped world stops them --- */
+    this.lineAcc += Math.max(0, 0.34 + (shown - 1) * 1.6) * 40 * dt;
+    while (this.lineAcc >= 1) { this.lineAcc -= 1; VFX.spawnSpeedLine(shown); }
 
     /* --- final stage --- */
     if (!this.finalActive && this.mult >= CFG.SPEED_MAX - 1e-9) this.enterFinal();

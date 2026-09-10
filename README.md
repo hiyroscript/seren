@@ -3,10 +3,12 @@
 A minimalist three-column parkour racing game built with vanilla HTML, CSS and JavaScript.
 
 You are one of six marbles racing down a three-column track. Hazards are generated
-procedurally ahead of whoever is leading, speed climbs from 1.00x to 2.00x, and the run
-ends with a final 500 metre stage that finishes against a wall. The five rivals run the
-same simulation you do — same movement, same hazards, same collisions, same respawns —
-so the only thing separating you from them is where the decisions come from.
+procedurally ahead of whoever is leading, speed climbs from 1.00x to 3.00x, and the run
+ends with a final 500 metre stage that finishes against a wall. The world scrolls at
+exactly the multiplier the HUD is reporting — boosts included — so 3.00x really is three
+times the ground of 1.00x. The five rivals run the same simulation you do — same
+movement, same hazards, same collisions, same respawns — so the only thing separating
+you from them is where the decisions come from.
 
 Black ink on paper white, sounds synthesised in the browser, English and French.
 
@@ -16,15 +18,16 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
 - Barriers marked with white chevrons can only be passed by crouching.
 - Boost pads (yellow) shove you forward — steer into them.
 - Rare purple-to-blue square pads are smaller and give twice the yellow pad’s added
-  speed (+110% instead of +55%) for the same 1.35 seconds. Their gradient animates
-  unless reduced motion is enabled. Pads refresh the effect without stacking.
+  speed (+150% instead of +75%) for the same 1.35 seconds. Their gradient is a band of
+  purple running into blue that travels the length of the pad, held still if reduced
+  motion is enabled. Pads refresh the effect without stacking.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
   track and sets you down on clear ground, with a moment of immunity afterwards.
 - Moving into an occupied column shoves whoever is there one column further the same way.
   Run out of track and that racer is out.
-- Speed climbs to 2.00x, then you travel the final 500 metres to the wall.
+- Speed climbs to 3.00x, then you travel the final 500 metres to the wall.
 
 ### Computer controls
 

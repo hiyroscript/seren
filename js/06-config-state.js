@@ -9,9 +9,9 @@ var CFG = {
   /* world */
   METERS_VISIBLE:   26,     /* metres represented by one playfield height */
   BASE_SPEED:       12.5,   /* metres per second at 1.00x */
-  SPEED_STEP:       0.05,
-  SPEED_STEP_TIME:  20,     /* seconds of active play per step */
-  SPEED_MAX:        2.00,
+  SPEED_STEP:       0.10,   /* the climb still takes twenty steps... */
+  SPEED_STEP_TIME:  20,     /* ...one every twenty seconds of active play */
+  SPEED_MAX:        3.00,
   FINAL_DISTANCE:   500,    /* metres of the final stage */
   SUCTION_DISTANCE: 100,    /* metres of gap at which the wall takes hold */
   WORLD_AHEAD:      46,     /* metres of course authored beyond the leader */
@@ -23,7 +23,7 @@ var CFG = {
   ENTRY_DIST:       15,     /* metres a racer rolls in from during the countdown */
   ENTRY_TIME:       1.9,    /* seconds that roll takes */
   ENTRY_STAGGER:    0.08,   /* seconds between one racer setting off and the next */
-  BOOST_SCALE:      1.55,   /* how much ground a boosted racer gains */
+  BOOST_SCALE:      1.75,   /* how much ground a boosted racer gains */
   SUPER_BOOST_POWER: 2,    /* twice the added speed, for the same duration */
   BOOST_TIME:       1.35,   /* seconds the shove forward lasts */
   BOOST_FLASH:      0.32,   /* seconds a pad stays lit after it fires */
@@ -72,11 +72,15 @@ var CFG = {
 /* ---------------------------------------------------------------------------
    ACCENT — the world is ink on paper, but its *energy* takes on colour, and
    that colour travels round the wheel as the run accelerates: cool at 1.00x,
-   hot by 2.00x, resolving into the full spectrum of the finish wall.
+   hot at SPEED_MAX, resolving into the full spectrum of the finish wall.
    Set ACCENT to false for a strictly black-and-white run.
    ------------------------------------------------------------------------- */
 var ACCENT = true;
-function accentHue() { return lerp(206, 342, clamp((Run.mult - 1) / 1, 0, 1)); }
+/* how far up the climb the run is: 0 at 1.00x, 1 at SPEED_MAX. Everything that
+   fades in "as the run accelerates" reads its progress from here, so raising
+   the ceiling stretches those ramps instead of finishing them early. */
+function speedK() { return clamp((Run.mult - 1) / (CFG.SPEED_MAX - 1), 0, 1); }
+function accentHue() { return lerp(206, 342, speedK()); }
 function accent(a, light) {
   if (!ACCENT) return 'rgba(0,0,0,' + a + ')';
   return 'hsla(' + accentHue().toFixed(0) + ',88%,' + (light || 52) + '%,' + a + ')';

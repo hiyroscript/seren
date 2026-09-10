@@ -44,6 +44,21 @@ Obstacle.prototype.rect = function () {
 };
 Obstacle.prototype.blocks = function (lane) { return this.lanes.indexOf(lane) >= 0; };
 
+/* The rare pad's two colours, and the ramp that runs between them. A sample is
+   taken at a position along the pad plus a phase, so a gradient built from a
+   run of samples reads as one band of colour travelling the length of it. The
+   cosine keeps the ends of a cycle equal, so the band never snaps back. */
+var SUPER_PURPLE = [164, 53, 245], SUPER_BLUE = [22, 139, 255];
+function superRGB(p) {
+  var k = 0.5 - 0.5 * Math.cos(p * TAU);
+  return Math.round(lerp(SUPER_PURPLE[0], SUPER_BLUE[0], k)) + ',' +
+         Math.round(lerp(SUPER_PURPLE[1], SUPER_BLUE[1], k)) + ',' +
+         Math.round(lerp(SUPER_PURPLE[2], SUPER_BLUE[2], k));
+}
+/* how far the band has travelled: off the shared race clock, so every racer
+   sees the same colours at the same instant. Reduced motion holds it still. */
+function superPhase() { return Settings.reduced ? 0 : Race.clock * 0.42; }
+
 var Obstacles = {
   list: [],
   clear: function () { this.list.length = 0; },
@@ -135,7 +150,9 @@ var Obstacles = {
   /* yellow pads and compact purple-blue pads share the forward chevrons */
   drawBoost: function (o, r) {
     var strong = o.kind === 'superBoost';
-    var rgb = strong ? '123,69,245' : '245,197,24';
+    var phase = strong ? superPhase() : 0;
+    /* the small pad's whole presence — halo included — is that travelling band */
+    var rgb = strong ? superRGB(0.25 - phase) : '245,197,24';
     /* a glow around it, so it is worth spotting from further up the track */
     if (!Settings.reduced) {
       var pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(Race.clock * 4.2 + o.wd));
@@ -151,11 +168,12 @@ var Obstacles = {
 
     var g = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
     if (strong) {
-      /* The colour boundary flows smoothly; reduced motion holds it still. */
-      var blend = Settings.reduced ? 0.5 : 0.5 + 0.22 * Math.sin(Race.clock * 2.4);
-      g.addColorStop(0, '#A435F5');
-      g.addColorStop(blend, '#704CF5');
-      g.addColorStop(1, '#168BFF');
+      /* purple running into blue down the face of the pad, the whole ramp
+         sliding along it as the clock turns */
+      for (var st = 0; st <= 8; st++) {
+        var sf = st / 8;
+        g.addColorStop(sf, 'rgb(' + superRGB(sf * 0.5 - phase) + ')');
+      }
     } else {
       g.addColorStop(0, '#FFE680');
       g.addColorStop(0.42, BOOST_INK);
@@ -187,7 +205,7 @@ var Obstacles = {
     if (o.flash > 0) {
       var f = o.flash / CFG.BOOST_FLASH;
       ctx.globalAlpha = 0.85 * f;
-      ctx.fillStyle = '#FFFDEB';
+      ctx.fillStyle = strong ? '#F3ECFF' : '#FFFDEB';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.globalAlpha = 1;
     }

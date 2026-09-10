@@ -44,30 +44,34 @@ function E_mover(a, b, shuttle) {
     crouch: false, safe: allBut(span) };
 }
 
-/* the roll table: weights shift with speed, nothing else is scripted */
+/* The roll table: weights shift as the run accelerates, nothing else is
+   scripted. Both `min` and `w` are read in *climb progress* k — 0 at 1.00x,
+   1 at CFG.SPEED_MAX — rather than in raw multipliers, so the order the course
+   unlocks itself in is a property of the race, not of where the ceiling
+   happens to sit. Twenty seconds of play is 0.05 of the climb. */
 var KINDS = [
-  { id: 'square',  min: 1.00, w: function (m) { return 30; },
+  { id: 'square',  min: 0.00, w: function (k) { return 30; },
     make: function (last) { return E_square(rollLane(last)); } },
-  { id: 'twin',    min: 1.05, w: function (m) { return 11; },
+  { id: 'twin',    min: 0.05, w: function (k) { return 11; },
     make: function () { var a = randInt(0, 2), b = pick(allBut([a])); return E_twin(a, b); } },
-  { id: 'bar2',    min: 1.05, w: function (m) { return 12; },
+  { id: 'bar2',    min: 0.05, w: function (k) { return 12; },
     make: function () { return E_bar2(randInt(0, 1), false); } },
-  { id: 'bar2c',   min: 1.10, w: function (m) { return 9; },
+  { id: 'bar2c',   min: 0.10, w: function (k) { return 9; },
     make: function () { return E_bar2(randInt(0, 1), true); } },
-  { id: 'bar3',    min: 1.00, w: function (m) { return 11; }, wall: true,
+  { id: 'bar3',    min: 0.00, w: function (k) { return 11; }, wall: true,
     make: function () { return E_bar3(); } },
-  { id: 'mover',   min: 1.15, w: function (m) { return 9 + (m - 1.15) * 12; },
+  { id: 'mover',   min: 0.15, w: function (k) { return 9 + (k - 0.15) * 12; },
     make: function () {
       var a = randInt(0, 2), b;
       if (a === 1) b = Math.random() < .5 ? 0 : 2; else b = 1;   /* always adjacent */
       return E_mover(a, b, false);
     } },
-  { id: 'shuttle', min: 1.35, w: function (m) { return 5 + (m - 1.35) * 10; },
+  { id: 'shuttle', min: 0.35, w: function (k) { return 5 + (k - 0.35) * 10; },
     make: function () { var a = randInt(0, 1); return E_mover(a, a + 1, true); } },
   /* uncommon, but often enough to be worth watching for */
-  { id: 'boost',   min: 1.00, w: function (m) { return 4; },
+  { id: 'boost',   min: 0.00, w: function (k) { return 4; },
     make: function (last) { return E_boost(rollLane(last)); } },
-  { id: 'superBoost', min: 1.00, w: function (m) { return 1; },
+  { id: 'superBoost', min: 0.00, w: function (k) { return 1; },
     make: function (last) { return E_boost(rollLane(last), true); } }
 ];
 function rollLane(last) {
@@ -89,19 +93,19 @@ var Gen = {
   /* spacing, in seconds of travel. The fair-gap floor below still guarantees
      everything is passable; this only tightens the stretches that were roomier
      than they had to be. */
-  gapScale: function (mult) { return lerp(1.08, 0.86, clamp((mult - 1) / 1, 0, 1)); },
+  gapScale: function (k) { return lerp(1.08, 0.86, k); },
   rollGap: function () {
     if (Math.random() < 0.09) return rand(1.6, 2.1);       /* the odd breather */
     return rand(0.58, 1.32);
   },
 
-  roll: function (mult) {
+  roll: function (prog) {
     var pool = [], total = 0, i, k, w;
     for (i = 0; i < KINDS.length; i++) {
       k = KINDS[i];
-      if (mult + 1e-6 < k.min) continue;
+      if (prog + 1e-6 < k.min) continue;
       if (k.wall && this.sinceWall < CFG.WALL_COOLDOWN) continue;
-      w = Math.max(1, k.w(mult));
+      w = Math.max(1, k.w(prog));
       if (k.id === this.lastKind) w *= 0.35;          /* no two-in-a-row habits */
       if (k.wall) w *= clamp(this.sinceWall / (CFG.WALL_COOLDOWN * 1.6), 0.2, 1.4);
       pool.push({ k: k, w: w }); total += w;
@@ -112,9 +116,9 @@ var Gen = {
     return pool[pool.length - 1].k;
   },
 
-  refill: function (mult) {
+  refill: function (prog) {
     while (this.queue.length < 3) {
-      var k = this.roll(mult);
+      var k = this.roll(prog);
       var e = k.make(this.lastLane);
       e.gap = (k.id === 'boost' || k.id === 'superBoost') ? rand(1.9, 2.6) : this.rollGap();
       e.wall = !!k.wall;
@@ -138,16 +142,19 @@ var Gen = {
   /* author the course ahead of whoever is leading — not ahead of the camera */
   update: function (dt, mult, leadD) {
     if (!this.enabled) return;
+    /* how far up the climb the run is; the table and the spacing are both
+       written in it, the frontier below is not — that is metres of ground */
+    var prog = clamp((mult - 1) / (CFG.SPEED_MAX - 1), 0, 1);
     this.sinceWall += dt;
-    this.refill(mult);
+    this.refill(prog);
     var horizon = leadD + CFG.WORLD_AHEAD;
     var guard = 0;
     while (this.frontier < horizon && guard++ < 40) {
       var e = this.queue.shift();
-      this.refill(mult);
+      this.refill(prog);
       var next = this.queue[0];
       Obstacles.spawn(e, this.frontier);
-      var gap = e.gap * this.gapScale(mult);
+      var gap = e.gap * this.gapScale(prog);
       gap = Math.max(gap, this.fairGap(e, next));
       this.frontier += gap * CFG.BASE_SPEED * mult;   /* seconds of travel -> metres */
     }

@@ -27,7 +27,7 @@ var I18N = {
     htObstacles: 'Dodge the black shapes. A square blocks one column.',
     htHit: 'A hit removes you for two seconds, then you respawn.',
     htWalls: 'Barriers marked with chevrons can only be passed by crouching.',
-    htGoal: 'Speed climbs to 2.00x, then you travel the final 500 metres to the wall.',
+    htGoal: 'Speed climbs to {max}x, then you travel the final 500 metres to the wall.',
     htLanesKb: 'A / D or the arrow keys change column.',
     htCrouchKb: 'Hold S, Down or Space to crouch under a barrier.',
     htKeys: 'Escape pauses the run at any time.',
@@ -61,7 +61,7 @@ var I18N = {
     htObstacles: 'Évitez les formes noires. Un carré bloque une colonne.',
     htHit: 'Un choc vous retire deux secondes, puis vous réapparaissez.',
     htWalls: 'Les barrières marquées de chevrons se franchissent uniquement en se baissant.',
-    htGoal: 'La vitesse monte jusqu\u2019à 2.00x, puis il reste 500 mètres avant le mur.',
+    htGoal: 'La vitesse monte jusqu\u2019à {max}x, puis il reste 500 mètres avant le mur.',
     htLanesKb: 'A / D ou les flèches changent de colonne.',
     htCrouchKb: 'Maintenez S, Bas ou Espace pour vous baisser sous une barrière.',
     htKeys: 'Échap met la course en pause à tout moment.',
@@ -75,7 +75,13 @@ var I18N = {
 };
 function t(key) {
   var pack = I18N[Settings.lang] || I18N.en;
-  return pack[key] !== undefined ? pack[key] : (I18N.en[key] !== undefined ? I18N.en[key] : key);
+  var v = pack[key] !== undefined ? pack[key] : (I18N.en[key] !== undefined ? I18N.en[key] : key);
+  /* the one number in the prose that is a balancing value rather than a
+     translation: the tutorial quotes the ceiling, so it reads it from CFG */
+  if (typeof v === 'string' && v.indexOf('{max}') >= 0) {
+    v = v.replace('{max}', CFG.SPEED_MAX.toFixed(2));
+  }
+  return v;
 }
 function numFmt(n) {
   try { return Math.floor(n).toLocaleString(Settings.lang === 'fr' ? 'fr-FR' : 'en-US'); }
