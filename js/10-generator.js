@@ -34,8 +34,8 @@ function E_bar2(start, crouchable) {
 }
 function E_bar3() { return { kind: 'bar3', crouch: true, safe: [0, 1, 2] }; }
 /* the boost pad blocks nothing at all — it is somewhere to aim for */
-function E_boost(lane) {
-  return { kind: 'boost', lane: lane, crouch: false, safe: [0, 1, 2] };
+function E_boost(lane, strong) {
+  return { kind: strong ? 'superBoost' : 'boost', lane: lane, crouch: false, safe: [0, 1, 2] };
 }
 function E_mover(a, b, shuttle) {
   var lo = Math.min(a, b), hi = Math.max(a, b), span = [];
@@ -66,7 +66,9 @@ var KINDS = [
     make: function () { var a = randInt(0, 1); return E_mover(a, a + 1, true); } },
   /* uncommon, but often enough to be worth watching for */
   { id: 'boost',   min: 1.00, w: function (m) { return 4; },
-    make: function (last) { return E_boost(rollLane(last)); } }
+    make: function (last) { return E_boost(rollLane(last)); } },
+  { id: 'superBoost', min: 1.00, w: function (m) { return 1; },
+    make: function (last) { return E_boost(rollLane(last), true); } }
 ];
 function rollLane(last) {
   var l = randInt(0, 2);
@@ -114,7 +116,7 @@ var Gen = {
     while (this.queue.length < 3) {
       var k = this.roll(mult);
       var e = k.make(this.lastLane);
-      e.gap = k.id === 'boost' ? rand(1.9, 2.6) : this.rollGap();
+      e.gap = (k.id === 'boost' || k.id === 'superBoost') ? rand(1.9, 2.6) : this.rollGap();
       e.wall = !!k.wall;
       this.lastKind = k.id;
       this.lastLane = (e.lane === undefined) ? -1 : e.lane;
@@ -128,7 +130,8 @@ var Gen = {
     var g = CFG.REACTION_BASE + laneDistance(a.safe, b.safe) * CFG.REACTION_LANE;
     if (a.crouch) g += CFG.CROUCH_RELEASE;
     if (a.kind === 'mover' || a.kind === 'shuttle') g += CFG.CROUCH_RELEASE;
-    if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
+    if (a.kind === 'superBoost') g *= 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER;
+    else if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
     return g;
   },
 
