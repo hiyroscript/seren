@@ -177,8 +177,9 @@ var VFX = {
   },
   spawnSpeedLine: function (mult) {
     if (Settings.reduced) return;
-    /* exactly the speed of the ground, boosts and all: nothing on screen may
-       exaggerate, or lag behind, the multiplier the HUD is reporting */
+    /* exactly the speed of the ground, boosts and all: a streak that ran at
+       some pace of its own would read as the track lying about how fast it
+       is moving */
     var world = Run.speedN() * PF.h;               /* pixels per second of the world */
     var hot = ACCENT && Math.random() < 0.34;
     this.lines.push({

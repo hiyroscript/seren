@@ -4,11 +4,11 @@ A minimalist three-column parkour racing game built with vanilla HTML, CSS and J
 
 You are one of six marbles racing down a three-column track. Hazards are generated
 procedurally ahead of whoever is leading, speed climbs from 1.00x to 3.00x, and the run
-ends with a final 500 metre stage that finishes against a wall. The world scrolls at
-exactly the multiplier the HUD is reporting — boosts included — so 3.00x really is three
-times the ground of 1.00x. The five rivals run the same simulation you do — same
-movement, same hazards, same collisions, same respawns — so the only thing separating
-you from them is where the decisions come from.
+ends with a final 500 metre stage that finishes against a wall. The readout under the
+distance is the speed of the run and nothing else: it steps up with the climb and holds
+there, because a boost or a shove moves the racer rather than the run. The five rivals
+run the same simulation you do — same movement, same hazards, same collisions, same
+respawns — so the only thing separating you from them is where the decisions come from.
 
 Black ink on paper white, sounds synthesised in the browser, English and French.
 
@@ -21,6 +21,11 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   speed (+150% instead of +75%) for the same 1.35 seconds. Their gradient is a band of
   purple running into blue that travels the length of the pad, held still if reduced
   motion is enabled. Pads refresh the effect without stacking.
+- A very rare bubbly square marked `?` is a gamble rather than a pad: touch it and it
+  hands you one outcome at random — a yellow pad's shove, a rare pad's shove, a few
+  seconds nothing can touch you, or the setback a bump would have cost you. Roughly two
+  or three appear in a whole run, each rolls separately for every racer that reaches it,
+  and it stays on the track once taken.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
@@ -61,6 +66,9 @@ seren/
 ├── index.html            markup, metadata, panels and the ordered script tags
 ├── README.md
 ├── .gitignore
+│
+├── test/
+│   └── suite.js          headless-browser tests over the game's own invariants
 │
 ├── css/
 │   └── seren.css         the whole visual identity
@@ -124,8 +132,30 @@ The site is served from `https://<user>.github.io/<repository>/` within a minute
 build step and no workflow are needed — the paths in `index.html` are relative, so the game
 works from a project subpath as well as from a user or organisation root.
 
+## Tests
+
+`test/suite.js` drives the real game in a headless browser and asserts its
+invariants — no mocks, it calls the game's own `update()` and `render()`. It
+covers the speed readout, the ground the camera actually travels, the pads and
+the mystery square, the generator's fairness floor, pause and restart, reduced
+motion, both languages, and full runs at three difficulties on desktop and
+mobile viewports.
+
+It is a development tool and is not part of the site. It needs a static server
+and Playwright's Chromium:
+
+```sh
+python3 -m http.server 8123 &
+node test/suite.js
+```
+
+It exits non-zero on failure. Point it elsewhere with `SEREN_URL`. A globally
+installed Playwright works too: `NODE_PATH=$(npm root -g) node test/suite.js`.
+
 ## Dependencies
 
 None. No frameworks, no libraries, no npm packages, no bundler, no build step. The sounds
 are synthesised at runtime with the Web Audio API rather than loaded from files, and the
-only images are the inline SVGs in `index.html`.
+only images are the inline SVGs in `index.html`. The test suite above is the one exception,
+and it ships nothing to the browser: it needs Playwright to drive one, but the site does
+not.

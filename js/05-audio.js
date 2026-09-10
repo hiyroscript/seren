@@ -101,6 +101,15 @@ var Sound = {
       case 'boostFar':
         this.tone({ f0: 300, f1: 760, dur: .14, type: 'sine', peak: .06 });
         break;
+      /* the square opening: a question asked, then answered underneath by
+         whichever effect it turned out to be */
+      case 'mystery':
+        this.tone({ f0: 880, f1: 1180, dur: .09, type: 'sine', peak: .15 });
+        this.tone({ f0: 1320, dur: .11, type: 'sine', peak: .12, delay: .07 });
+        break;
+      case 'mysteryFar':
+        this.tone({ f0: 820, f1: 1100, dur: .07, type: 'sine', peak: .05 });
+        break;
       case 'bump':
         this.noise({ dur: .12, peak: .3, cut: 1600, cut2: 400 });
         this.tone({ f0: 220, f1: 130, dur: .16, type: 'square', peak: .16 });

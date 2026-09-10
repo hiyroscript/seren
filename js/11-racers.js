@@ -21,6 +21,28 @@ var AI_LEVELS = {
             waves: 4, duck: 1.00, lead: 1.15, greed: 1.00 }
 };
 var AI_ORDER = ['easy', 'normal', 'hard', 'brutal'];
+
+/* What the mystery square can hand out, and how often. Rolled per racer rather
+   than per square: six racers crossing the same one is six separate gambles,
+   and a rival taking it first must not give the answer away. Net favourable —
+   half of it is a shove — but a quarter of it is the setback, which is what
+   makes steering into one a decision rather than a formality. */
+var MYSTERY_ODDS = [
+  { id: 'boost',      w: 34 },   /* the yellow pad's shove */
+  { id: 'superBoost', w: 16 },   /* the rare pad's */
+  { id: 'immune',     w: 26 },   /* a few seconds nothing can touch you */
+  { id: 'slow',       w: 24 }    /* and the other side of the coin */
+];
+function rollMystery() {
+  var total = 0, i;
+  for (i = 0; i < MYSTERY_ODDS.length; i++) total += MYSTERY_ODDS[i].w;
+  var r = Math.random() * total;
+  for (i = 0; i < MYSTERY_ODDS.length; i++) {
+    r -= MYSTERY_ODDS[i].w;
+    if (r <= 0) return MYSTERY_ODDS[i].id;
+  }
+  return MYSTERY_ODDS[0].id;
+}
 function aiLevel() { return AI_LEVELS[Settings.cpu] || AI_LEVELS.normal; }
 
 function Racer(id, human, marbleKey) {
@@ -609,8 +631,8 @@ var Race = {
     return true;
   },
   /* the speed pad: a short, timed push, refreshed rather than stacked */
-  shoveForward: function (p, o) {
-    p.boostPower = o && o.kind === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1;
+  shoveForward: function (p, o, power) {
+    p.boostPower = power || (o && o.kind === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1);
     p.boost = CFG.BOOST_TIME;
     var ink = p.boostColor();
     var pale = p.boostPower > 1 ? '#E4DCFF' : '#FFF3B0';
@@ -633,6 +655,47 @@ var Race = {
       /* and the lane it happened in flares for a moment */
       VFX.ripple(x, y, r * 1.2, r * 8, ink, .22, 6);
     }
+  },
+  /* the mystery square: one roll, taken there and then. There is nothing to
+     carry and nothing to fire — what it gives you, it gives you on contact,
+     out of the same vocabulary of effects the rest of the track speaks in. */
+  mysteryTake: function (p, o) {
+    var got = rollMystery();
+    if (o) o.flash = CFG.BOOST_FLASH;
+    /* the reveal reads first, wherever it lands, and what it turned out to be
+       comes in under it */
+    if (p.human) Sound.play('mystery');
+    else if (p.onCamera()) Sound.play('mysteryFar');
+
+    if (got === 'boost' || got === 'superBoost') {
+      this.shoveForward(p, null, got === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1);
+      return got;
+    }
+
+    var on = p.onCamera();
+    var x = on ? p.x() : 0, y = on ? p.y() : 0, r = playerRadius();
+    var big = p.human ? 1 : 0.55;
+    if (got === 'immune') {
+      p.immune = Math.max(p.immune, CFG.MYSTERY_IMMUNITY);
+      p.immuneExt = 0;
+      if (p.human) { Sound.play('respawn'); VFX.addShake(3); }
+      if (on) {
+        VFX.ripple(x, y, r * 0.5, r * 4.0 * big, BUBBLE_INK, .55, 3.2);
+        VFX.ripple(x, y, r * 0.4, r * 2.6 * big, '#FFFFFF', .4, 2);
+        VFX.burst(x, y, Math.round(20 * big), { color: BUBBLE_INK,
+          spMin: 90, spMax: 340, sizeMax: 3.4, lifeMax: .6, world: true });
+      }
+    } else {
+      this.slowDown(p);
+      if (p.human) { Sound.play('bump'); VFX.addShake(6); }
+      else if (on) Sound.play('bumpFar');
+      if (on) {
+        VFX.ripple(x, y, r * 0.5, r * 3.2 * big, '#000', .45, 2.6);
+        VFX.burst(x, y, Math.round(16 * big), { color: '#000', dir: PI / 2,
+          spMin: 80, spMax: 300, sizeMax: 3.4, lifeMax: .5, streak: true, world: true });
+      }
+    }
+    return got;
   },
   slowDown: function (q) {
     /* refreshed, never stacked */
@@ -807,9 +870,14 @@ var Race = {
         for (var k = 0; k < near.length; k++) {
           var o = near[k];
           if (!o.harmful) {
-            /* a pad, not a pickup: it stays in the world for everyone else,
-               and it only shoves any given racer along once */
-            if (!o.seen[p.id] && racerHits(p, o)) { o.seen[p.id] = 1; this.shoveForward(p, o); }
+            /* a pad or a square, not a pickup that leaves the track: it stays
+               in the world for everyone else, and it only acts on any given
+               racer once */
+            if (!o.seen[p.id] && racerHits(p, o)) {
+              o.seen[p.id] = 1;
+              if (o.kind === 'mystery') this.mysteryTake(p, o);
+              else this.shoveForward(p, o);
+            }
             continue;
           }
           if (p.immune > 0) continue;

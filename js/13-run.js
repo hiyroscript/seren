@@ -33,15 +33,15 @@ var Run = {
     return ['3', '2', '1', t('go')][clamp(this.countIdx, 0, 3)];
   },
 
-  /* what the camera is actually doing, which is what the HUD reports: the
-     shared multiplier *and* whatever the human racer's own status effects are
-     doing to it. A boost that reads 5.25x on the HUD is ground genuinely
-     passing at 5.25x. */
-  shownMult: function () { return this.mult * (Player ? Player.speedScale() : 1); },
-  /* the speed of the ground in playfield heights per second — the one number
-     every moving backdrop takes its pace from, so nothing on screen can drift
-     away from the multiplier being reported */
-  speedN: function () { return CFG.BASE_SPEED * this.shownMult() / CFG.METERS_VISIBLE; },
+  /* what the ground under the human racer is actually doing: the run's own
+     multiplier, and on top of it whatever that racer's status effects are
+     worth this instant. Not what the HUD reports — the HUD reports the speed
+     of the run, which a boost does not change. */
+  groundMult: function () { return this.mult * (Player ? Player.speedScale() : 1); },
+  /* that same ground speed in playfield heights per second — the one number
+     every moving backdrop takes its pace from, so the specks and the streaks
+     travel with the track rather than at some pace of their own */
+  speedN: function () { return CFG.BASE_SPEED * this.groundMult() / CFG.METERS_VISIBLE; },
 
   /* ---------- per frame ---------- */
   update: function (dt) {
@@ -99,10 +99,10 @@ var Run = {
     /* the camera rides the human racer: everything drawn scrolls by exactly
        as much ground as that racer covered */
     var moved = Player.d - before;
-    var shown = this.shownMult();       /* what that came to, and what the HUD says */
+    var ground = this.groundMult();     /* what that came to, boosts and all */
     this.distance = Player.d;
     VFX.scrollWorld(metresToPx(moved));
-    VFX.motes(dt, shown);
+    VFX.motes(dt, ground);
     this.passFX();
 
     var ms = Math.floor(this.distance / 100);
@@ -110,8 +110,8 @@ var Run = {
 
     /* --- ambient speed lines: laid down at the rate the ground is actually
        moving, so a boost thickens them and a stopped world stops them --- */
-    this.lineAcc += Math.max(0, 0.34 + (shown - 1) * 1.6) * 40 * dt;
-    while (this.lineAcc >= 1) { this.lineAcc -= 1; VFX.spawnSpeedLine(shown); }
+    this.lineAcc += Math.max(0, 0.34 + (ground - 1) * 1.6) * 40 * dt;
+    while (this.lineAcc >= 1) { this.lineAcc -= 1; VFX.spawnSpeedLine(ground); }
 
     /* --- final stage --- */
     if (!this.finalActive && this.mult >= CFG.SPEED_MAX - 1e-9) this.enterFinal();

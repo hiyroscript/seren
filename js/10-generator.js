@@ -37,6 +37,10 @@ function E_bar3() { return { kind: 'bar3', crouch: true, safe: [0, 1, 2] }; }
 function E_boost(lane, strong) {
   return { kind: strong ? 'superBoost' : 'boost', lane: lane, crouch: false, safe: [0, 1, 2] };
 }
+/* the mystery square blocks nothing either — it is a gamble to steer into */
+function E_mystery(lane) {
+  return { kind: 'mystery', lane: lane, crouch: false, safe: [0, 1, 2] };
+}
 function E_mover(a, b, shuttle) {
   var lo = Math.min(a, b), hi = Math.max(a, b), span = [];
   for (var l = lo; l <= hi; l++) span.push(l);
@@ -72,7 +76,12 @@ var KINDS = [
   { id: 'boost',   min: 0.00, w: function (k) { return 4; },
     make: function (last) { return E_boost(rollLane(last)); } },
   { id: 'superBoost', min: 0.00, w: function (k) { return 1; },
-    make: function (last) { return E_boost(rollLane(last), true); } }
+    make: function (last) { return E_boost(rollLane(last), true); } },
+  /* Rarer than the rare pad and by some way the rarest thing on the track: a
+     weight of 0.6 against the pad's 1 puts two or three on a whole run, where
+     squares come up a hundred times. Any rarer and most runs never show one. */
+  { id: 'mystery', min: 0.00, w: function (k) { return 0.6; },
+    make: function (last) { return E_mystery(rollLane(last)); } }
 ];
 function rollLane(last) {
   var l = randInt(0, 2);
@@ -105,7 +114,7 @@ var Gen = {
       k = KINDS[i];
       if (prog + 1e-6 < k.min) continue;
       if (k.wall && this.sinceWall < CFG.WALL_COOLDOWN) continue;
-      w = Math.max(1, k.w(prog));
+      w = Math.max(0.01, k.w(prog));    /* a floor against zero, not a minimum rate */
       if (k.id === this.lastKind) w *= 0.35;          /* no two-in-a-row habits */
       if (k.wall) w *= clamp(this.sinceWall / (CFG.WALL_COOLDOWN * 1.6), 0.2, 1.4);
       pool.push({ k: k, w: w }); total += w;
@@ -120,7 +129,8 @@ var Gen = {
     while (this.queue.length < 3) {
       var k = this.roll(prog);
       var e = k.make(this.lastLane);
-      e.gap = (k.id === 'boost' || k.id === 'superBoost') ? rand(1.9, 2.6) : this.rollGap();
+      e.gap = (k.id === 'boost' || k.id === 'superBoost' || k.id === 'mystery')
+        ? rand(1.9, 2.6) : this.rollGap();
       e.wall = !!k.wall;
       this.lastKind = k.id;
       this.lastLane = (e.lane === undefined) ? -1 : e.lane;
@@ -134,8 +144,11 @@ var Gen = {
     var g = CFG.REACTION_BASE + laneDistance(a.safe, b.safe) * CFG.REACTION_LANE;
     if (a.crouch) g += CFG.CROUCH_RELEASE;
     if (a.kind === 'mover' || a.kind === 'shuttle') g += CFG.CROUCH_RELEASE;
-    if (a.kind === 'superBoost') g *= 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER;
-    else if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
+    /* a mystery can hand out the strongest shove there is, so the track after
+       one has to be as open as the track after the pad that does */
+    if (a.kind === 'superBoost' || a.kind === 'mystery') {
+      g *= 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER;
+    } else if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
     return g;
   },
 
