@@ -53,8 +53,10 @@ var AI = {
       var prox = 1 - clamp(gap / look, 0, 1);          /* nearer hurts more */
       var weight = 1 / waves;                          /* the wave in front matters most */
       if (!o.harmful) {
-        /* worth steering into, and the sharper racers know it */
-        cost -= 8 * prox * weight * L.greed;
+        /* worth steering into, and the sharper racers know it — though a
+           mystery square is a gamble rather than a pad, and pulls at them
+           accordingly */
+        cost -= (o.kind === 'mystery' ? 4.5 : 8) * prox * weight * L.greed;
         continue;
       }
       if (o.crouch) {

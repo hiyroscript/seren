@@ -4,11 +4,11 @@ A minimalist three-column parkour racing game built with vanilla HTML, CSS and J
 
 You are one of six marbles racing down a three-column track. Hazards are generated
 procedurally ahead of whoever is leading, speed climbs from 1.00x to 3.00x, and the run
-ends with a final 500 metre stage that finishes against a wall. The world scrolls at
-exactly the multiplier the HUD is reporting — boosts included — so 3.00x really is three
-times the ground of 1.00x. The five rivals run the same simulation you do — same
-movement, same hazards, same collisions, same respawns — so the only thing separating
-you from them is where the decisions come from.
+ends with a final 500 metre stage that finishes against a wall. The readout under the
+distance is the speed of the run and nothing else: it steps up with the climb and holds
+there, because a boost or a shove moves the racer rather than the run. The five rivals
+run the same simulation you do — same movement, same hazards, same collisions, same
+respawns — so the only thing separating you from them is where the decisions come from.
 
 Black ink on paper white, sounds synthesised in the browser, English and French.
 
@@ -21,6 +21,11 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   speed (+150% instead of +75%) for the same 1.35 seconds. Their gradient is a band of
   purple running into blue that travels the length of the pad, held still if reduced
   motion is enabled. Pads refresh the effect without stacking.
+- A very rare bubbly square marked `?` is a gamble rather than a pad: touch it and it
+  hands you one outcome at random — a yellow pad's shove, a rare pad's shove, a few
+  seconds nothing can touch you, or the setback a bump would have cost you. Roughly two
+  or three appear in a whole run, each rolls separately for every racer that reaches it,
+  and it stays on the track once taken.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the

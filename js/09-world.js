@@ -80,6 +80,13 @@ var Obstacles = {
         [entry.lane, entry.lane + 1], wd));
     } else if (entry.kind === 'bar3') {
       out.push(new Obstacle('bar3', 0.5, 1, colM * 0.50, true, [0, 1, 2], wd));
+    } else if (entry.kind === 'mystery') {
+      /* a square the size of the rare pad, and like the pads it blocks nothing:
+         it is there to be taken, not dodged */
+      var my = new Obstacle('mystery', laneCenterF(entry.lane), 0.50 / 3,
+        colM * 0.50, false, [entry.lane], wd);
+      my.harmful = false;
+      out.push(my);
     } else if (entry.kind === 'boost' || entry.kind === 'superBoost') {
       var strong = entry.kind === 'superBoost';
       var bs = new Obstacle(entry.kind, laneCenterF(entry.lane), (strong ? 0.42 : 0.58) / 3,
@@ -141,7 +148,10 @@ var Obstacles = {
           ctx.globalAlpha = 1;
         }
       }
-      if (!o.harmful) { this.drawBoost(o, r); continue; }
+      if (!o.harmful) {
+        if (o.kind === 'mystery') this.drawMystery(o, r); else this.drawBoost(o, r);
+        continue;
+      }
       ctx.fillStyle = '#000';
       ctx.fillRect(r.x, r.y, r.w, r.h);
       if (o.crouch) this.drawChevrons(o, r);
@@ -226,6 +236,95 @@ var Obstacles = {
       ctx.moveTo(cx - aw, cy); ctx.lineTo(cx, cy - ah); ctx.lineTo(cx + aw, cy);
       ctx.stroke();
     }
+  },
+  /* The mystery square: the respawn bubble's soap film, squared off and with a
+     "?" where the marble would be. Same halo, same film, same thin-film tints
+     travelling the rim, same two highlights — a dashed stroke walks the tints
+     round a square the way an arc sweeps them round a circle. It breathes on
+     the shared race clock, so all six racers see the same square. */
+  drawMystery: function (o, r) {
+    var t = Settings.reduced ? 0 : Race.clock * 1.4 + o.wd;
+    var breathe = Settings.reduced ? 1 : 1 + Math.sin(t * 1.3) * 0.045;
+    var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    var w = r.w * breathe, h = r.h * breathe;
+    var x = cx - w / 2, y = cy - h / 2, rad = Math.min(w, h) / 2;
+    if (rad < 2) return;
+
+    /* the halo it sits in — brighter and breathing than the one the respawn
+       bubble wears, because this one has to be worth spotting from the top of
+       the screen on white paper, the same job the pads' glow does */
+    if (!Settings.reduced) {
+      var pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(Race.clock * 4.2 + o.wd));
+      var glow = ctx.createRadialGradient(cx, cy, rad * 0.55, cx, cy, rad * 2.1);
+      glow.addColorStop(0, 'rgba(120,205,250,' + (0.46 * pulse).toFixed(3) + ')');
+      glow.addColorStop(1, 'rgba(120,205,250,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - rad * 2.2, cy - rad * 2.2, rad * 4.4, rad * 4.4);
+    }
+
+    /* soap film: clear in the middle, bright at the edge */
+    var film = ctx.createRadialGradient(cx, cy, rad * 0.2, cx, cy, rad);
+    film.addColorStop(0,    'rgba(255,255,255,0.05)');
+    film.addColorStop(0.62, 'rgba(190,230,255,0.14)');
+    film.addColorStop(0.88, 'rgba(255,255,255,0.42)');
+    film.addColorStop(1,    'rgba(255,255,255,0.08)');
+    ctx.fillStyle = film;
+    ctx.fillRect(x, y, w, h);
+
+    /* thin-film colour walking around the rim */
+    var per = (w + h) * 2;
+    var lw = Math.max(1.2, rad * 0.22);
+    ctx.save();
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'butt';
+    var tints = ['rgba(120,235,255,0.85)', 'rgba(255,140,225,0.7)', 'rgba(255,235,150,0.7)'];
+    if (ctx.setLineDash) {
+      ctx.setLineDash([per * 0.24, per * 0.76]);
+      for (var i = 0; i < 3; i++) {
+        ctx.lineDashOffset = -(t * 0.10 + i / 3) * per;
+        ctx.strokeStyle = tints[i];
+        ctx.strokeRect(x + lw * 0.4, y + lw * 0.4, w - lw * 0.8, h - lw * 0.8);
+      }
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = Math.max(0.8, rad * 0.11);
+    ctx.strokeRect(x, y, w, h);
+
+    /* the pale ink line that seats it on the paper, the way every other thing
+       on this track is seated */
+    ctx.strokeStyle = 'rgba(0,0,0,0.34)';
+    ctx.lineWidth = Math.max(1, rad * 0.07);
+    ctx.strokeRect(x, y, w, h);
+
+    /* highlights, sitting on the curve it would have if it had one */
+    ctx.beginPath();
+    ctx.ellipse(cx - rad * 0.34, cy - rad * 0.40, rad * 0.26, rad * 0.16, -0.7, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + rad * 0.42, cy + rad * 0.34, rad * 0.10, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fill();
+
+    /* just taken: the whole face lights up and fades back down */
+    if (o.flash > 0) {
+      ctx.globalAlpha = 0.85 * (o.flash / CFG.BOOST_FLASH);
+      ctx.fillStyle = '#EAF8FF';
+      ctx.fillRect(x, y, w, h);
+      ctx.globalAlpha = 1;
+    }
+
+    /* the question mark, readable over paper and over film alike */
+    setFont(rad * 1.15, 700);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = Math.max(2, rad * 0.22); ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(11,11,12,0.72)';
+    ctx.strokeText('?', cx, cy + 1);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('?', cx, cy + 1);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   },
   /* redrawn over a ducking racer so it genuinely reads as passing underneath */
   drawOverhead: function () {

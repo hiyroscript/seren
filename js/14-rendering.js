@@ -264,7 +264,10 @@ function drawHUD() {
   var s2 = clamp(PF.w * 0.028, 10, 13);
   tracked(numFmt(Run.distance) + ' ' + t('meters'), PF.x + pad, top + s1 * 0.4, s1, 600, 0.05, 'left',
     pulse > 0.03 ? accent(1, 46) : '#000', 0.82 + 0.18 * pulse);
-  tracked(Run.shownMult().toFixed(2) + 'x', PF.x + pad, top + s1 * 1.5, s2, 500, 0.12, 'left', '#000', 0.42);
+  /* the game's speed, and only that: it steps up with the climb and holds
+     there. A boost or a shove moves the racer, not the speed of the run, and
+     a readout that jumped about with them was reporting the wrong thing. */
+  tracked(Run.mult.toFixed(2) + 'x', PF.x + pad, top + s1 * 1.5, s2, 500, 0.12, 'left', '#000', 0.42);
   /* where this racer stands in a field of six */
   var pos = (Player && Player.pos) ? Player.pos : 1;
   tracked(t('position') + ' ' + pos + '/' + Race.racers.length,
