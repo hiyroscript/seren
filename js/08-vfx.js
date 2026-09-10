@@ -19,7 +19,9 @@ var VFX = {
   /* ---- ambient specks: texture in the empty track, never noise ---- */
   motes: function (dt, mult) {
     if (Settings.reduced) return;
-    this.moteAcc += (5 + (mult - 1) * 9) * dt;
+    /* mult is the speed the ground is actually running at, which is zero while
+       a dead racer waits: no ground moving, no specks laid down */
+    this.moteAcc += Math.max(0, 5 + (mult - 1) * 9) * dt;
     while (this.moteAcc >= 1) {
       this.moteAcc -= 1;
       this.parts.push({
@@ -175,13 +177,13 @@ var VFX = {
   },
   spawnSpeedLine: function (mult) {
     if (Settings.reduced) return;
-    /* exactly the speed of the ground: nothing on screen may exaggerate the
-       multiplier the HUD is reporting */
+    /* exactly the speed of the ground, boosts and all: nothing on screen may
+       exaggerate, or lag behind, the multiplier the HUD is reporting */
     var world = Run.speedN() * PF.h;               /* pixels per second of the world */
     var hot = ACCENT && Math.random() < 0.34;
     this.lines.push({
       x: PF.x + rand(6, PF.w - 6), y: PF.y - rand(20, 140),
-      len: rand(20, 80) * (0.6 + mult * 0.5), v: world,
+      len: rand(20, 80) * clamp(0.6 + mult * 0.5, 0.6, 2.6), v: world,
       a: hot ? rand(.20, .42) : rand(.05, .13),
       w: hot ? rand(1, 2.2) : rand(.7, 1.4),
       c: hot ? accent(1, 56) : '#000', life: 0, max: 2.2
