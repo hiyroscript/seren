@@ -21,15 +21,16 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   speed (+150% instead of +75%) for the same 1.35 seconds. Their gradient is a band of
   purple running into blue that travels the length of the pad, held still if reduced
   motion is enabled. Pads refresh the effect without stacking.
-- A very rare bubbly square marked `?` is a gamble rather than a pad: touch it and it
-  hands you one outcome at random — a yellow pad's shove, a rare pad's shove, a few
-  seconds nothing can touch you, or the setback a bump would have cost you. Roughly two
-  or three appear in a whole run, each rolls separately for every racer that reaches it,
-  and it stays on the track once taken.
+- Bubbly squares marked `?` turn up regularly — about ten in a run. They hand out
+  nothing at the moment: reaching one lights it up and opens it for you, and that is
+  all. Each racer opens a given square once, and it stays on the track for the rest of
+  the field.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
   track and sets you down on clear ground, with a moment of immunity afterwards.
+- The smoked square under the HUD counts your ducks: one mark per crouch, however long
+  you hold it, reset at the start of each run.
 - Moving into an occupied column shoves whoever is there one column further the same way.
   Run out of track and that racer is out.
 - Speed climbs to 3.00x, then you travel the final 500 metres to the wall.
@@ -137,9 +138,9 @@ works from a project subpath as well as from a user or organisation root.
 `test/suite.js` drives the real game in a headless browser and asserts its
 invariants — no mocks, it calls the game's own `update()` and `render()`. It
 covers the speed readout, the ground the camera actually travels, the pads and
-the mystery square, the generator's fairness floor, pause and restart, reduced
-motion, both languages, and full runs at three difficulties on desktop and
-mobile viewports.
+the mystery square, the crouch tally, the generator's fairness floor, pause and
+restart, reduced motion, both languages, and full runs at three difficulties on
+desktop and mobile viewports.
 
 It is a development tool and is not part of the site. It needs a static server
 and Playwright's Chromium:

@@ -274,6 +274,32 @@ function drawHUD() {
     PF.x + pad, top + s1 * 2.45, s2, 600, 0.12, 'left',
     pos === 1 ? accent(1, 46) : '#000', pos === 1 ? 0.9 : 0.5);
 
+  /* The ducks this run, in a pane of smoked glass. Square whatever the count
+     grows to: the side is taken from the widest of the digits and the base
+     size, so three figures sit in it as comfortably as one. */
+  var ducks = String((Player && Player.crouches) ? Player.crouches : 0);
+  var ds = clamp(PF.w * 0.030, 11, 14);
+  setFont(ds, 700);
+  var side = Math.max(s1 * 1.55, ctx.measureText(ducks).width + ds * 1.4);
+  var bx = PF.x + pad, by0 = top + s1 * 3.05;
+  ctx.fillStyle = 'rgba(0,0,0,0.09)';
+  ctx.fillRect(bx, by0, side, side);
+  ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx + 0.5, by0 + 0.5, side - 1, side - 1);
+  /* the chevron the track uses to mean "duck", so the number needs no label */
+  var chw = side * 0.17, chy = by0 + side * 0.30;
+  ctx.strokeStyle = '#000'; ctx.globalAlpha = 0.34;
+  ctx.lineWidth = Math.max(1.4, side * 0.055);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(bx + side / 2 - chw, chy - chw * 0.52);
+  ctx.lineTo(bx + side / 2, chy + chw * 0.52);
+  ctx.lineTo(bx + side / 2 + chw, chy - chw * 0.52);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  tracked(ducks, bx + side / 2, by0 + side * 0.66, ds, 700, 0.06, 'center', '#000', 0.7);
+
   if (Run.finalActive) {
     var prog = Math.min(CFG.FINAL_DISTANCE, Math.floor(Run.finalProgress()));
     var label = t('final') + ' \u2014 ' + prog + ' / ' + CFG.FINAL_DISTANCE + ' ' + t('meters');

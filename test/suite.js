@@ -194,18 +194,19 @@ async function newPage(browser, opts) {
       out.square = Math.abs(o.wF * PF.w - metresToPx(o.hM)) < 1.5;   /* as wide as it is long */
       out.kind = o.kind;
 
-      /* each outcome, applied for real */
-      const applied = {};
-      const orig = window.rollMystery;
-      ['boost', 'superBoost', 'immune', 'slow'].forEach(want => {
-        window.rollMystery = () => want;
-        const p = Race.racers[0];
-        p.boost = 0; p.boostPower = 1; p.immune = 0; p.slow = 0; p.alive = true;
-        Race.mysteryTake(p, o);
-        applied[want] = +p.speedScale().toFixed(3) + '|' + (+p.immune.toFixed(2));
-      });
-      window.rollMystery = orig;
-      out.applied = applied;
+      /* taking one grants nothing at all: the racer leaves it exactly as it
+         arrived, and the square lights up to say it was reached */
+      const p0 = Race.racers[0];
+      p0.alive = true; p0.boost = 0; p0.boostPower = 1; p0.immune = 0; p0.slow = 0;
+      const beforeTake = [p0.boost, p0.boostPower, p0.immune, p0.slow,
+                          p0.speedScale(), p0.d].join('|');
+      o.flash = 0;
+      Race.mysteryTake(p0, o);
+      out.unchanged = [p0.boost, p0.boostPower, p0.immune, p0.slow,
+                       p0.speedScale(), p0.d].join('|') === beforeTake;
+      out.lit = o.flash > 0;
+      out.noRollTable = typeof window.rollMystery === 'undefined' &&
+                        typeof window.MYSTERY_ODDS === 'undefined';
 
       /* who took what, per racer — six of them share this track */
       const byRacer = {};
@@ -216,8 +217,8 @@ async function newPage(browser, opts) {
         p.alive = false; p.coasting = true; p.floating = false; p.d = -4000;
       });
 
-      /* one racer sitting on one square: it may only act on them once, however
-         long they stand in it */
+      /* one racer sitting on one square: it may only open for them once,
+         however long they stand in it */
       Obstacles.clear();
       Obstacles.spawn({ kind: 'mystery', lane: 1 }, Race.camD + 3);
       const sq = Obstacles.list[0];
@@ -229,7 +230,7 @@ async function newPage(browser, opts) {
       out.takesBySameRacer = byRacer[me.id] || 0;
       out.stillOnTrack = Obstacles.list.indexOf(sq) >= 0;
 
-      /* a second racer crossing the same square still gets their own roll */
+      /* a second racer through opens the same square for themselves */
       const other = Race.racers[2];
       other.place(1, sq.wd + sq.hM / 2);
       other.alive = true; other.floating = false; other.coasting = false;
@@ -257,13 +258,12 @@ async function newPage(browser, opts) {
     });
     check('the square is a pickup, not a hazard', r.harmful === false);
     check('the square is square', r.square === true);
-    check('boost outcome gives the yellow pad shove', r.applied.boost === '1.75|0', r.applied.boost);
-    check('rare outcome gives twice that', r.applied.superBoost === '2.5|0', r.applied.superBoost);
-    check('immunity outcome grants cover, no speed change', r.applied.immune === '1|3.2', r.applied.immune);
-    check('setback outcome slows, no immunity', r.applied.slow === '0.62|0', r.applied.slow);
+    check('taking one grants nothing — no shove, no cover, no setback', r.unchanged === true);
+    check('but the square lights up to say it was reached', r.lit === true);
+    check('the outcome table is gone rather than left dormant', r.noRollTable === true);
     check('one racer takes a given square exactly once', r.takesBySameRacer === 1, 'took ' + r.takesBySameRacer);
     check('a taken square stays on the track for the rest of the field', r.stillOnTrack === true);
-    check('the next racer through gets their own roll',
+    check('the next racer through opens it for themselves',
       r.takesByOther === 1 && r.seenIds === 2, 'took ' + r.takesByOther + ', seen by ' + r.seenIds);
     check('a racer in a respawn bubble takes nothing', r.bubbleTakes === 0, 'took ' + r.bubbleTakes);
     check('no errors', errs.length === 0, errs.join(' | '));
@@ -271,36 +271,172 @@ async function newPage(browser, opts) {
   }
 
   /* ------------------------------------------------------------------ */
-  console.log('\n[5] rarity, and that the odds table is what it says');
+  console.log('\n[5] how often a mystery square turns up');
   {
     const { page } = await newPage(browser);
     const r = await page.evaluate(() => {
       Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
-      const tally = {};
-      for (let i = 0; i < 200000; i++) { const g = rollMystery(); tally[g] = (tally[g] || 0) + 1; }
-      for (const k in tally) tally[k] = +(tally[k] / 2000).toFixed(2);
-      /* and how often the generator plants one over three whole runs */
       const perRun = [];
       for (let run = 0; run < 3; run++) {
         App.set(ST.HOME); Run.begin();
-        let mystery = 0, entries = 0;
+        let mystery = 0, entries = 0, boost = 0, superBoost = 0;
         const os = Obstacles.spawn.bind(Obstacles);
-        Obstacles.spawn = function (e, wd) { entries++; if (e.kind === 'mystery') mystery++; return os(e, wd); };
+        Obstacles.spawn = function (e, wd) {
+          entries++;
+          if (e.kind === 'mystery') mystery++;
+          if (e.kind === 'boost') boost++;
+          if (e.kind === 'superBoost') superBoost++;
+          return os(e, wd);
+        };
         for (let i = 0; i < 60 * 1500; i++) { update(1 / 60); if (App.state === ST.COMPLETED) break; }
         Obstacles.spawn = os;
-        perRun.push({ entries, mystery });
+        perRun.push({ entries, mystery, boost, superBoost });
       }
-      return { tally, perRun };
+      return { perRun };
     });
-    const t = r.tally;
-    check('odds match the table (34/16/26/24 ±1.5)',
-      Math.abs(t.boost - 34) < 1.5 && Math.abs(t.superBoost - 16) < 1.5 &&
-      Math.abs(t.immune - 26) < 1.5 && Math.abs(t.slow - 24) < 1.5, JSON.stringify(t));
-    const tot = r.perRun.reduce((a, b) => a + b.mystery, 0);
-    const ent = r.perRun.reduce((a, b) => a + b.entries, 0);
-    check('very rare: a couple a run, and rarer than the rare pad',
-      tot / 3 >= 0.5 && tot / 3 <= 6 && tot / ent < 0.02,
-      JSON.stringify(r.perRun) + ' -> ' + (tot / 3).toFixed(1) + '/run');
+    const sum = k => r.perRun.reduce((a, b) => a + b[k], 0);
+    const my = sum('mystery') / 3, sb = sum('superBoost') / 3, ent = sum('entries');
+    check('a regular sight now — several a run, and well clear of the old couple',
+      my >= 4, JSON.stringify(r.perRun) + ' -> ' + my.toFixed(1) + '/run');
+    check('more common than the rare pad it used to trail',
+      my > sb, my.toFixed(1) + ' vs superBoost ' + sb.toFixed(1) + ' per run');
+    check('still a minority of the track, not a carpet of them',
+      sum('mystery') / ent < 0.12,
+      (100 * sum('mystery') / ent).toFixed(1) + '% of entries');
+    await page.close();
+  }
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n[5b] the crouch tally');
+  {
+    const { page, errs } = await newPage(browser);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      App.set(ST.HOME); Run.begin();
+      for (let i = 0; i < 60 * 3; i++) update(1 / 60);
+      Gen.stop(); Obstacles.clear();          /* an empty track: nothing to die to */
+      App.set(ST.PLAYING);
+      /* crouchHeld is recomputed from real key state every tick, so press the
+         key rather than setting the flag */
+      const down = () => { Input.crouchKeys['s'] = true; };
+      const up = () => { delete Input.crouchKeys['s']; };
+
+      const seen = [];
+      for (let n = 0; n < 10; n++) {
+        Player.alive = true; Player.floating = false; Player.immune = 9;
+        down(); for (let i = 0; i < 12; i++) update(1 / 60);
+        up();   for (let i = 0; i < 12; i++) update(1 / 60);
+        seen.push(Player.crouches);
+      }
+      const counts = seen.join(',');
+
+      /* one duck is one duck, however long it is held */
+      down(); for (let i = 0; i < 6; i++) update(1 / 60);
+      const held0 = Player.crouches;
+      for (let i = 0; i < 180; i++) update(1 / 60);
+      const heldDelta = Player.crouches - held0;
+      up(); update(1 / 60);
+
+      /* a rival's ducks are its own, not the player's */
+      const rival = Race.racers.find(p => !p.human);
+      rival.alive = true; rival.floating = false; rival.crouchWas = false;
+      const rBefore = rival.crouches, pBefore = Player.crouches;
+      rival.crouch = true;  rival.update(1 / 60, true);
+      rival.crouch = false; rival.update(1 / 60, true);
+      rival.crouch = true;  rival.update(1 / 60, true);
+      const rDelta = rival.crouches - rBefore, pDelta = Player.crouches - pBefore;
+
+      /* a crouch the bubble cancels counts for nobody */
+      const b = Race.racers.find(p => !p.human && p !== rival);
+      b.alive = true; b.floating = true; b.bubble = 3; b.crouchWas = false;
+      const bBefore = b.crouches;
+      b.crouch = true; b.update(1 / 60, true);
+      b.crouch = true; b.update(1 / 60, true);
+      const bDelta = b.crouches - bBefore;
+      b.floating = false;
+
+      /* the square is drawn, and stays square as the count grows */
+      const boxAt = n => {
+        Player.crouches = n;
+        render();
+        /* find the tally's translucent panel by scanning the HUD column */
+        const x = Math.round((PF.x + (IS_MOBILE ? INSET.l + 16 : 14) + 4) * VIEW.dpr);
+        let top = -1, bot = -1;
+        for (let y = 0; y < Math.round(PF.h * 0.4); y++) {
+          const d = ctx.getImageData(x, y, 1, 1).data;
+          const grey = d[0] === d[1] && d[1] === d[2] && d[0] > 200 && d[0] < 250;
+          if (grey && top < 0) top = y;
+          if (grey) bot = y;
+        }
+        return bot - top;
+      };
+      const h1 = boxAt(7), h3 = boxAt(137);
+
+      /* a fresh run starts the tally again */
+      Run.begin();
+      const afterRestart = Player.crouches;
+
+      return { counts, heldDelta, rDelta, pDelta, bDelta, h1, h3, afterRestart };
+    });
+    check('every duck adds one', r.counts === '1,2,3,4,5,6,7,8,9,10', r.counts);
+    check('holding one duck for three seconds is still one', r.heldDelta === 0, 'added ' + r.heldDelta);
+    check("a rival's ducks land on its own tally", r.rDelta === 2 && r.pDelta === 0,
+      'rival +' + r.rDelta + ', player +' + r.pDelta);
+    check('a duck the bubble cancels counts for nobody', r.bDelta === 0, 'added ' + r.bDelta);
+    check('the tally panel is drawn, and holds its height at three figures',
+      r.h1 > 8 && Math.abs(r.h1 - r.h3) <= 1, 'one figure ' + r.h1 + 'px, three ' + r.h3 + 'px');
+    check('a fresh run starts the tally again', r.afterRestart === 0, 'was ' + r.afterRestart);
+    check('no errors', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n[5c] a crouching marble wears nothing beside it');
+  {
+    const { page } = await newPage(browser);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      App.set(ST.HOME); Run.begin();
+      for (let i = 0; i < 60 * 3; i++) update(1 / 60);
+      Gen.stop(); Obstacles.clear(); VFX.clear();
+      App.set(ST.PLAYING);
+      Race.racers.forEach(p => { if (!p.human) { p.alive = false; p.coasting = true; p.d = -5000; } });
+      Player.place(1, Player.d);
+      Player.alive = true; Player.floating = false; Player.spawnT = 1;
+      Player.slow = 0; Player.boost = 0; Player.immune = 0;
+
+      /* The band either side of the marble, where the old action lines lived:
+         they reached from about 1.3 to 2.1 radii out. Start at 1.15 so the
+         standing marble's own outline — which moves when it shrinks, and is
+         supposed to — is not mistaken for something drawn beside it. */
+      const band = () => {
+        const rr = playerRadius(), cx = Player.x(), cy = Player.y();
+        const cols = [];
+        for (const s of [-1, 1]) {
+          for (let f = 1.15; f <= 2.2; f += 0.07) {
+            for (let dy = -0.7; dy <= 0.7; dy += 0.14) {
+              const d = ctx.getImageData(Math.round((cx + s * rr * f) * VIEW.dpr),
+                                         Math.round((cy + rr * dy) * VIEW.dpr), 1, 1).data;
+              cols.push(d[0] + ',' + d[1] + ',' + d[2]);
+            }
+          }
+        }
+        return cols.join(' ');
+      };
+      Player.crouch = false; Player.crouchAmt = 0; VFX.clear(); render();
+      const standing = band();
+      Player.crouch = true; Player.crouchAmt = 1; VFX.clear(); render();
+      const crouching = band();
+      /* and the bump ring is untouched — it was never a crouch mark */
+      Player.crouch = false; Player.crouchAmt = 0; Player.slow = CFG.BUMP_SLOW_TIME;
+      VFX.clear(); render();
+      const slowed = band();
+      Player.slow = 0;
+      return { same: standing === crouching, ringStillThere: slowed !== standing };
+    });
+    check('crouching leaves the track beside the marble untouched', r.same === true);
+    check('the bump ring is still drawn — it was never the crouch mark',
+      r.ringStillThere === true);
     await page.close();
   }
 

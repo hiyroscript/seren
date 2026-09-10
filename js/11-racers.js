@@ -21,28 +21,6 @@ var AI_LEVELS = {
             waves: 4, duck: 1.00, lead: 1.15, greed: 1.00 }
 };
 var AI_ORDER = ['easy', 'normal', 'hard', 'brutal'];
-
-/* What the mystery square can hand out, and how often. Rolled per racer rather
-   than per square: six racers crossing the same one is six separate gambles,
-   and a rival taking it first must not give the answer away. Net favourable —
-   half of it is a shove — but a quarter of it is the setback, which is what
-   makes steering into one a decision rather than a formality. */
-var MYSTERY_ODDS = [
-  { id: 'boost',      w: 34 },   /* the yellow pad's shove */
-  { id: 'superBoost', w: 16 },   /* the rare pad's */
-  { id: 'immune',     w: 26 },   /* a few seconds nothing can touch you */
-  { id: 'slow',       w: 24 }    /* and the other side of the coin */
-];
-function rollMystery() {
-  var total = 0, i;
-  for (i = 0; i < MYSTERY_ODDS.length; i++) total += MYSTERY_ODDS[i].w;
-  var r = Math.random() * total;
-  for (i = 0; i < MYSTERY_ODDS.length; i++) {
-    r -= MYSTERY_ODDS[i].w;
-    if (r <= 0) return MYSTERY_ODDS[i].id;
-  }
-  return MYSTERY_ODDS[0].id;
-}
 function aiLevel() { return AI_LEVELS[Settings.cpu] || AI_LEVELS.normal; }
 
 function Racer(id, human, marbleKey) {
@@ -52,6 +30,8 @@ function Racer(id, human, marbleKey) {
   this.d = 0;
   this.lane = 1; this.xF = 0.5; this.fromF = 0.5; this.toF = 0.5; this.moveT = 1; this.dir = 0;
   this.crouch = false; this.crouchAmt = 0;
+  this.crouchWas = false;        /* to catch the moment one begins */
+  this.crouches = 0;             /* how many this racer has made this run */
   this.alive = true; this.spawnT = 1; this.immune = 0; this.immuneExt = 0;
   this.slow = 0;                 /* bump slowdown, seconds remaining */
   this.boostPower = 1;
@@ -79,7 +59,7 @@ Racer.prototype.place = function (lane, d) {
   this.lane = clamp(lane, 0, 2);
   this.xF = this.fromF = this.toF = this.laneF(this.lane);
   this.moveT = 1; this.dir = 0;
-  this.crouch = false; this.crouchAmt = 0;
+  this.crouch = false; this.crouchAmt = 0; this.crouchWas = false;
   this.alive = true; this.spawnT = 1;
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
   this.boostPower = 1;
@@ -226,6 +206,12 @@ Racer.prototype.update = function (dt, active) {
   /* nothing to duck under when you are over the top of it */
   if (this.inBubble()) this.crouch = false;
 
+  /* One tally mark per duck, counted where every racer's crouch settles rather
+     than at the keyboard, so a rival's counts the same as the player's and a
+     crouch the bubble just cancelled counts for nobody. */
+  if (this.crouch && !this.crouchWas) this.crouches++;
+  this.crouchWas = this.crouch;
+
   /* crouch easing */
   var target = (this.crouch && this.alive) ? 1 : 0;
   this.crouchAmt = approach(this.crouchAmt, target, CFG.CROUCH_RATE, dt);
@@ -260,7 +246,6 @@ Racer.prototype.update = function (dt, active) {
 Racer.prototype.draw = function () {
   if (!this.alive || !this.onCamera()) return;
   var x = this.x(), y = this.y();
-  var c = this.crouchAmt;
   var pop = this.spawnT < 1 ? easeOutBack(this.spawnT) : 1;
 
   var m = this.moveT < 1 ? Math.sin(this.moveT * PI) : 0;
@@ -293,22 +278,6 @@ Racer.prototype.draw = function () {
     gl.addColorStop(1, 'rgba(' + rgb + ',0)');
     ctx.fillStyle = gl;
     ctx.fillRect(-rr * 2.3, -rr * 2.3, rr * 4.6, rr * 4.6);
-  }
-
-  /* crouch action lines */
-  if (c > 0.03) {
-    ctx.globalAlpha = alpha * c * 0.55;
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
-    for (var i = 0; i < 3; i++) {
-      var off = (i - 1) * ry * 0.62;
-      var jt = Math.sin(App.time * 26 + i * 1.7) * rr * 0.14;
-      var len = rr * (0.52 + 0.24 * Math.abs(Math.sin(App.time * 18 + i)));
-      ctx.beginPath();
-      ctx.moveTo(-rx - rr * 0.34 + jt, off); ctx.lineTo(-rx - rr * 0.34 - len + jt, off);
-      ctx.moveTo(rx + rr * 0.34 - jt, off); ctx.lineTo(rx + rr * 0.34 + len - jt, off);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = alpha;
   }
 
   /* body */
@@ -513,7 +482,7 @@ var Race = {
       var p = this.racers[i];
       p.place(g.lane, -g.back * CFG.GRID_ROW);
       p.collisions = 0; p.finished = false; p.respawnT = 0; p.hitFlash = 0;
-      p.result = 0;
+      p.result = 0; p.crouches = 0; p.crouchWas = false;
       /* they roll up onto the grid rather than appearing on it */
       p.entryFrom = -CFG.ENTRY_DIST;
       p.entryD = p.entryFrom;
@@ -631,8 +600,8 @@ var Race = {
     return true;
   },
   /* the speed pad: a short, timed push, refreshed rather than stacked */
-  shoveForward: function (p, o, power) {
-    p.boostPower = power || (o && o.kind === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1);
+  shoveForward: function (p, o) {
+    p.boostPower = o && o.kind === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1;
     p.boost = CFG.BOOST_TIME;
     var ink = p.boostColor();
     var pale = p.boostPower > 1 ? '#E4DCFF' : '#FFF3B0';
@@ -656,46 +625,15 @@ var Race = {
       VFX.ripple(x, y, r * 1.2, r * 8, ink, .22, 6);
     }
   },
-  /* the mystery square: one roll, taken there and then. There is nothing to
-     carry and nothing to fire — what it gives you, it gives you on contact,
-     out of the same vocabulary of effects the rest of the track speaks in. */
+  /* The mystery square. It hands nothing out at the moment — the roll that
+     used to sit here is in the history if it is wanted back — so all a racer
+     gets for reaching one is the square lighting up under them and, if it is
+     the one being played, the sound of it opening. It is still marked taken
+     per racer, so it opens once each and never again. */
   mysteryTake: function (p, o) {
-    var got = rollMystery();
     if (o) o.flash = CFG.BOOST_FLASH;
-    /* the reveal reads first, wherever it lands, and what it turned out to be
-       comes in under it */
     if (p.human) Sound.play('mystery');
     else if (p.onCamera()) Sound.play('mysteryFar');
-
-    if (got === 'boost' || got === 'superBoost') {
-      this.shoveForward(p, null, got === 'superBoost' ? CFG.SUPER_BOOST_POWER : 1);
-      return got;
-    }
-
-    var on = p.onCamera();
-    var x = on ? p.x() : 0, y = on ? p.y() : 0, r = playerRadius();
-    var big = p.human ? 1 : 0.55;
-    if (got === 'immune') {
-      p.immune = Math.max(p.immune, CFG.MYSTERY_IMMUNITY);
-      p.immuneExt = 0;
-      if (p.human) { Sound.play('respawn'); VFX.addShake(3); }
-      if (on) {
-        VFX.ripple(x, y, r * 0.5, r * 4.0 * big, BUBBLE_INK, .55, 3.2);
-        VFX.ripple(x, y, r * 0.4, r * 2.6 * big, '#FFFFFF', .4, 2);
-        VFX.burst(x, y, Math.round(20 * big), { color: BUBBLE_INK,
-          spMin: 90, spMax: 340, sizeMax: 3.4, lifeMax: .6, world: true });
-      }
-    } else {
-      this.slowDown(p);
-      if (p.human) { Sound.play('bump'); VFX.addShake(6); }
-      else if (on) Sound.play('bumpFar');
-      if (on) {
-        VFX.ripple(x, y, r * 0.5, r * 3.2 * big, '#000', .45, 2.6);
-        VFX.burst(x, y, Math.round(16 * big), { color: '#000', dir: PI / 2,
-          spMin: 80, spMax: 300, sizeMax: 3.4, lifeMax: .5, streak: true, world: true });
-      }
-    }
-    return got;
   },
   slowDown: function (q) {
     /* refreshed, never stacked */
