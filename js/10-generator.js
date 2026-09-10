@@ -77,10 +77,10 @@ var KINDS = [
     make: function (last) { return E_boost(rollLane(last)); } },
   { id: 'superBoost', min: 0.00, w: function (k) { return 1; },
     make: function (last) { return E_boost(rollLane(last), true); } },
-  /* Rarer than the rare pad and by some way the rarest thing on the track: a
-     weight of 0.6 against the pad's 1 puts two or three on a whole run, where
-     squares come up a hundred times. Any rarer and most runs never show one. */
-  { id: 'mystery', min: 0.00, w: function (k) { return 0.6; },
+  /* A regular sight rather than a curiosity: a weight of 2 against the rare
+     pad's 1 puts roughly ten on a run. It hands nothing out at the moment, so
+     meeting one costs nothing either way. */
+  { id: 'mystery', min: 0.00, w: function (k) { return 2; },
     make: function (last) { return E_mystery(rollLane(last)); } }
 ];
 function rollLane(last) {
@@ -144,11 +144,10 @@ var Gen = {
     var g = CFG.REACTION_BASE + laneDistance(a.safe, b.safe) * CFG.REACTION_LANE;
     if (a.crouch) g += CFG.CROUCH_RELEASE;
     if (a.kind === 'mover' || a.kind === 'shuttle') g += CFG.CROUCH_RELEASE;
-    /* a mystery can hand out the strongest shove there is, so the track after
-       one has to be as open as the track after the pad that does */
-    if (a.kind === 'superBoost' || a.kind === 'mystery') {
-      g *= 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER;
-    } else if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
+    /* a mystery hands nothing out for now, so nobody leaves one travelling any
+       faster than they met it and the track after it needs no extra room */
+    if (a.kind === 'superBoost') g *= 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER;
+    else if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
     return g;
   },
 
