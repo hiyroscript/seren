@@ -8,7 +8,7 @@ var Run = {
   hudPulse: 0, milestone: 0,
   finalActive: false, finalStart: 0,
   wall: null, seq: null, lineAcc: 0,
-  countT: 0, countIdx: 0,
+  countT: 0, countIdx: 0, gridStart: false,
 
   /* ---------- lifecycle ---------- */
   begin: function () {
@@ -25,6 +25,7 @@ var Run = {
   startCountdown: function (full) {
     this.countIdx = full ? 0 : 3;
     this.countT = 0;
+    this.gridStart = !!full;      /* only the start of a race spreads the grid */
     App.set(ST.COUNTDOWN);
     Sound.play(this.countIdx === 3 ? 'go' : 'count');
   },
@@ -49,9 +50,13 @@ var Run = {
         if (this.countIdx >= 4) {
           this.countT = 0;
           /* six racers start shoulder to shoulder: give the grid a moment to
-             spread before anyone can be shoved out of it */
-          for (var g = 0; g < Race.racers.length; g++) {
-            Race.racers[g].immune = CFG.GRID_IMMUNITY;
+             spread before anyone can be shoved out of it. Coming back from a
+             pause is not a start — the field is long since spread, and grace
+             handed out there would make the pause button a shield. */
+          if (this.gridStart) {
+            for (var g = 0; g < Race.racers.length; g++) {
+              Race.racers[g].immune = CFG.GRID_IMMUNITY;
+            }
           }
           App.set(ST.PLAYING);
           return;
@@ -135,7 +140,8 @@ var Run = {
       if (o.passed || o.wd + o.hM > Player.d) continue;
       o.passed = true;
       var r = o.rect(), near = null;
-      if (Player.alive) {
+      /* carried over the top of it is not squeezing past it */
+      if (Player.alive && !Player.inBubble()) {
         var gap = Math.max(r.x - px, px - (r.x + r.w));
         if (gap < pr * 1.5) near = { x: px, y: py };     /* squeezed by, or ducked under */
       }

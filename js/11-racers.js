@@ -219,7 +219,11 @@ Racer.prototype.update = function (dt, active) {
         this.immune = 0; this.immuneExt = 0;
         if (this.human) {
           Sound.play('immuneEnd');
-          VFX.ripple(this.x(), this.y(), playerRadius(), playerRadius() * 2.1, '#000', .45, 1.6);
+          /* nothing to mark while the bubble still has them: the shell is the
+             signal, and a ring under it would only read as noise */
+          if (!this.inBubble()) {
+            VFX.ripple(this.x(), this.y(), playerRadius(), playerRadius() * 2.1, '#000', .45, 1.6);
+          }
         }
       }
     }
@@ -739,7 +743,6 @@ var Race = {
     if (!p.onCamera()) return;
     var x = p.x(), y = p.y(), r = playerRadius();
     if (p.human) Sound.play('pop'); else Sound.play('popFar');
-    VFX.ripple(x, y, r * 1.9, r * 3.2, BUBBLE_INK, .55, 2.2);
     for (var i = 0; i < (Settings.reduced ? 3 : 9); i++) {
       var a = rand(0, TAU), sp = rand(70, 240);
       VFX.parts.push({

@@ -45,6 +45,13 @@ function resumeGame() {
   Screens.show(null);
   Input.releaseAll();
   Sound.play('ui');
+  /* whatever grace a racer was carrying when the run stopped does not come
+     back with it: the pause button is not a shield. The bubble is untouched —
+     it is the respawn carrying on, not immunity. */
+  for (var i = 0; i < Race.racers.length; i++) {
+    Race.racers[i].immune = 0;
+    Race.racers[i].immuneExt = 0;
+  }
   if (pausedFrom === ST.COUNTDOWN) App.set(ST.COUNTDOWN);
   else Run.startCountdown(false);
 }
