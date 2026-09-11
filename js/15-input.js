@@ -10,6 +10,7 @@
 function pid(e) { return String(e.pointerId === undefined ? 'mouse' : e.pointerId); }
 
 var Input = {
+  lastTap: null,
   crouchHeld: false,
   crouchKeys: {},
   pointers: {},          /* id -> {x,y,x0,y0,t0,lx,ly,lt,swiped,crouching} */
@@ -25,6 +26,7 @@ var Input = {
   LANE_COOLDOWN: 0.09,
 
   releaseAll: function () {
+    this.lastTap = null;
     this.crouchHeld = false; this.crouchKeys = {};
     this.pointers = {}; this.crouchHold = 0; this.laneLock = 0;
   },
@@ -77,7 +79,12 @@ var Input = {
     if (App.state === ST.HOME && Iris.mode !== 'in') { Home.press(e.clientX, e.clientY); return; }
     if (!this.canPlay()) return;
 
-    this.pointers[id] = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY,
+    var slot = itemSlotRect();
+    if (e.clientX >= slot.x && e.clientX <= slot.x + slot.w &&
+        e.clientY >= slot.y && e.clientY <= slot.y + slot.h) {
+      Race.useItem(Player); this.lastTap = null; return;
+    }
+    this.pointers[id] = { downX: e.clientX, downY: e.clientY, downT: App.time, moved: false, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY,
       lx: e.clientX, ly: e.clientY, lt: App.time, t0: App.time,
       swiped: false, crouching: false, dirX: 0, peak: e.clientX };
   },
@@ -86,6 +93,7 @@ var Input = {
     if (App.state === ST.HOME && e.pointerType === 'mouse') Home.hover(e.clientX, e.clientY);
     var p = this.pointers[id];
     if (!p) return;
+    if (Math.hypot(e.clientX - p.downX, e.clientY - p.downY) > 12) p.moved = true;
     var now = App.time, need = this.swipeDist();
     var rest = now - p.lt;              /* how long this finger has been still */
 
@@ -131,6 +139,14 @@ var Input = {
     var p = this.pointers[id];
     if (App.state === ST.HOME) { Home.release(e.clientX, e.clientY); }
     if (!p) return;
+    if (e.type !== 'pointercancel' && this.canPlay() && !p.moved && !p.crouching &&
+        !p.swiped && App.time - p.downT < .22 &&
+        Math.hypot(e.clientX - p.downX, e.clientY - p.downY) <= 12) {
+      if (this.lastTap && App.time - this.lastTap.t < .3 &&
+          Math.hypot(e.clientX - this.lastTap.x, e.clientY - this.lastTap.y) < 48) {
+        Race.useItem(Player); this.lastTap = null;
+      } else this.lastTap = { t: App.time, x: e.clientX, y: e.clientY };
+    } else this.lastTap = null;
     delete this.pointers[id];
     this.updateHold();
   },
@@ -149,7 +165,8 @@ var Input = {
     if (!Input.canPlay()) return;
     if (e.repeat) { if (k === ' ' || k === 's' || k === 'S' || k === 'ArrowDown') Input.crouchKeys[k] = true; return; }
 
-    if (k === 'ArrowLeft' || k === 'a' || k === 'A' || k === 'q' || k === 'Q') { Input.move(-1); e.preventDefault(); }
+    if (k === 'Shift') { Race.useItem(Player); e.preventDefault(); }
+    else if (k === 'ArrowLeft' || k === 'a' || k === 'A' || k === 'q' || k === 'Q') { Input.move(-1); e.preventDefault(); }
     else if (k === 'ArrowRight' || k === 'd' || k === 'D') { Input.move(1); e.preventDefault(); }
     else if (k === 'ArrowDown' || k === 's' || k === 'S' || k === ' ' || k === 'Spacebar') {
       Input.crouchKeys[k] = true; e.preventDefault();

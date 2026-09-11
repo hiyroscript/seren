@@ -195,8 +195,7 @@ async function newPage(browser, opts) {
       out.square = Math.abs(o.wF * PF.w - metresToPx(o.hM)) < 1.5;   /* as wide as it is long */
       out.kind = o.kind;
 
-      /* taking one grants nothing at all: the racer leaves it exactly as it
-         arrived, and the square disappears */
+      /* Pickups fill the slot without changing speed or position. */
       const p0 = Race.racers[0];
       p0.alive = true; p0.boost = 0; p0.boostPower = 1; p0.immune = 0; p0.slow = 0;
       const beforeTake = [p0.boost, p0.boostPower, p0.immune, p0.slow,
@@ -206,6 +205,7 @@ async function newPage(browser, opts) {
       out.unchanged = [p0.boost, p0.boostPower, p0.immune, p0.slow,
                        p0.speedScale(), p0.d].join('|') === beforeTake;
       out.removed = !Obstacles.list.includes(o);
+      out.itemGranted = p0.item === 'falseMystery';
       out.smaller = o.wF * 3 < 0.50;
       out.noRollTable = typeof window.rollMystery === 'undefined' &&
                         typeof window.MYSTERY_ODDS === 'undefined';
@@ -302,8 +302,9 @@ async function newPage(browser, opts) {
     });
     check('the square is a pickup, not a hazard', r.harmful === false);
     check('the square is square', r.square === true);
-    check('taking one grants nothing — no shove, no cover, no setback', r.unchanged === true);
+    check('taking one preserves speed, immunity and position', r.unchanged === true);
     check('collection removes the square immediately', r.removed === true);
+    check('pickup fills the item slot', r.itemGranted === true);
     check('mystery squares are smaller', r.smaller === true);
     check('the outcome table is gone rather than left dormant', r.noRollTable === true);
     check('one racer takes a given square exactly once', r.takesBySameRacer === 1, 'took ' + r.takesBySameRacer);
@@ -316,6 +317,66 @@ async function newPage(browser, opts) {
       check(key, r[key] === true);
     }
     check('no errors', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
+
+  console.log('\n[4b] items and input');
+  for (const opts of [{ viewport: { width: 1200, height: 900 } },
+    { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {
+    const { page, errs } = await newPage(browser, opts);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      Run.begin(); Gen.stop(); App.set(ST.PLAYING); Obstacles.clear(); VFX.clear();
+      Race.racers.forEach((p, i) => { p.ai = null; p.place(0, -100 - i * 10); });
+      Player.place(1, 100); Race.camD = Player.d;
+      const out = {};
+      const pickup = Obstacles.spawn({ kind: 'mystery', lane: 1 }, 100)[0];
+      Race.mysteryTake(Player, pickup);
+      out.pickupFX = VFX.pickups.length === 1;
+      render();
+      Input.onKeyDown({ key: 'Shift', preventDefault() {} });
+      const trap = Obstacles.list[0];
+      out.drop = trap.kind === 'falseMystery' && trap.wd + trap.hM < Player.d &&
+        !racerHits(Player, trap) && Player.item === null;
+      const q = Race.racers[1], q2 = Race.racers[2];
+      q.place(1, trap.wd + trap.hM / 2); q2.place(1, q.d);
+      Race.update(0, 1);
+      out.singleHit = !q.alive && q2.alive && !Obstacles.list.includes(trap);
+      Player.item = 'falseMystery'; App.set(ST.PAUSED);
+      out.pauseGuard = !Race.useItem(Player) && Player.item !== null;
+      App.set(ST.PLAYING); Player.floating = true;
+      out.bubbleGuard = !Race.useItem(Player);
+      Player.floating = false;
+      Player.finished = true;
+      out.finishGuard = !Race.useItem(Player);
+      Player.finished = false;
+      Settings.effects = 'reduced'; render();
+      const fxClock = Race.clock;
+      App.set(ST.PAUSED); update(.2); render();
+      out.pickupPause = Race.clock === fxClock;
+      App.set(ST.PLAYING); Settings.effects = 'full';
+      const e = { pointerId: 1, clientX: 100, clientY: 200, type: 'pointerup' };
+      Input.releaseAll(); Input.onDown(e); Input.onUp(e); App.time += .1;
+      Input.onDown(e); Input.onUp(e);
+      out.doubleTap = Player.item === null;
+      Player.item = 'falseMystery'; Input.releaseAll();
+      Input.onDown(e); Input.onUp({ ...e, type: 'pointercancel' });
+      App.time += .1; Input.onDown(e); Input.onUp(e);
+      out.cancelGuard = Player.item !== null;
+      Input.releaseAll();
+      const slot = itemSlotRect();
+      Input.onDown({ ...e, clientX: slot.x + slot.w / 2, clientY: slot.y + slot.h / 2 });
+      out.slot = Player.item === null && slot.x >= 0 && slot.y + slot.h <= VIEW.h;
+      Player.item = 'falseMystery'; restartRun();
+      out.reset = Player.item === null && Obstacles.list.length === 0;
+      App.set(ST.COMPLETED); render();
+      out.noDialog = !document.getElementById('panel-complete') &&
+        !document.getElementById('finishActions').hidden;
+      return out;
+    });
+    for (const [name, ok] of Object.entries(r)) check(name, ok === true);
+    check('item rendering has no browser errors', errs.length === 0, errs.join(' | '));
     await page.close();
   }
 
@@ -560,15 +621,15 @@ async function newPage(browser, opts) {
       for (let i = 0; i < 60 * 1500; i++) { update(1 / 60); render(); if (App.state === ST.COMPLETED) break; }
       return { frozen, moving, reset, multBefore, paused, counted, keptSpeed,
                state: App.state,
-               statSpeed: document.getElementById('statSpeed').textContent,
-               statDist: document.getElementById('statDist').textContent,
-               statPos: document.getElementById('statPos').textContent };
+               statSpeed: Run.mult.toFixed(2) + 'x',
+               statDist: String(Run.distance),
+               statPos: Player.result + ' / ' + Race.racers.length };
     });
     check('pause stops the run, its clock and its climb', r.paused === true && r.frozen === true);
     check('resume counts back in, then runs', r.counted === true && r.moving === true);
     check('the climb carries on from where it paused', r.keptSpeed === true, 'was ' + r.multBefore);
     check('restart clears distance, speed and the track', r.reset === true);
-    check('the run reaches the completion panel', r.state === 'COMPLETED', r.state);
+    check('the run reaches completion', r.state === 'COMPLETED', r.state);
     check('completion reports the final speed', r.statSpeed === '3.00x', r.statSpeed);
     check('completion reports distance and position', /\d/.test(r.statDist) && /\//.test(r.statPos),
       r.statDist + ' / ' + r.statPos);
@@ -641,7 +702,7 @@ async function newPage(browser, opts) {
         distanceAtLine: Math.abs(Run.distance - lineD) < Run.marbleM(),
         distanceShort: Run.distance < Player.d,
         pos: Player.pos, place: Player.result,
-        statPos: document.getElementById('statPos').textContent
+        statPos: Player.result + ' / ' + Race.racers.length
       };
     });
     check('the line is planted ahead of the whole field', r.aheadOfAll === true && r.anyoneFinished === false);

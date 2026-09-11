@@ -176,3 +176,7 @@ body.reduced .a1,body.reduced .a2,body.reduced .a3,body.reduced .a4,body.reduced
   background:var(--ink);transform:translateX(-50%);border-radius:2px}
 @keyframes rot{0%,30%{transform:rotate(90deg)}55%,100%{transform:rotate(0)}}
 body.reduced .rotIcon{animation:none}
+
+#finishActions{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);left:50%;transform:translateX(-50%);display:flex;gap:12px;pointer-events:auto}
+#finishActions[hidden]{display:none}
+#finishActions .btn{width:auto;white-space:nowrap}

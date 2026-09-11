@@ -20,6 +20,10 @@ var AI = {
     /* one temperament per decision, not one per lane: a racer that fancies a
        shove this instant must weigh every column with the same nerve */
     a.brave = Math.random() < L.aggr;
+    if (p.item && Race.clock - p.itemPickedAt > .6 && Race.racers.some(function (q) {
+      return q !== p && q.alive && !q.finished && !q.inBubble() &&
+        q.lane === p.lane && p.d - q.d > 2 && p.d - q.d < L.look;
+    })) Race.useItem(p);
 
     var best = p.lane, bestCost = 1e9, here = 0;
     for (var l = 0; l < 3; l++) {
@@ -53,9 +57,8 @@ var AI = {
       var prox = 1 - clamp(gap / look, 0, 1);          /* nearer hurts more */
       var weight = 1 / waves;                          /* the wave in front matters most */
       if (!o.harmful) {
-        /* a pad is worth steering into and the sharper racers know it; a
-           mystery square hands nothing out for now, so it pulls at nobody */
-        if (o.kind !== 'mystery') cost -= 8 * prox * weight * L.greed;
+        /* An empty slot makes a pickup worth steering towards. */
+        if (o.kind !== 'mystery' || !p.item) cost -= 8 * prox * weight * L.greed;
         continue;
       }
       if (o.crouch) {

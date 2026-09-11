@@ -304,13 +304,13 @@ var Run = {
     this.tickWorld(dt);
     Race.camD = approach(Race.camD, this.parkCamD(), 2.4, dt);
     if (App.state !== ST.FINISH) return;
-    /* the panel waits for the racer to come to rest on its mark, and a beat
+    /* navigation waits for the racer to come to rest on its mark, and a beat
        longer, so the rest of the field can still be seen coming in */
     if (Player.rollV <= 0) s.hold += dt;
     if (s.hold >= CFG.PARK_HOLD || s.t >= 14) {
       App.set(ST.COMPLETED);
       Sound.play('complete');
-      Screens.showComplete();
+      Screens.show(null);
     }
   }
 };

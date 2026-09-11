@@ -4,24 +4,17 @@
    SCREENS + CHROME
    ========================================================================== */
 var Screens = {
-  ids: ['lang', 'howto', 'marble', 'cpu', 'settings', 'pause', 'complete'],
+  ids: ['lang', 'howto', 'marble', 'cpu', 'settings', 'pause'],
   show: function (id) {
     for (var i = 0; i < this.ids.length; i++) {
       var el = document.getElementById('panel-' + this.ids[i]);
       if (el) el.classList.toggle('show', this.ids[i] === id);
     }
-  },
-  showComplete: function () {
-    var p = Player.result || Race.finishOrder.length + 1;
-    document.getElementById('statPos').textContent = p + ' / ' + Race.racers.length;
-    document.getElementById('statDist').textContent = numFmt(Run.distance) + ' ' + t('meters');
-    document.getElementById('statHits').textContent = numFmt(Run.collisions);
-    document.getElementById('statSpeed').textContent = Run.mult.toFixed(2) + 'x';
-    this.show('complete');
   }
 };
 
 function syncChrome() {
+  document.getElementById('finishActions').hidden = App.state !== ST.COMPLETED || App.blocked;
   var b = document.getElementById('pauseBtn');
   var visible = (App.state === ST.PLAYING || App.state === ST.RESPAWNING || App.state === ST.COUNTDOWN);
   b.classList.toggle('show', visible && !App.blocked);
