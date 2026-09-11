@@ -149,13 +149,44 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radiu
 body.reduced .a1,body.reduced .a2,body.reduced .a3,body.reduced .a4,body.reduced .a5{animation:none}
 @media (prefers-reduced-motion:reduce){.a1,.a2,.a3,.a4,.a5{animation:none}}
 
+/* ---------- the results dialog ----------
+   Smoked glass over the parked field: the place it paid, what taking it cost,
+   and the way out. The X hands the screen back without ending it. */
+#resultsDialog{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(320px,86vw);max-height:calc(100% - 36px);overflow-y:auto;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  padding:26px 22px 22px;
+  background:rgba(255,255,255,.74);
+  border:1.5px solid var(--hair);border-radius:20px;
+  box-shadow:0 18px 44px rgba(0,0,0,.10);
+  -webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
+  pointer-events:auto;touch-action:pan-y;
+  animation:resIn .3s var(--ease) both;
+}
+#resultsDialog[hidden]{display:none}
+@keyframes resIn{from{opacity:0;transform:translate(-50%,-46%)}to{opacity:1;transform:translate(-50%,-50%)}}
+body.reduced #resultsDialog{animation:none}
+@media (prefers-reduced-motion:reduce){#resultsDialog{animation:none}}
+#resultsClose{
+  position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:50%;
+  border:1px solid var(--hair);background:transparent;color:var(--soft);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .2s var(--ease),color .2s var(--ease),transform .12s var(--ease)}
+#resultsClose:hover,#resultsClose:focus-visible{border-color:var(--ink);color:var(--ink)}
+#resultsClose:active{transform:scale(.9)}
+#resultsClose svg{width:12px;height:12px}
+.resultPlace{font-weight:700;font-size:clamp(38px,12vw,54px);line-height:1;
+  letter-spacing:.09em;text-indent:.09em;font-variant-numeric:tabular-nums}
+#resultsDialog .stack{width:100%;gap:10px}
+
 /* ---------- completion ---------- */
-.stats{display:flex;flex-direction:column;gap:1px;width:min(320px,84vw);margin:4px 0 10px}
+.stats{display:flex;flex-direction:column;gap:1px;width:100%;margin:2px 0 6px}
 .stat{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
-  padding:13px 0;border-bottom:1px solid rgba(255,255,255,.18)}
+  padding:11px 0;border-bottom:1px solid var(--hair)}
 .stat:last-child{border-bottom:none}
-.stat dt{font-size:11px;letter-spacing:.18em;opacity:.6}
-.stat dd{font-size:22px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.stat dt{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--soft)}
+.stat dd{font-size:21px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums}
 
 /* ---------- pause button ---------- */
 #pauseBtn{
@@ -177,6 +208,8 @@ body.reduced .a1,body.reduced .a2,body.reduced .a3,body.reduced .a4,body.reduced
 @keyframes rot{0%,30%{transform:rotate(90deg)}55%,100%{transform:rotate(0)}}
 body.reduced .rotIcon{animation:none}
 
-#finishActions{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);left:50%;transform:translateX(-50%);display:flex;gap:12px;pointer-events:auto}
+#finishActions{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);left:50%;
+  transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:10px;
+  width:calc(100% - 32px);pointer-events:auto}
 #finishActions[hidden]{display:none}
-#finishActions .btn{width:auto;white-space:nowrap}
+#finishActions .btn{width:auto;white-space:nowrap;padding:14px 22px}

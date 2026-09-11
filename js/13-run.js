@@ -6,6 +6,7 @@
 var Run = {
   distance: 0, mult: 1, speedTimer: 0, collisions: 0, playT: 0,
   hudPulse: 0, milestone: 0,
+  posShown: 0, posFlash: 0, posDir: 0,   /* the place the HUD is reporting */
   finalActive: false, finalStart: 0,
   line: null, seq: null, lineAcc: 0,
   countT: 0, countIdx: 0, gridStart: false,
@@ -14,12 +15,14 @@ var Run = {
   begin: function () {
     this.distance = 0; this.mult = 1; this.speedTimer = 0; this.collisions = 0;
     this.hudPulse = 0; this.milestone = 0;
+    this.posShown = 0; this.posFlash = 0; this.posDir = 0;
     this.playT = 0; this.finalActive = false; this.finalStart = 0;
     this.line = null; this.seq = null; this.lineAcc = 0;
     Obstacles.clear(); VFX.clear();
     Race.reset();
     Gen.reset(0);
     Input.releaseAll();
+    Results.hide();
     this.startCountdown(true);
   },
   startCountdown: function (full) {
@@ -123,7 +126,23 @@ var Run = {
     /* the run is as long as the track to the line: the run-out past it is not
        ground the racer had to earn */
     if (!Player.finished) this.distance = Player.d;
+    this.trackPlace(dt);
     VFX.scrollWorld(metresToPx(Race.camD - cam));
+  },
+
+  /* The place readout answers to the standings, not to the frame. When the
+     place this racer is standing in actually changes, the readout is handed a
+     colour — one for a place taken, another for a place lost — and that colour
+     fades back to the resting ink over POS_FLASH seconds. */
+  trackPlace: function (dt) {
+    if (this.posFlash > 0) this.posFlash = Math.max(0, this.posFlash - dt / CFG.POS_FLASH);
+    var pos = (Player && Player.pos) ? Player.pos : 0;
+    if (!pos) return;
+    if (!this.posShown) { this.posShown = pos; return; }   /* the first read is not a change */
+    if (pos === this.posShown) return;
+    this.posDir = pos < this.posShown ? 1 : -1;
+    this.posShown = pos;
+    this.posFlash = 1;
   },
 
   finalProgress: function () { return Math.max(0, this.distance - this.finalStart); },
@@ -311,6 +330,7 @@ var Run = {
       App.set(ST.COMPLETED);
       Sound.play('complete');
       Screens.show(null);
+      Results.show();
     }
   }
 };

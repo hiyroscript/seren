@@ -23,10 +23,16 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   motion is enabled. Pads refresh the effect without stacking.
 - Small bubbly squares marked `?` spawn ahead of the leader, like hazards, and
   can be collected off camera. The first racer to touch one removes it for everyone.
-  They fill one item slot with a fake mystery square. Use it to drop a trap behind you;
-  its question mark is upside down, and it disappears when it hits a racer, triggering
-  the usual elimination and respawn. Collecting another pickup refills the same slot. Unclaimed squares last 10 seconds from spawning and blink
-  during the final 2 seconds (a steady fade with reduced motion). Pausing freezes them.
+  They fill one item slot with one of two things, drawn at random:
+  - a fake mystery square — drop it to leave a trap behind you; its question mark is
+    upside down, and it disappears when it hits a racer, triggering the usual
+    elimination and respawn;
+  - a yellow bolt — the yellow pad's shove exactly, carried with you and spent where
+    you want it, refreshed rather than stacked like every other boost.
+
+  Collecting another pickup refills the same slot. Unclaimed squares last 10 seconds
+  from spawning and blink during the final 2 seconds (a steady fade with reduced
+  motion). Pausing freezes them.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
@@ -43,8 +49,14 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   furthest, every place behind stops one step earlier, each in the column the staircase
   hands it. The field parks in the order it finished.
 - The camera stops at the line when you cross it, so the run-out is something you watch.
-  The rest of the field keeps racing. No results dialog covers the parked field;
-  Play Again and Home buttons remain available below it.
+  The rest of the field keeps racing.
+- Once you are parked, the results come up on smoked glass over the field rather than
+  instead of it: the place you took in big type, then the number of times you were
+  eliminated and the number of times you ducked, and Play Again and Return Home at the
+  foot of it. The X in its corner puts it away without ending the screen — Play Again,
+  Return Home and Show Results take over at the bottom, and Show Results brings it back.
+- The place readout at the top left changes colour for a moment whenever your place
+  changes: one ink for a place taken, another for a place lost, fading back to black.
 - The line itself wears the same soap film as the mystery squares and the respawn
   bubbles, drawn as a band across all three columns.
 
@@ -155,9 +167,11 @@ works from a project subpath as well as from a user or organisation root.
 `test/suite.js` drives the real game in a headless browser and asserts its
 invariants — no mocks, it calls the game's own `update()` and `render()`. It
 covers the speed readout, the ground the camera actually travels, the pads and
-the mystery square, the crouch tally, the generator's fairness floor, pause and
-restart, the finish line and the parked field past it, reduced motion, both
-languages, and full runs at three difficulties on desktop and mobile viewports.
+the mystery square, both items it hands out, the place readout's colour change,
+the crouch tally, the generator's fairness floor, pause and restart, the finish
+line, the parked field past it and the results dialog over it, reduced motion,
+both languages, and full runs at three difficulties on desktop and mobile
+viewports.
 
 It is a development tool and is not part of the site. It needs a static server
 and Playwright's Chromium:
