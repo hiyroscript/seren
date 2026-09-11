@@ -1,2 +1,5 @@
-make the falling square hazard more common and make their spawn behaviour de same as mystery squares.
-make mystery squares slightly more common
+Slightly increase the traffic density of hazards.
+
+Slightly increase the spawn rate of mystery squares and give them a longer lifespan.
+
+Remove the falling square hazard.
