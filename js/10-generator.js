@@ -183,10 +183,11 @@ var Gen = {
    stretch of course the field is actually running — a marble's length in front
    of you as readily as half a lap up the track.
 
-   The one thing it keeps from the days it was rolled with the hazards is how
-   often it comes: a square every three quarters of a minute or so, which is
-   what a weight of 2 in the table above used to hand out over a run. The
-   interval is measured on the race clock, so a pause costs nobody a square.
+   How often it comes is its own clock: a square every forty seconds or so —
+   a little oftener than the weight of 2 in the table above used to hand out.
+   The interval is measured on the race clock, so a pause costs nobody a
+   square, and where one lands is Obstacles.drop below, the same routine the
+   falling squares are dropped by.
    ========================================================================== */
 var Mysteries = {
   enabled: false, next: 0,
@@ -205,44 +206,10 @@ var Mysteries = {
     else this.next = Race.clock + 0.5;
   },
 
-  /* the stretch a square may appear on: from a little ahead of the racer at
-     the back — anything behind that is ground nobody covers again, and the
-     world sweeps it up — to the far edge of the authored course, and never
-     past the run-in the finish line reserves for itself */
-  band: function (hM) {
-    var lo = Race.trailD() + CFG.MYSTERY_TAIL;
-    var hi = Math.min(Race.leadD() + CFG.WORLD_AHEAD, Gen.limit) - hM;
-    return hi > lo ? { lo: lo, hi: hi } : null;
-  },
+  /* any column, any place on the stretch the field is running. It blocks
+     nothing, so unlike a falling square it does not ask the row to be clear —
+     only that the column it lands in is. */
   drop: function () {
-    var hM = pxToMetres(colW()) * CFG.MYSTERY_SIZE;
-    var b = this.band(hM);
-    if (!b) return false;
-    for (var i = 0; i < 12; i++) {
-      var lane = randInt(0, 2), wd = rand(b.lo, b.hi);
-      if (!this.roomAt(wd, hM, lane)) continue;
-      Obstacles.spawn(E_mystery(lane), wd);
-      /* it can land anywhere along the course, and the course is read in
-         order — the same sort the dropped trap takes */
-      Obstacles.list.sort(function (a, c) { return a.wd - c.wd; });
-      return true;
-    }
-    return false;
-  },
-  /* nothing is dropped on top of anything: not a hazard, not another pickup,
-     and not a racer, which would be handed a square it never steered for */
-  roomAt: function (wd, hM, lane) {
-    var i, list = Obstacles.list, pad = hM * 1.2;
-    for (i = 0; i < list.length; i++) {
-      var o = list[i];
-      if (o.wd - pad > wd + hM || o.wd + o.hM + pad < wd) continue;
-      if (o.blocks(lane)) return false;
-    }
-    for (i = 0; i < Race.racers.length; i++) {
-      var p = Race.racers[i];
-      if (p.finished || p.lane !== lane) continue;
-      if (Math.abs(p.d - (wd + hM / 2)) < p.radiusM() + hM) return false;
-    }
-    return true;
+    return Obstacles.drop(pxToMetres(colW()) * CFG.MYSTERY_SIZE, false, E_mystery);
   }
 };

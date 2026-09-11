@@ -72,8 +72,8 @@ function superPhase() { return Settings.reduced ? 0 : Race.clock * 0.42; }
 
 var Obstacles = {
   list: [],
-  nextFall: 6,
-  clear: function () { this.list.length = 0; this.nextFall = 6; },
+  nextFall: CFG.FALL_LEAD,
+  clear: function () { this.list.length = 0; this.nextFall = CFG.FALL_LEAD; },
 
   /* factory: sizes derive from the column width, so they scale everywhere */
   spawn: function (entry, wd) {
@@ -81,8 +81,8 @@ var Obstacles = {
     var colM = pxToMetres(colW());     /* one column width, in metres */
     var out = [];
     if (entry.kind === 'fallingSquare') {
-      var fs = new Obstacle('fallingSquare', laneCenterF(entry.lane), .72 / 3,
-        colM * .72, false, [entry.lane], wd);
+      var fs = new Obstacle('fallingSquare', laneCenterF(entry.lane), CFG.FALL_SIZE / 3,
+        colM * CFG.FALL_SIZE, false, [entry.lane], wd);
       fs.fall = fs.fallMax = clamp(entry.fall || 2, .9, 3.2);
       fs.blast = 0;
       out.push(fs);
@@ -145,23 +145,86 @@ var Obstacles = {
     }
   },
 
+  /* ------------------------------------------------------------------
+     LOOSE SQUARES — the two things that are dropped onto the course rather
+     than authored into it. A mystery square and a falling square arrive the
+     same way: on their own clock, in any column, anywhere along the stretch
+     the field is actually running, and only where there is room. The three
+     routines below are that shared behaviour; Mysteries in the generator and
+     rain() just below both go through them.
+     ------------------------------------------------------------------ */
+
+  /* how much track a square that will hurt keeps clear of any hazard, in
+     metres at the speed the course is running: measured in seconds of travel,
+     so it means the same thing at 1.00x as it does at the ceiling */
+  clearM: function () { return CFG.FALL_CLEAR * CFG.BASE_SPEED * Run.mult; },
+
+  /* the stretch one may appear on: from a little ahead of the racer at the
+     back — anything behind that is ground nobody covers again, and the world
+     sweeps it up — to the far edge of the authored course, and never past the
+     run-in the finish line reserves for itself */
+  band: function (hM, clearRow) {
+    var lo = Race.trailD() + CFG.DROP_TAIL;
+    var hi = Math.min(Race.leadD() + CFG.WORLD_AHEAD, Gen.limit);
+    if (Run.line) hi = Math.min(hi, Run.line.d - CFG.LINE_CLEAR);
+    /* one that will hurt stops short of the generator's frontier as well: the
+       next authored row lands there, and the generator knows nothing of what
+       has been dropped, so a square any nearer could be crowded by a hazard
+       written after it */
+    if (clearRow && Gen.enabled) hi = Math.min(hi, Gen.frontier - this.clearM());
+    hi -= hM;
+    return hi > lo ? { lo: lo, hi: hi } : null;
+  },
+  /* nothing is dropped on top of anything: not a hazard, not another pickup,
+     and not a racer, which would be handed a square it never steered for.
+     One that will hurt asks for more than its own footprint — the whole row,
+     and clear track either side of it, because a square landing beside an
+     authored hazard could close the last column anybody had left. */
+  roomAt: function (wd, hM, lane, clearRow) {
+    var i, list = this.list, pad = hM * 1.2, clear = clearRow ? this.clearM() : 0;
+    for (i = 0; i < list.length; i++) {
+      var o = list[i];
+      var room = o.harmful ? Math.max(pad, clear) : pad;
+      if (o.wd - room > wd + hM || o.wd + o.hM + room < wd) continue;
+      if (clearRow && o.harmful) return false;
+      if (o.blocks(lane)) return false;
+    }
+    for (i = 0; i < Race.racers.length; i++) {
+      var p = Race.racers[i];
+      if (p.finished || p.lane !== lane) continue;
+      if (Math.abs(p.d - (wd + hM / 2)) < p.radiusM() + hM) return false;
+    }
+    return true;
+  },
+  /* twelve tries at a column and a place on that stretch; the first that has
+     room takes the square. `make` turns the column it found into an entry. */
+  drop: function (hM, clearRow, make) {
+    var b = this.band(hM, clearRow);
+    if (!b) return false;
+    for (var i = 0; i < 12; i++) {
+      var lane = randInt(0, 2), wd = rand(b.lo, b.hi);
+      if (!this.roomAt(wd, hM, lane, clearRow)) continue;
+      this.spawn(make(lane), wd);
+      /* it can land anywhere along the course, and the course is read in
+         order — so the list is put back in order behind it */
+      this.list.sort(function (a, c) { return a.wd - c.wd; });
+      return true;
+    }
+    return false;
+  },
+
   /* Like Redline's meteors: a fixed road mark and an independent fall clock.
-     Only fill a clear stretch, leaving both neighbouring columns available. */
+     Where one lands is aimed at nobody — it is weather, dropped onto the live
+     course exactly as a mystery square is, and often enough that a clear
+     stretch of track is never a promise. Nowhere clear to put one this instant
+     is not a square skipped: the next moment is another place to try. */
   rain: function () {
     if (Race.clock < this.nextFall) return;
-    this.nextFall = Race.clock + rand(5, 9);
-    var live = Race.racers.filter(function (p) { return p.alive && !p.finished; });
-    if (!live.length) return;
-    var p = pick(live), fall = rand(.9, 3.2), lane = randInt(0, 2);
-    var h = pxToMetres(colW()) * .72;
-    var wd = p.d + CFG.BASE_SPEED * Run.mult * p.speedScale() * fall - h / 2;
-    /* Stay inside the authored horizon so future rows cannot fill this gap. */
-    if (wd + h > Race.leadD() + CFG.WORLD_AHEAD || wd + h > Gen.limit) return;
-    if (Run.line && wd + h >= Run.line.d - CFG.LINE_CLEAR) return;
-    if (this.list.some(function (o) {
-      return o.harmful && o.wd < wd + h + 3 && o.wd + o.hM > wd - 3;
-    })) { this.nextFall = Race.clock + 1; return; }
-    this.spawn({ kind: 'fallingSquare', lane: lane, fall: fall }, wd);
+    var hM = pxToMetres(colW()) * CFG.FALL_SIZE;
+    if (this.drop(hM, true, function (lane) {
+      return { kind: 'fallingSquare', lane: lane, fall: rand(.9, 3.2) };
+    })) this.nextFall = Race.clock + rand(CFG.FALL_GAP_MIN, CFG.FALL_GAP_MAX);
+    else this.nextFall = Race.clock + 0.5;
   },
 
   drawFalling: function (o, r) {

@@ -13,9 +13,11 @@ catch (e) {
 }
 const URL = process.env.SEREN_URL || 'http://localhost:8123/index.html';
 
-/* how far apart mystery squares are expected to land over a whole run, with
-   room either side for the luck of one: the suite asserts the rate, not dice */
-const MYSTERY_EVERY_MIN = 24, MYSTERY_EVERY_MAX = 84;
+/* how far apart the two loose squares are expected to land over a whole run,
+   with room either side for the luck of one: the suite asserts the rate, not
+   dice. Falling squares are weather on a much shorter clock than mysteries. */
+const MYSTERY_EVERY_MIN = 20, MYSTERY_EVERY_MAX = 70;
+const FALL_EVERY_MIN = 2, FALL_EVERY_MAX = 7;
 
 let pass = 0, fail = 0;
 const failures = [];
@@ -522,7 +524,10 @@ async function newPage(browser, opts) {
       const rear = Race.racers[2]; rear.place(0, 100); Race.move(Player, 1);
       out.blockedRebound = !Player.alive && q.alive && !q.shield;
       rear.place(0, -1200);
-      reset(); q.place(0, 100); q.item = 'shield'; q.itemPickedAt = -10;
+      /* clear track and nobody alongside: a rival that changed column into the
+         human racer in the same breath would spend the shield it just raised */
+      reset(); Player.place(1, -1200); q.place(0, 100);
+      q.item = 'shield'; q.itemPickedAt = -10;
       q.ai = { next: 0, want: 0, duckFor: null, duckOk: true, seen: 0 };
       AI.think(q, .1); out.cpuShield = q.shield && q.item === null; q.ai = null;
       reset(); q.place(1, 100); q.shield = true; Race.separate();
@@ -543,8 +548,13 @@ async function newPage(browser, opts) {
       Obstacles.update(.41); out.impactClears = !Obstacles.list.includes(hit);
       reset(); Run.mult = 1; Race.clock = 10; Obstacles.nextFall = 0; Obstacles.rain();
       out.rainSpawns = Obstacles.list.some(o => o.kind === 'fallingSquare' && o.fall >= .9 && o.fall <= 3.2);
+      out.rainWaitsAgain = Obstacles.nextFall >= Race.clock + CFG.FALL_GAP_MIN &&
+        Obstacles.nextFall <= Race.clock + CFG.FALL_GAP_MAX;
       Run.line = { d: -2000 }; Obstacles.clear(); Obstacles.nextFall = 0; Obstacles.rain();
       out.finishRunIn = !Obstacles.list.length;
+      /* nowhere to put one is not a square skipped: it looks again shortly */
+      out.rainLooksAgainShortly = Obstacles.nextFall > Race.clock &&
+        Obstacles.nextFall <= Race.clock + 0.5 + 1e-9;
       Run.line = null; reset(); Player.item = 'shield'; Player.shield = true;
       for (const reduced of [false, true]) {
         Settings.effects = reduced ? 'reduced' : 'full';
@@ -552,7 +562,8 @@ async function newPage(browser, opts) {
         render();
       }
       Run.plantLine(); Run.cross(Player); out.finishClearsShield = !Player.shield;
-      Player.shield = true; Run.begin(); out.restart = !Player.shield && Obstacles.nextFall === 6;
+      Player.shield = true; Run.begin();
+      out.restart = !Player.shield && Obstacles.nextFall === CFG.FALL_LEAD;
       return out;
     });
     for (const [name, ok] of Object.entries(r)) check(name, ok === true);
@@ -696,6 +707,7 @@ async function newPage(browser, opts) {
       for (let run = 0; run < 3; run++) {
         App.set(ST.HOME); Run.begin();
         let mystery = 0, entries = 0, boost = 0, superBoost = 0, behindLead = 0;
+        let falling = 0, fallBehindLead = 0;
         const os = Obstacles.spawn.bind(Obstacles);
         Obstacles.spawn = function (e, wd) {
           entries++;
@@ -705,13 +717,19 @@ async function newPage(browser, opts) {
             if (wd < Race.leadD()) behindLead++;
             if (wd > Race.leadD() + CFG.WORLD_AHEAD + 1e-6) pastTheHorizon++;
           }
+          if (e.kind === 'fallingSquare') {
+            falling++;
+            if (wd < Race.leadD()) fallBehindLead++;
+            if (wd > Race.leadD() + CFG.WORLD_AHEAD + 1e-6) pastTheHorizon++;
+          }
           if (e.kind === 'boost') boost++;
           if (e.kind === 'superBoost') superBoost++;
           return os(e, wd);
         };
         for (let i = 0; i < 60 * 1500; i++) { update(1 / 60); if (App.state === ST.COMPLETED) break; }
         Obstacles.spawn = os;
-        perRun.push({ entries, mystery, boost, superBoost, behindLead, clock: Race.clock });
+        perRun.push({ entries, mystery, boost, superBoost, behindLead,
+          falling, fallBehindLead, clock: Race.clock });
       }
       return { perRun, notInTheTable, pastTheHorizon };
     });
@@ -726,12 +744,21 @@ async function newPage(browser, opts) {
     check('still a minority of the track, not a carpet of them',
       sum('mystery') / ent < 0.12,
       (100 * sum('mystery') / ent).toFixed(1) + '% of entries');
-    check('the rate the roll table used to give: one every three quarters of a minute',
+    check('a square every forty seconds or so — oftener than the old roll gave',
       every > MYSTERY_EVERY_MIN && every < MYSTERY_EVERY_MAX,
       'one every ' + every.toFixed(1) + 's');
     check('they turn up behind the leader too, not only at the frontier',
       sum('behindLead') >= sum('mystery') * 0.25,
       sum('behindLead') + ' of ' + sum('mystery'));
+    const fall = sum('falling') / 3, fallEvery = sum('clock') / Math.max(1, sum('falling'));
+    check('falling squares fall on the same sort of clock, a much shorter one',
+      fallEvery > FALL_EVERY_MIN && fallEvery < FALL_EVERY_MAX,
+      'one every ' + fallEvery.toFixed(1) + 's');
+    check('which makes them far commoner than the squares they are dropped like',
+      fall > my * 4, fall.toFixed(1) + ' vs mystery ' + my.toFixed(1) + ' per run');
+    check('and they too land behind the leader, not only at the frontier',
+      sum('fallBehindLead') >= sum('falling') * 0.25,
+      sum('fallBehindLead') + ' of ' + sum('falling'));
     check('and never past the course the world has authored', r.pastTheHorizon === 0,
       r.pastTheHorizon + ' past the horizon');
     await page.close();
@@ -757,7 +784,7 @@ async function newPage(browser, opts) {
       out.dropsThem = spots.length >= 50;
       out.everyOneIsASquare = spots.every(o => o.kind === 'mystery' && o.harmful === false);
       out.insideTheField = spots.every(o =>
-        o.wd >= lo + CFG.MYSTERY_TAIL - 1e-6 && o.wd + o.hM <= hi + CFG.WORLD_AHEAD + 1e-6);
+        o.wd >= lo + CFG.DROP_TAIL - 1e-6 && o.wd + o.hM <= hi + CFG.WORLD_AHEAD + 1e-6);
       out.everyColumn = new Set(spots.map(o => o.lanes[0])).size === 3;
       /* the whole point: not only ahead of the leader, and not only off camera */
       out.behindTheLeader = spots.some(o => o.wd < hi);
@@ -828,6 +855,93 @@ async function newPage(browser, opts) {
     });
     for (const [name, ok] of Object.entries(r)) check(name, ok === true);
     check('no errors while squares are dropped', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n[5f] a falling square is dropped the way a mystery square is');
+  {
+    const { page, errs } = await newPage(browser);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      Run.begin(); Gen.stop(); Mysteries.stop(); App.set(ST.PLAYING); Obstacles.clear();
+      Race.racers.forEach((p, i) => { p.ai = null; p.place(i % 3, 500 + i * 12); });
+      Player.place(1, 500); Race.camD = Player.d;
+      const out = {}, lo = Race.trailD(), hi = Race.leadD();
+      const due = () => { Obstacles.nextFall = Race.clock; Obstacles.rain(); };
+
+      /* sixty squares dropped by the real path, and where they landed */
+      const spots = [];
+      for (let i = 0; i < 60; i++) {
+        Obstacles.clear(); due();
+        if (Obstacles.list.length) spots.push(Obstacles.list[0]);
+      }
+      out.dropsThem = spots.length >= 50;
+      out.everyOneIsAFallingSquare = spots.every(o => o.kind === 'fallingSquare' &&
+        o.fall === o.fallMax && o.fall >= .9 && o.fall <= 3.2);
+      out.insideTheField = spots.every(o =>
+        o.wd >= lo + CFG.DROP_TAIL - 1e-6 && o.wd + o.hM <= hi + CFG.WORLD_AHEAD + 1e-6);
+      out.everyColumn = new Set(spots.map(o => o.lanes[0])).size === 3;
+      /* the point of it: no longer aimed at one racer's own arrival, so they
+         land behind the leader and in plain sight as readily as up the track */
+      out.behindTheLeader = spots.some(o => o.wd < hi);
+      out.inPlainSight = spots.some(o => o.onCamera());
+
+      /* a harmless square only wants its own column; one that will hurt wants
+         the whole row, so it can never close the last way past a hazard */
+      Obstacles.clear();
+      for (let d = lo; d < hi + CFG.WORLD_AHEAD + 6; d += 2) {
+        Obstacles.list.push(new Obstacle('square', .5, .26, 3, false, [1], d));
+      }
+      due();
+      out.noClearRowIsNoSquare = Obstacles.list.every(o => o.kind !== 'fallingSquare');
+      out.aMysteryStillFits = Mysteries.drop() === true;
+      /* and a square it could not place is not a square lost */
+      out.looksAgainShortly = Obstacles.nextFall > Race.clock &&
+        Obstacles.nextFall <= Race.clock + 0.5 + 1e-9;
+
+      /* the course is read in order, so one dropped into the middle of it sorts */
+      Obstacles.clear();
+      Obstacles.spawn({ kind: 'square', lane: 0 }, hi + 30);
+      Obstacles.spawn({ kind: 'square', lane: 0 }, lo + 2);
+      let sorted = true;
+      for (let i = 0; i < 20; i++) {
+        due();
+        for (let j = 1; j < Obstacles.list.length; j++) {
+          if (Obstacles.list[j].wd < Obstacles.list[j - 1].wd) sorted = false;
+        }
+      }
+      out.courseStaysInOrder = sorted;
+
+      /* nothing is ever dropped past the run-in the finish line reserves */
+      Gen.stopAt(hi + 5);
+      const capped = [];
+      for (let i = 0; i < 40; i++) {
+        Obstacles.clear(); due();
+        if (Obstacles.list.length) capped.push(Obstacles.list[0]);
+      }
+      out.neverPastTheLine = capped.length > 0 &&
+        capped.every(o => o.wd + o.hM <= hi + 5 + 1e-6);
+      Gen.stopAt(Infinity);
+
+      /* the clock it keeps is the race clock: a pause spends none of it */
+      Obstacles.clear();
+      Obstacles.nextFall = Race.clock - 1;
+      const held = Race.clock;
+      App.set(ST.PAUSED);
+      for (let i = 0; i < 60; i++) update(1 / 60);
+      out.pauseDropsNothing = Obstacles.list.length === 0 && Race.clock === held;
+      App.set(ST.PLAYING);
+      update(1 / 60);
+      out.dueMeansNow = Obstacles.list.filter(o => o.kind === 'fallingSquare').length === 1;
+      out.thenWaitsAgain = Obstacles.nextFall >= Race.clock + CFG.FALL_GAP_MIN &&
+        Obstacles.nextFall <= Race.clock + CFG.FALL_GAP_MAX;
+      render();
+      Mysteries.reset();
+      return out;
+    });
+    for (const [name, ok] of Object.entries(r)) check(name, ok === true);
+    check('no errors while falling squares are dropped', errs.length === 0, errs.join(' | '));
     await page.close();
   }
 
@@ -980,11 +1094,43 @@ async function newPage(browser, opts) {
       App.set(ST.HOME); Run.begin();
       /* every consecutive pair the generator lays down must leave at least the
          reaction time it promised, measured in seconds of travel at the speed
-         the course was written for */
+         the course was written for. Only the authored course is measured here:
+         mystery and falling squares are dropped onto it rather than written
+         into it, and keep their own clearances. */
       let worstGap = 1e9, pairs = 0, tooTight = 0;
       let lastWd = null, lastKind = null, lastMult = null;
+      const dropped = ['mystery', 'fallingSquare'];
+      /* what a falling square keeps instead: clear track either side of it,
+         from the hazards already on the course when it was dropped and from
+         the ones authored afterwards, which is why it is never dropped up
+         against the generator's frontier. The clearance is the one that was
+         asked of it at the moment it fell, in metres. */
+      const wantM = new Map();
+      let fallPairs = 0, fallTight = 0, fallWorst = 1e9;
+      function measureFalls(made) {
+        for (const o of Obstacles.list) {
+          if (!o.harmful || made.indexOf(o) >= 0) continue;
+          for (const m of made) {
+            if (!m.harmful) continue;
+            const want = wantM.has(m) ? wantM.get(m) : wantM.get(o);
+            if (want === undefined) continue;         /* neither one fell */
+            const gap = o.wd > m.wd ? o.wd - (m.wd + m.hM) : m.wd - (o.wd + o.hM);
+            fallPairs++;
+            if (gap - want < fallWorst) fallWorst = gap - want;
+            if (gap + 1e-6 < want) fallTight++;
+          }
+        }
+      }
       const os = Obstacles.spawn.bind(Obstacles);
       Obstacles.spawn = function (e, wd) {
+        if (dropped.indexOf(e.kind) >= 0) {
+          const made = os(e, wd);
+          if (e.kind === 'fallingSquare') {
+            for (const m of made) wantM.set(m, Obstacles.clearM());
+            measureFalls(made);
+          }
+          return made;
+        }
         /* the metres between two entries were written with the multiplier in
            force at the FIRST of them — measuring against the second's reads a
            step boundary as a gap that was never actually laid down */
@@ -995,15 +1141,21 @@ async function newPage(browser, opts) {
           if (secs < CFG.REACTION_BASE - 1e-6) tooTight++;
         }
         lastWd = wd; lastKind = e.kind; lastMult = Run.mult;
-        return os(e, wd);
+        const made = os(e, wd);
+        measureFalls(made);          /* an authored row may not crowd one either */
+        return made;
       };
       for (let i = 0; i < 60 * 1500; i++) { update(1 / 60); if (App.state === ST.COMPLETED) break; }
       Obstacles.spawn = os;
-      return { pairs, worstGap: +worstGap.toFixed(3), tooTight, base: CFG.REACTION_BASE };
+      return { pairs, worstGap: +worstGap.toFixed(3), tooTight, base: CFG.REACTION_BASE,
+        fallPairs, fallTight, fallWorst: +fallWorst.toFixed(2) };
     });
     check('no pair of obstacles is tighter than the reaction floor',
       r.tooTight === 0 && r.pairs > 100,
       r.tooTight + ' of ' + r.pairs + ' pairs, tightest ' + r.worstGap + 's vs floor ' + r.base + 's');
+    check('and no falling square is dropped, or built over, inside its clearance',
+      r.fallTight === 0 && r.fallPairs > 100,
+      r.fallTight + ' of ' + r.fallPairs + ' pairs, tightest ' + r.fallWorst + 'm inside it');
     await page.close();
   }
 
