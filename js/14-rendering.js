@@ -316,6 +316,8 @@ function drawItemSlot() {
   drawSoapRect(r.x, r.y, r.w, r.h, { t: Settings.reduced ? 0 : Race.clock, halo: 0 });
   if (Player.item === 'boost') {
     drawBolt(r.x + r.w / 2, r.y + r.h / 2, r.w * .56);
+  } else if (Player.item === 'shield') {
+    drawShield(r.x + r.w / 2, r.y + r.h / 2, r.w * .62);
   } else if (Player.item === 'star') {
     drawStar(r.x + r.w / 2, r.y + r.h / 2, r.w * .72);
   } else if (Player.item) {
@@ -520,4 +522,17 @@ function render() {
     if (App.prev === ST.HOME || App.prev === ST.HOWTO) drawHome(); else drawScene();
   } else drawScene();
   drawIris();
+}
+
+function drawShield(x, y, size) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * .5);
+  ctx.lineTo(x + size * .45, y - size * .3);
+  ctx.quadraticCurveTo(x + size * .45, y + size * .24, x, y + size * .52);
+  ctx.quadraticCurveTo(x - size * .45, y + size * .24, x - size * .45, y - size * .3);
+  ctx.closePath();
+  ctx.fillStyle = starGradient(x - size / 2, y - size / 2, x + size / 2, y + size / 2);
+  ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
 }

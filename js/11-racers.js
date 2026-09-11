@@ -36,7 +36,7 @@ function Racer(id, human, marbleKey) {
   this.slow = 0;                 /* bump slowdown, seconds remaining */
   this.boostPower = 1;
   this.boost = 0;                /* speed-pad boost, seconds remaining */
-  this.star = 0;
+  this.star = 0; this.shield = false;
   this.floating = false;         /* in a bubble at all */
   this.bubble = 0;               /* guaranteed carry left, seconds */
   this.bubbleAge = 0;            /* how long it has been floating altogether */
@@ -71,7 +71,7 @@ Racer.prototype.place = function (lane, d) {
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
   this.boostPower = 1;
   this.boost = 0; this.entryD = 0; this.floating = false; this.dash = null;
-  this.star = 0; this.starTrail.length = 0; this.starT = 0;
+  this.star = 0; this.shield = false; this.starTrail.length = 0; this.starT = 0;
   this.bubble = 0; this.bubbleAge = 0; this.landing = 0;
   this.coasting = false;
   this.rollV = 0; this.laneTime = CFG.LANE_TIME;
@@ -467,7 +467,7 @@ Racer.prototype.draw = function () {
   ctx.restore();
   ctx.globalAlpha = 1;
 
-  if (this.inBubble()) this.drawBubble();
+  if (this.inBubble() || this.shield) this.drawBubble(this.shield && !this.inBubble());
 };
 
 /* The soap film of drawSoapRect, drawn round a circle instead of a rectangle:
@@ -475,11 +475,11 @@ Racer.prototype.draw = function () {
    the same two highlights, every weight proportional to the radius. The marble
    shows through the middle in place of the mystery square's "?" — the racer
    inside is the whole point of this one. */
-Racer.prototype.drawBubble = function () {
+Racer.prototype.drawBubble = function (shieldOnly) {
   var base = playerRadius() * 1.38;                          /* it hugs the marble */
   var k = this.landing > 0 ? 1 - clamp(this.landing / CFG.BUBBLE_DROP, 0, 1) : 0;
   var pop = this.spawnT < 1 ? easeOutBack(this.spawnT) : 1;
-  var t = App.time * 1.4 + this.id * 2.1;                    /* its own phase */
+  var t = (Settings.reduced ? 0 : App.time * 1.4) + this.id * 2.1;                    /* its own phase */
   var r = base * pop * (1 + Math.sin(t * 1.3) * 0.045) * (1 + 0.09 * easeInCubic(k));
   var x = this.x(), y = this.y();
   if (r < 2) return;
@@ -487,22 +487,24 @@ Racer.prototype.drawBubble = function () {
   ctx.save();
   ctx.globalAlpha = 1 - k * 0.22;
 
-  /* the halo it sits in */
-  var glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * 1.6);
-  glow.addColorStop(0, 'rgba(180,225,255,0.30)');
-  glow.addColorStop(1, 'rgba(180,225,255,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(x - r * 1.7, y - r * 1.7, r * 3.4, r * 3.4);
+  if (!shieldOnly) {
+    /* the halo it sits in */
+    var glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * 1.6);
+    glow.addColorStop(0, 'rgba(180,225,255,0.30)');
+    glow.addColorStop(1, 'rgba(180,225,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - r * 1.7, y - r * 1.7, r * 3.4, r * 3.4);
 
-  /* soap film: clear in the middle, bright at the edge */
-  var film = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
-  film.addColorStop(0,    'rgba(255,255,255,0.05)');
-  film.addColorStop(0.62, 'rgba(190,230,255,0.14)');
-  film.addColorStop(0.88, 'rgba(255,255,255,0.42)');
-  film.addColorStop(1,    'rgba(255,255,255,0.08)');
-  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
-  ctx.fillStyle = film; ctx.fill();
+    /* soap film: clear in the middle, bright at the edge */
+    var film = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
+    film.addColorStop(0,    'rgba(255,255,255,0.05)');
+    film.addColorStop(0.62, 'rgba(190,230,255,0.14)');
+    film.addColorStop(0.88, 'rgba(255,255,255,0.42)');
+    film.addColorStop(1,    'rgba(255,255,255,0.08)');
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+    ctx.fillStyle = film; ctx.fill();
 
+  }
   /* thin-film colour sliding around the rim */
   ctx.lineWidth = Math.max(1.2, r * 0.11);
   for (var i = 0; i < 3; i++) {
@@ -511,24 +513,27 @@ Racer.prototype.drawBubble = function () {
     ctx.strokeStyle = SOAP_TINTS[i];
     ctx.stroke();
   }
-  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = Math.max(0.8, r * 0.055);
-  ctx.stroke();
+  if (!shieldOnly) {
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = Math.max(0.8, r * 0.055);
+    ctx.stroke();
 
-  /* highlights */
-  ctx.beginPath();
-  ctx.ellipse(x - r * 0.34, y - r * 0.40, r * 0.26, r * 0.16, -0.7, 0, TAU);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + r * 0.42, y + r * 0.34, r * 0.10, 0, TAU);
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.fill();
+    /* highlights */
+    ctx.beginPath();
+    ctx.ellipse(x - r * 0.34, y - r * 0.40, r * 0.26, r * 0.16, -0.7, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + r * 0.42, y + r * 0.34, r * 0.10, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fill();
 
+  }
   ctx.restore();
   ctx.globalAlpha = 1;
 };
+
 
 /* ---------------------------------------------------------------------------
    world-space collision: an ellipse (the racer) against a box (the hazard),
@@ -536,6 +541,7 @@ Racer.prototype.drawBubble = function () {
    answer is the same wherever the camera happens to be looking
    ------------------------------------------------------------------------- */
 function racerHits(p, o, fromD) {
+  if (o.kind === 'fallingSquare' && o.fall > 0) return false;
   var capX = colW() * 0.10 / PF.w, capM = pxToMetres(colW() * 0.10);
   var sx = Math.min(o.wF * CFG.OBSTACLE_FORGIVE, capX);
   var sm = Math.min(o.hM * CFG.OBSTACLE_FORGIVE, capM);
@@ -552,8 +558,8 @@ function racerHits(p, o, fromD) {
   return ex * ex + em * em <= 1;
 }
 
-/* One slot, three equally likely items; effects refresh rather than stack. */
-var ITEM_KINDS = ['falseMystery', 'boost', 'star'];
+/* One slot, four equally likely items; effects refresh rather than stack. */
+var ITEM_KINDS = ['falseMystery', 'boost', 'star', 'shield'];
 
 /* ============================================================================
    RACE — the shared simulation every racer runs inside
@@ -717,6 +723,19 @@ var Race = {
       chain.push(occ);
     }
 
+    /* A shield stops the shove chain. The initiating racer rebounds. */
+    var protectedRacer = chain.find(function (q) { return q.shield; });
+    if (protectedRacer) {
+      this.breakShield(protectedRacer);
+      p.bumpCd = protectedRacer.bumpCd = CFG.BUMP_COOLDOWN;
+      var back = p.lane - dir;
+      if (p.shield) { this.breakShield(p); this.slowDown(p); }
+      else if (back < 0 || back > 2 || this.beside(p, back)) this.destroy(p, 'edge');
+      else { p.slideTo(back, -dir, true); this.slowDown(p); }
+      this.bumpFX(p, protectedRacer, -dir);
+      return true;
+    }
+    if (p.shield) this.breakShield(p);
     p.bumpCd = CFG.BUMP_COOLDOWN;
     p.slideTo(target, dir);
 
@@ -830,6 +849,11 @@ var Race = {
     if (App.blocked || !active ||
         !p.alive || p.finished || p.inBubble() ||
         ITEM_KINDS.indexOf(p.item) < 0) return false;
+    if (p.item === 'shield') {
+      p.item = null; p.shield = true;
+      if (p.human) Sound.play('mystery');
+      return true;
+    }
     if (p.item === 'star') {
       p.item = null;
       p.star = CFG.STAR_TIME;
@@ -867,10 +891,21 @@ var Race = {
     else if (Math.abs(q.d - Race.camD) < CFG.METERS_VISIBLE) Sound.play('bumpFar');
   },
 
+  breakShield: function (p) {
+    p.shield = false;
+    if (!p.onCamera()) return;
+    var r = playerRadius();
+    for (var i = 0; i < 3; i++) {
+      VFX.ripple(p.x(), p.y(), r * 1.38, r * (2 + i * .4), SOAP_TINTS[i], .35, 2);
+    }
+    if (p.human) Sound.play('smash');
+    else Sound.play('smashFar');
+  },
+
   /* ---------- destruction and respawn ---------- */
   destroy: function (p, cause) {
     if (!p.alive || p.finished || p.intangible()) return;
-    p.alive = false;
+    p.alive = false; p.shield = false;
     p.coasting = false;
     p.crouchAmt = 0;
     p.collisions++;
@@ -1048,6 +1083,13 @@ var Race = {
           if (p.immune > 0) continue;
           if (o.crouch && p.crouch) continue;
           if (racerHits(p, o)) {
+            if (p.shield) {
+              var shieldIndex = Obstacles.list.indexOf(o);
+              if (shieldIndex < 0) continue;
+              Obstacles.list.splice(shieldIndex, 1);
+              this.breakUp(o, p); this.breakShield(p);
+              continue;
+            }
             if (o.kind === 'falseMystery') {
               var trapIndex = Obstacles.list.indexOf(o);
               if (trapIndex < 0) continue;
@@ -1091,7 +1133,14 @@ var Race = {
         if (Math.abs(gap) >= need) continue;
         var push = (need - Math.abs(gap)) * 0.5;
         var s = gap === 0 ? (a.id < b.id ? 1 : -1) : (gap > 0 ? 1 : -1);
-        a.d += push * s; b.d -= push * s;
+        if (!a.intangible() && !b.intangible() && (a.shield || b.shield)) {
+          var aShield = a.shield, bShield = b.shield;
+          if (aShield) this.breakShield(a);
+          if (bShield) this.breakShield(b);
+          if (aShield && !bShield) { b.d -= push * 2 * s; this.slowDown(b); }
+          else if (bShield && !aShield) { a.d += push * 2 * s; this.slowDown(a); }
+          else { a.d += push * s; b.d -= push * s; }
+        } else { a.d += push * s; b.d -= push * s; }
       }
     }
   }

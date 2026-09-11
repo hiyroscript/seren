@@ -122,6 +122,7 @@ var Run = {
     Race.tickClock(dt);
     Obstacles.update(dt);
     Gen.update(dt, this.mult, Race.leadD());
+    Obstacles.rain();
     Mysteries.update();          /* on its own clock, not with the course */
     Race.update(dt, this.mult);
     this.checkCrossings();
@@ -279,7 +280,7 @@ var Run = {
     /* out of play, and clean: a shove, a boost, a bubble or a hit the same
        frame does not follow a racer over the line */
     p.alive = true; p.coasting = false; p.respawnT = 0; p.spawnT = 1;
-    p.boost = 0; p.boostPower = 1; p.star = 0; p.slow = 0; p.bumpCd = 0; p.hitFlash = 0;
+    p.boost = 0; p.boostPower = 1; p.star = 0; p.shield = false; p.slow = 0; p.bumpCd = 0; p.hitFlash = 0;
     p.crouch = false;
     p.floating = false; p.bubble = 0; p.bubbleAge = 0; p.landing = 0;
     p.immune = 0; p.immuneExt = 0;
