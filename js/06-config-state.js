@@ -38,6 +38,8 @@ var CFG = {
   BOOST_SCALE:      1.75,   /* how much ground a boosted racer gains */
   SUPER_BOOST_POWER: 2,    /* twice the added speed, for the same duration */
   BOOST_TIME:       1.35,   /* seconds the shove forward lasts */
+  STAR_TIME:        5,      /* active seconds of immunity and hazard clearing */
+  STAR_SPEED:       3.25,   /* faster than the purple-blue pad's 2.50x */
   BOOST_FLASH:      0.32,   /* seconds a pad stays lit after it fires */
   MYSTERY_SIZE:     0.35,   /* fraction of one column, square */
   MYSTERY_LIFETIME: 10,     /* active seconds from spawning to expiry */

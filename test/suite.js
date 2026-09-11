@@ -208,7 +208,7 @@ async function newPage(browser, opts) {
       out.itemGranted = ITEM_KINDS.indexOf(p0.item) >= 0;
       out.smaller = o.wF * 3 < 0.50;
 
-      /* the slot is filled from the one known pool, and both of the two
+      /* the slot is filled from the one known pool, and all three
          things in it come up over a long enough run of squares */
       const rolled = {};
       for (let i = 0; i < 400; i++) {
@@ -318,7 +318,7 @@ async function newPage(browser, opts) {
     check('pickup fills the item slot', r.itemGranted === true);
     check('mystery squares are smaller', r.smaller === true);
     check('a square only ever hands out something from the item pool', r.poolOnly === true);
-    check('both items in the pool come up', r.bothItems === true);
+    check('all items in the pool come up', r.bothItems === true);
     check('one racer takes a given square exactly once', r.takesBySameRacer === 1, 'took ' + r.takesBySameRacer);
     check('a taken square leaves the track for the whole field', r.stillOnTrack === false);
     check('the next racer cannot collect it again',
@@ -472,6 +472,92 @@ async function newPage(browser, opts) {
   }
 
   /* ------------------------------------------------------------------ */
+  console.log('\n[4d] star power, occupied slots and race-length ladder');
+  for (const opts of [{ viewport: { width: 1200, height: 900 } },
+    { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {
+    const { page, errs } = await newPage(browser, opts);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      Run.begin(); Gen.stop(); App.set(ST.PLAYING); Obstacles.clear();
+      Race.racers.forEach((p, i) => { p.ai = null; p.place(0, -1000 - i * 10); });
+      Player.place(1, 100); Race.camD = Player.d;
+      const out = {};
+      for (const p of [Player, Race.racers[1]]) {
+        for (const item of ITEM_KINDS) {
+          p.item = item; p.itemPickedAt = -3;
+          const o = Obstacles.spawn({ kind: 'mystery', lane: p.lane }, p.d)[0];
+          Race.mysteryTake(p, o);
+          out['preserve ' + p.id + ' ' + item] = p.item === item && p.itemPickedAt === -3 && !Obstacles.list.includes(o);
+        }
+      }
+      Player.item = 'star'; Player.slow = 2;
+      out.use = Race.useItem(Player) && Player.star === 5 && Player.item === null && Player.slow === 0;
+      const fast = Player.speedScale();
+      Race.shoveForward(Player, { kind: 'superBoost' });
+      out.fast = fast > 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER && Player.speedScale() === fast;
+      Race.shoveForward(Player, null);
+      out.padCannotWeaken = Player.speedScale() === fast;
+      Race.destroy(Player, 'edge'); Race.slowDown(Player);
+      out.immune = Player.alive && Player.collisions === 0 && Player.slow === 0;
+      const q = Race.racers[1]; q.item = null; q.place(0, Player.d);
+      Race.move(q, 1); Race.separate();
+      out.noShove = Player.lane === 1 && Player.d === 100 && Player.slow === 0;
+      q.place(0, -1000);
+      ['square', 'mover', 'barrier', 'falseMystery'].forEach(kind => {
+        const o = new Obstacle(kind, .5, .25, 1, kind === 'barrier', [1], Player.d);
+        if (kind === 'mover') o.move = { a: 1, b: 2, period: 1, phase: 0 };
+        Obstacles.list.push(o); Player.crouch = kind === 'barrier';
+        Race.update(0, 1);
+        out['clears ' + kind] = Player.alive && !Obstacles.list.includes(o);
+      });
+      Player.crouch = false;
+      const thin = new Obstacle('square', .5, .25, .1, false, [1], Player.d + 2);
+      Obstacles.list.push(thin); Race.update(.05, 3);
+      out.swept = !Obstacles.list.includes(thin) && Player.alive;
+      const left = Player.star;
+      App.set(ST.PAUSED); update(.2);
+      App.blocked = true; App.set(ST.PLAYING); update(.2); App.blocked = false;
+      Run.startCountdown(false); update(.2);
+      out.pause = Player.star === left;
+      App.set(ST.PLAYING); Player.star = 5; Player.boost = 0;
+      Race.update(4.99, 0);
+      out.beforeExpiry = Player.star > 0 && Player.intangible();
+      Race.update(.011, 0);
+      out.expiry = Player.star === 0 && !Player.intangible() && Player.speedScale() === 1;
+      Player.star = 5;
+      for (let i = 0; i < 300; i++) Race.update(1 / 60, 0);
+      out.exactFiveSeconds = Player.star === 0;
+      const lethal = new Obstacle('square', .5, .25, 1, false, [1], Player.d);
+      Obstacles.list.push(lethal); Race.update(0, 0);
+      out.afterExpiry = !Player.alive && Obstacles.list.includes(lethal);
+      Player.place(1, 100); Obstacles.clear();
+      q.place(0, 200); q.item = 'star'; q.itemPickedAt = -10;
+      q.ai = { next: 0 }; AI.think(q, .1);
+      out.cpuStar = q.star === 5 && q.item === null;
+      const initial = Run.raceSpan();
+      out.projection = initial.from === 0 && initial.to > Race.leadD();
+      Run.finalActive = true; Run.finalStart = 1000; Player.d = 1400; q.d = 1450;
+      out.finalProjection = Run.raceSpan().to === 1620;
+      Run.line = { d: 2000, from: 1500 };
+      const span = Run.raceSpan(), g = raceLadderRect();
+      out.exactSpan = span.to === 2000;
+      out.scale = raceLadderY(0, g, span) === g.top + g.height && raceLadderY(1000, g, span) === g.top + g.height / 2 && raceLadderY(2000, g, span) === g.top;
+      out.bounds = g.x >= 8 && g.x + 8 <= VIEW.w && g.top > hudTop() && g.top + g.height < itemSlotRect().y;
+      Settings.effects = 'full';
+      Race.clock = 0; const color = starRGB(starPhase()); Race.clock = .5;
+      out.colorsMove = color !== starRGB(starPhase());
+      Settings.effects = 'reduced'; const still = starRGB(starPhase()); Race.clock = 1;
+      out.reduced = still === starRGB(starPhase());
+      Player.star = 5; Player.item = 'star'; render();
+      Run.cross(Player); out.finishClears = Player.star === 0;
+      Run.begin(); out.restartClears = Race.racers.every(p => p.star === 0 && p.item === null);
+      return out;
+    });
+    for (const [name, ok] of Object.entries(r)) check(name, ok === true);
+    check('star and ladder render without errors', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
   console.log('\n[5] how often a mystery square turns up');
   {
     const { page } = await newPage(browser);

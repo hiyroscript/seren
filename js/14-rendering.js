@@ -290,6 +290,23 @@ function drawBolt(cx, cy, size) {
   ctx.stroke();
 }
 
+function drawStar(x, y, size) {
+  var r = size / 2;
+  ctx.save();
+  ctx.beginPath();
+  for (var i = 0; i < 10; i++) {
+    var angle = -PI / 2 + i * PI / 5, radius = i % 2 ? r * 0.46 : r;
+    var sx = x + Math.cos(angle) * radius, sy = y + Math.sin(angle) * radius;
+    if (!i) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+  }
+  ctx.closePath();
+  ctx.fillStyle = starGradient(x - r, y - r, x + r, y + r);
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.4, size * 0.045);
+  ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.stroke();
+  ctx.restore();
+}
+
 function itemSlotRect() {
   var size = clamp(Math.min(VIEW.w, VIEW.h) * .12, 52, 76);
   return { x: VIEW.w - INSET.r - size - 18, y: VIEW.h - INSET.b - size - 18,
@@ -305,11 +322,57 @@ function drawItemSlot() {
   drawSoapRect(r.x, r.y, r.w, r.h, { t: Settings.reduced ? 0 : Race.clock, halo: 0 });
   if (Player.item === 'boost') {
     drawBolt(r.x + r.w / 2, r.y + r.h / 2, r.w * .56);
+  } else if (Player.item === 'star') {
+    drawStar(r.x + r.w / 2, r.y + r.h / 2, r.w * .72);
   } else if (Player.item) {
     var s = r.w * .55;
     Obstacles.drawMystery({ kind: 'falseMystery', wd: 0 },
       { x: r.x + (r.w - s) / 2, y: r.y + (r.h - s) / 2, w: s, h: s });
   }
+  ctx.restore();
+}
+/* A slim white race-length line, with a dark backing for the paper track.
+   All six dots and the covered section use exactly the same metre scale. */
+function raceLadderRect() {
+  var slot = itemSlotRect();
+  var top = Math.max(hudTop() + 145, PF.y + PF.h * .28);
+  var bottom = Math.min(slot.y - 24, PF.y + PF.h - 48);
+  var height = Math.max(24, Math.min(300, bottom - top));
+  return { x: Math.min(VIEW.w - INSET.r - 22, PF.x + PF.w + 26),
+    top: top + Math.max(0, bottom - top - height) / 2, height: height };
+}
+function raceLadderY(distance, g, span) {
+  return g.top + g.height * (1 - clamp((distance - span.from) / Math.max(1, span.to - span.from), 0, 1));
+}
+function drawRaceLadder() {
+  var g = raceLadderRect(), span = Run.raceSpan(), foot = g.top + g.height;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(25,30,40,.48)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(g.x, g.top); ctx.lineTo(g.x, foot); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.strokeStyle = '#fff';
+  ctx.beginPath(); ctx.moveTo(g.x, foot);
+  ctx.lineTo(g.x, raceLadderY(Player.finished ? span.to : Player.d, g, span)); ctx.stroke();
+  [0, .5, 1].forEach(function (k) {
+    var y = g.top + g.height * k, w = k === .5 ? 3 : 5;
+    ctx.strokeStyle = 'rgba(25,30,40,.65)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(g.x - w, y); ctx.lineTo(g.x + w, y); ctx.stroke();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+  });
+  /* Draw the human last so its ring remains visible when the field bunches. */
+  Race.racers.filter(function (p) { return !p.human; }).concat([Player]).forEach(function (p) {
+    var y = raceLadderY(p.finished ? span.to : p.d, g, span);
+    ctx.globalAlpha = p.alive ? 1 : .4;
+    ctx.beginPath(); ctx.arc(g.x, y, p.human ? 5.5 : 4, 0, TAU);
+    ctx.fillStyle = p.star > 0 ? 'rgb(' + starRGB(starPhase()) + ')' : p.marbleDef().color;
+    ctx.fill(); ctx.strokeStyle = '#222'; ctx.lineWidth = 1.3; ctx.stroke();
+    if (p.human) {
+      ctx.beginPath(); ctx.arc(g.x, y, 8, 0, TAU);
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 1.4; ctx.stroke();
+    }
+  });
   ctx.restore();
 }
 function drawHUD() {
@@ -443,6 +506,7 @@ function drawScene() {
   }
 
   drawHUD();
+  drawRaceLadder();
   drawItemSlot();
   VFX.drawPickups();
   drawCountdown();

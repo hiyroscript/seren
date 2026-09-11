@@ -23,7 +23,9 @@ var AI = {
     /* what is in the slot decides when it is worth spending: a trap wants
        somebody close behind in this column, a bolt wants clear track ahead */
     if (p.item && Race.clock - p.itemPickedAt > .6) {
-      if (p.item === 'boost') {
+      if (p.item === 'star') {
+        if (p.star <= 0) Race.useItem(p);
+      } else if (p.item === 'boost') {
         if (!Race.dangerNow(p)) Race.useItem(p);
       } else if (Race.racers.some(function (q) {
         return q !== p && q.alive && !q.finished && !q.inBubble() &&
@@ -67,6 +69,7 @@ var AI = {
         if (o.kind !== 'mystery' || !p.item) cost -= 8 * prox * weight * L.greed;
         continue;
       }
+      if (p.star > 0 && gap < speed * CFG.STAR_SPEED * p.star) continue;
       if (o.crouch) {
         cost += 4 * prox * weight * (1 - L.duck);      /* a reliable ducker barely cares */
       } else {
@@ -87,7 +90,7 @@ var AI = {
     if (lane !== p.lane) {
       var occ = Race.beside(p, lane);
       if (occ) {
-        if (occ.immune > 0) {
+        if (occ.intangible() || p.intangible()) {
           cost += 6;                                   /* intangible: pointless */
         } else {
           /* would shoving them help? worth most when it ends their race */

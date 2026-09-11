@@ -336,6 +336,23 @@ var Obstacles = {
    band is lit along its length exactly as a square is lit into its corners.
    ========================================================================== */
 var SOAP_TINTS = ['rgba(120,235,255,0.85)', 'rgba(255,140,225,0.7)', 'rgba(255,235,150,0.7)'];
+/* The star and its marble share the bubble's blue, pink and yellow. Smooth
+   interpolation closes the cycle without a jump; reduced motion freezes it. */
+var STAR_TINTS = [[120,235,255], [255,140,225], [255,235,150]];
+function starPhase() { return Settings.reduced ? 0 : Race.clock * 0.45; }
+function starRGB(phase) {
+  var p = ((phase % 1) + 1) % 1 * STAR_TINTS.length;
+  var i = Math.floor(p), k = easeInOutCubic(p - i);
+  var a = STAR_TINTS[i], b = STAR_TINTS[(i + 1) % STAR_TINTS.length];
+  return a.map(function (v, c) { return Math.round(lerp(v, b[c], k)); }).join(',');
+}
+function starGradient(x0, y0, x1, y1) {
+  var g = ctx.createLinearGradient(x0, y0, x1, y1);
+  for (var i = 0; i <= 6; i++) {
+    g.addColorStop(i / 6, 'rgb(' + starRGB(starPhase() + i / 9) + ')');
+  }
+  return g;
+}
 /* how hard the halo is breathing this instant: off the shared race clock, so
    every racer sees the same thing glow at the same moment */
 function soapPulse(phase) {

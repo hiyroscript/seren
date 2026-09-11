@@ -23,16 +23,24 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   motion is enabled. Pads refresh the effect without stacking.
 - Small bubbly squares marked `?` spawn ahead of the leader, like hazards, and
   can be collected off camera. The first racer to touch one removes it for everyone.
-  They fill one item slot with one of two things, drawn at random:
+  They fill one item slot with one of three things, drawn at random:
   - a fake mystery square — drop it to leave a trap behind you; its question mark is
     upside down, and it disappears when it hits a racer, triggering the usual
     elimination and respawn;
   - a yellow bolt — the yellow pad's shove exactly, carried with you and spent where
-    you want it, refreshed rather than stacked like every other boost.
+    you want it, refreshed rather than stacked like every other boost;
+  - a star cycling smoothly through the bubbles’ blue, pink and yellow — use it for
+    five active seconds of full immunity, destroying every hazard you touch, including
+    traps and crouch barriers. The marble wears the same gradient and moves at 3.25x
+    the run speed, faster than the purple-blue pad’s 2.50x. Pads cannot weaken it.
 
-  Collecting another pickup refills the same slot. Unclaimed squares last 10 seconds
+  Collecting another pickup consumes the square but preserves your held item. Unclaimed squares last 10 seconds
   from spawning and blink during the final 2 seconds (a steady fade with reduced
   motion). Pausing freezes them.
+- A white line on the right represents the whole race, from start at the bottom to
+  finish at the top. Its bright section shows your progress; colored dots show all
+  six racers, with a ring around yours. Like Redline, the finish distance is projected
+  until the real finish line is planted.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
@@ -167,7 +175,7 @@ works from a project subpath as well as from a user or organisation root.
 `test/suite.js` drives the real game in a headless browser and asserts its
 invariants — no mocks, it calls the game's own `update()` and `render()`. It
 covers the speed readout, the ground the camera actually travels, the pads and
-the mystery square, both items it hands out, the place readout's colour change,
+the mystery square, all three items it hands out, the place readout's colour change,
 the crouch tally, the generator's fairness floor, pause and restart, the finish
 line, the parked field past it and the results dialog over it, reduced motion,
 both languages, and full runs at three difficulties on desktop and mobile
