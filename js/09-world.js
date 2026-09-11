@@ -43,6 +43,17 @@ Obstacle.prototype.rect = function () {
     w: w, h: metresToPx(this.hM) };
 };
 Obstacle.prototype.blocks = function (lane) { return this.lanes.indexOf(lane) >= 0; };
+/* the stretch of course the camera can see, with a little margin either end */
+function cameraSpan() {
+  return { top: Race.camD + CFG.METERS_VISIBLE * (CFG.PLAYER_Y + 0.1),
+           bot: Race.camD - CFG.METERS_VISIBLE * (1.1 - CFG.PLAYER_Y) };
+}
+/* whether this one is in it — the same test the draw loop makes, for the
+   things that happen to a single obstacle rather than to all of them */
+Obstacle.prototype.onCamera = function () {
+  var s = cameraSpan();
+  return this.wd <= s.top && this.wd + this.hM >= s.bot;
+};
 
 /* The rare pad's two colours, and the ramp that runs between them. A sample is
    taken at a position along the pad plus a phase, so a gradient built from a
@@ -131,8 +142,7 @@ var Obstacles = {
   },
 
   draw: function () {
-    var top = Race.camD + CFG.METERS_VISIBLE * (CFG.PLAYER_Y + 0.1);
-    var bot = Race.camD - CFG.METERS_VISIBLE * (1.1 - CFG.PLAYER_Y);
+    var span = cameraSpan(), top = span.top, bot = span.bot;
     for (var i = 0; i < this.list.length; i++) {
       var o = this.list[i];
       if (o.wd > top || o.wd + o.hM < bot) continue;      /* off camera */
@@ -352,6 +362,21 @@ function starGradient(x0, y0, x1, y1) {
     g.addColorStop(i / 6, 'rgb(' + starRGB(starPhase() + i / 9) + ')');
   }
   return g;
+}
+/* The star's own outline, laid as a path and left for the caller to fill or
+   stroke: the item in the slot, the corona a starred marble wears and the
+   sparks it sheds are all this one shape at different sizes.
+   `inner` is the waist as a fraction of `r`, `rot` turns it, `points` is how
+   many it has — five for the item, six for the light around a marble. */
+function starPath(x, y, r, inner, rot, points) {
+  var n = (points || 5) * 2, k = r * (inner === undefined ? 0.46 : inner);
+  ctx.beginPath();
+  for (var i = 0; i < n; i++) {
+    var a = -PI / 2 + (rot || 0) + i * TAU / n, rr = (i % 2) ? k : r;
+    var px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.closePath();
 }
 /* how hard the halo is breathing this instant: off the shared race clock, so
    every racer sees the same thing glow at the same moment */

@@ -40,10 +40,14 @@ var CFG = {
   BOOST_TIME:       1.35,   /* seconds the shove forward lasts */
   STAR_TIME:        5,      /* active seconds of immunity and hazard clearing */
   STAR_SPEED:       3.25,   /* faster than the purple-blue pad's 2.50x */
+  STAR_TRAIL:       5.5,    /* metres of track the star's ribbon covers behind it */
   BOOST_FLASH:      0.32,   /* seconds a pad stays lit after it fires */
   MYSTERY_SIZE:     0.35,   /* fraction of one column, square */
   MYSTERY_LIFETIME: 10,     /* active seconds from spawning to expiry */
   MYSTERY_BLINK:    2,      /* final seconds blink before disappearing */
+  MYSTERY_GAP_MIN:  32,     /* seconds between one square turning up and... */
+  MYSTERY_GAP_MAX:  68,     /* ...the next: the rate the roll table used to give */
+  MYSTERY_TAIL:     4,      /* metres ahead of the last racer one may appear */
   MOVER_PERIOD:     1.7,    /* seconds a moving square takes to cross and back */
   SHUTTLE_PERIOD:   1.05,   /* the quick one */
   BUMP_RANGE:       2.6,    /* metres of overlap needed for contact to make sense */

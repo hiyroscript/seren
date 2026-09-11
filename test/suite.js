@@ -13,6 +13,10 @@ catch (e) {
 }
 const URL = process.env.SEREN_URL || 'http://localhost:8123/index.html';
 
+/* how far apart mystery squares are expected to land over a whole run, with
+   room either side for the luck of one: the suite asserts the rate, not dice */
+const MYSTERY_EVERY_MIN = 24, MYSTERY_EVERY_MAX = 84;
+
 let pass = 0, fail = 0;
 const failures = [];
 function check(name, ok, detail) {
@@ -268,7 +272,8 @@ async function newPage(browser, opts) {
       out.bubbleTakes = (byRacer[p2.id] || 0) - before2;
       Race.mysteryTake = mt;
 
-      /* Generate beyond an off-camera leader using the real generator path. */
+      /* A square out of the camera's reach is still a square: the racer that
+         meets it takes it, wherever the human happens to be looking. */
       Obstacles.clear();
       Race.racers.forEach(p => { p.finished = true; });
       const leader = Race.racers[3];
@@ -276,11 +281,9 @@ async function newPage(browser, opts) {
       leader.place(1, 1000); leader.alive = true; leader.floating = false;
       leader.coasting = false; leader.boost = 0; leader.slow = 0;
       Race.camD = 0; Race.camLock = true;
-      Gen.reset(leader.d);
-      Gen.queue = Array.from({ length: 100 }, () => Object.assign(E_mystery(1), { gap: 1 }));
-      Gen.update(0, 1, Race.leadD()); Gen.stop();
-      const far = Obstacles.list[0];
-      out.aheadOfLeader = far.wd > leader.d && !leader.onCamera();
+      Gen.stop();
+      const far = Obstacles.spawn(E_mystery(1), leader.d + 6)[0];
+      out.aheadOfLeader = far.wd > leader.d && !leader.onCamera() && !far.onCamera();
       for (let i = 0; i < 180 && Obstacles.list.includes(far); i++) {
         Race.tickClock(1 / 60); Obstacles.update(1 / 60); Race.update(1 / 60, 1);
       }
@@ -514,6 +517,43 @@ async function newPage(browser, opts) {
       const thin = new Obstacle('square', .5, .25, .1, false, [1], Player.d + 2);
       Obstacles.list.push(thin); Race.update(.05, 3);
       out.swept = !Obstacles.list.includes(thin) && Player.alive;
+
+      /* a destroyed hazard breaks rather than vanishes */
+      Settings.effects = 'full'; VFX.clear(); Player.star = 5;
+      const brk = new Obstacle('square', .5, .25, 1, false, [1], Player.d);
+      Obstacles.list.push(brk); Race.update(0, 1);
+      out.breaksApart = !Obstacles.list.includes(brk) &&
+        VFX.parts.some(q => q.shard) && VFX.ripples.length >= 2;
+      out.shardsRideTheTrack = VFX.parts.filter(q => q.shard).every(q => q.w === true);
+      /* a trap that catches a racer breaks too, in the film's own colour */
+      VFX.clear(); Player.star = 0; Player.immune = 0;
+      const trap = new Obstacle('falseMystery', .5, .25, 1, false, [1], Player.d);
+      Obstacles.list.push(trap); Race.update(0, 1);
+      out.trapBreaks = !Obstacles.list.includes(trap) && !Player.alive &&
+        VFX.parts.some(q => q.shard && q.color === BUBBLE_INK);
+      Player.place(1, 100); Obstacles.clear();
+      /* reduced motion keeps the ring and drops the wreckage */
+      Settings.effects = 'reduced'; VFX.clear(); Player.star = 5;
+      const quiet = new Obstacle('square', .5, .25, 1, false, [1], Player.d);
+      Obstacles.list.push(quiet); Race.update(0, 1);
+      out.reducedBreak = !Obstacles.list.includes(quiet) &&
+        VFX.ripples.length > 0 && !VFX.parts.some(q => q.shard);
+      Settings.effects = 'full'; VFX.clear();
+
+      /* the star is its own effect, and never the pads' */
+      Player.place(1, 100); Player.item = 'star'; Player.boost = 0;
+      out.notAShove = Race.useItem(Player) && Player.boost === 0 && Player.boostPower === 1;
+      out.ownInk = Player.boostColor() === BOOST_INK &&
+        Player.starColor() === 'rgb(' + starRGB(starPhase()) + ')';
+      Player.starTrail.length = 0;
+      for (let i = 0; i < 8; i++) Player.update(1 / 60, true);
+      out.laysATrail = Player.starTrail.length >= 6 &&
+        Player.starTrail.every(t => typeof t.d === 'number' && typeof t.xF === 'number');
+      out.shedsLight = VFX.parts.some(q => q.spark);
+      render();
+      Player.star = 0;
+      for (let i = 0; i < 40; i++) Player.update(1 / 60, true);
+      out.trailRunsOut = Player.starTrail.length === 0;
       const left = Player.star;
       App.set(ST.PAUSED); update(.2);
       App.blocked = true; App.set(ST.PLAYING); update(.2); App.blocked = false;
@@ -550,7 +590,9 @@ async function newPage(browser, opts) {
       out.reduced = still === starRGB(starPhase());
       Player.star = 5; Player.item = 'star'; render();
       Run.cross(Player); out.finishClears = Player.star === 0;
-      Run.begin(); out.restartClears = Race.racers.every(p => p.star === 0 && p.item === null);
+      Run.begin();
+      out.restartClears = Race.racers.every(p =>
+        p.star === 0 && p.item === null && p.starTrail.length === 0);
       return out;
     });
     for (const [name, ok] of Object.entries(r)) check(name, ok === true);
@@ -558,38 +600,149 @@ async function newPage(browser, opts) {
     await page.close();
   }
 
-  console.log('\n[5] how often a mystery square turns up');
+  console.log('\n[5] how often a mystery square turns up, over whole runs');
   {
     const { page } = await newPage(browser);
     const r = await page.evaluate(() => {
       Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
       const perRun = [];
+      const notInTheTable = KINDS.every(k => k.id !== 'mystery');
+      let pastTheHorizon = 0;
       for (let run = 0; run < 3; run++) {
         App.set(ST.HOME); Run.begin();
-        let mystery = 0, entries = 0, boost = 0, superBoost = 0;
+        let mystery = 0, entries = 0, boost = 0, superBoost = 0, behindLead = 0;
         const os = Obstacles.spawn.bind(Obstacles);
         Obstacles.spawn = function (e, wd) {
           entries++;
-          if (e.kind === 'mystery') mystery++;
+          if (e.kind === 'mystery') {
+            mystery++;
+            /* the frontier is no longer where they come from */
+            if (wd < Race.leadD()) behindLead++;
+            if (wd > Race.leadD() + CFG.WORLD_AHEAD + 1e-6) pastTheHorizon++;
+          }
           if (e.kind === 'boost') boost++;
           if (e.kind === 'superBoost') superBoost++;
           return os(e, wd);
         };
         for (let i = 0; i < 60 * 1500; i++) { update(1 / 60); if (App.state === ST.COMPLETED) break; }
         Obstacles.spawn = os;
-        perRun.push({ entries, mystery, boost, superBoost });
+        perRun.push({ entries, mystery, boost, superBoost, behindLead, clock: Race.clock });
       }
-      return { perRun };
+      return { perRun, notInTheTable, pastTheHorizon };
     });
     const sum = k => r.perRun.reduce((a, b) => a + b[k], 0);
     const my = sum('mystery') / 3, sb = sum('superBoost') / 3, ent = sum('entries');
-    check('a regular sight now — several a run, and well clear of the old couple',
+    const every = sum('clock') / Math.max(1, sum('mystery'));
+    check('they are no longer rolled with the hazards', r.notInTheTable === true);
+    check('a regular sight still — several a run, and well clear of the old couple',
       my >= 4, JSON.stringify(r.perRun) + ' -> ' + my.toFixed(1) + '/run');
     check('more common than the rare pad it used to trail',
       my > sb, my.toFixed(1) + ' vs superBoost ' + sb.toFixed(1) + ' per run');
     check('still a minority of the track, not a carpet of them',
       sum('mystery') / ent < 0.12,
       (100 * sum('mystery') / ent).toFixed(1) + '% of entries');
+    check('the rate the roll table used to give: one every three quarters of a minute',
+      every > MYSTERY_EVERY_MIN && every < MYSTERY_EVERY_MAX,
+      'one every ' + every.toFixed(1) + 's');
+    check('they turn up behind the leader too, not only at the frontier',
+      sum('behindLead') >= sum('mystery') * 0.25,
+      sum('behindLead') + ' of ' + sum('mystery'));
+    check('and never past the course the world has authored', r.pastTheHorizon === 0,
+      r.pastTheHorizon + ' past the horizon');
+    await page.close();
+  }
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n[5a] a mystery square turns up anywhere, at any moment');
+  {
+    const { page, errs } = await newPage(browser);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      Run.begin(); Gen.stop(); App.set(ST.PLAYING); Obstacles.clear();
+      Race.racers.forEach((p, i) => { p.ai = null; p.place(i % 3, 500 + i * 12); });
+      Player.place(1, 500); Race.camD = Player.d;
+      const out = {}, lo = Race.trailD(), hi = Race.leadD();
+
+      /* sixty squares dropped by the real path, and where they landed */
+      const spots = [];
+      for (let i = 0; i < 60; i++) {
+        Obstacles.clear();
+        if (Mysteries.drop()) spots.push(Obstacles.list[0]);
+      }
+      out.dropsThem = spots.length >= 50;
+      out.everyOneIsASquare = spots.every(o => o.kind === 'mystery' && o.harmful === false);
+      out.insideTheField = spots.every(o =>
+        o.wd >= lo + CFG.MYSTERY_TAIL - 1e-6 && o.wd + o.hM <= hi + CFG.WORLD_AHEAD + 1e-6);
+      out.everyColumn = new Set(spots.map(o => o.lanes[0])).size === 3;
+      /* the whole point: not only ahead of the leader, and not only off camera */
+      out.behindTheLeader = spots.some(o => o.wd < hi);
+      out.inPlainSight = spots.some(o => o.onCamera());
+      out.expiresFromSpawning = spots.every(o =>
+        Math.abs(o.expiresAt - (Race.clock + CFG.MYSTERY_LIFETIME)) < 1e-9);
+
+      /* never on top of a hazard, a pickup or a racer */
+      Obstacles.clear();
+      for (let d = lo; d < hi + CFG.WORLD_AHEAD + 6; d += 2) {
+        Obstacles.list.push(new Obstacle('bar3', .5, 1, 2, true, [0, 1, 2], d));
+      }
+      out.noRoomIsNoSquare = Mysteries.drop() === false &&
+        Obstacles.list.every(o => o.kind !== 'mystery');
+      /* and a square it could not place is not a square lost */
+      Mysteries.next = Race.clock; Mysteries.update();
+      out.looksAgainShortly = Mysteries.next > Race.clock &&
+        Mysteries.next <= Race.clock + 0.5 + 1e-9;
+
+      /* the course is read in order, so one dropped into the middle of it sorts */
+      Obstacles.clear();
+      Obstacles.spawn({ kind: 'square', lane: 0 }, hi + 30);
+      Obstacles.spawn({ kind: 'square', lane: 0 }, lo + 2);
+      let sorted = true;
+      for (let i = 0; i < 20; i++) {
+        Mysteries.drop();
+        for (let j = 1; j < Obstacles.list.length; j++) {
+          if (Obstacles.list[j].wd < Obstacles.list[j - 1].wd) sorted = false;
+        }
+      }
+      out.courseStaysInOrder = sorted;
+
+      /* nothing is ever dropped past the run-in the finish line reserves */
+      Obstacles.clear();
+      Gen.stopAt(hi + 5);
+      const capped = [];
+      for (let i = 0; i < 40; i++) {
+        Obstacles.clear();
+        if (Mysteries.drop()) capped.push(Obstacles.list[0]);
+      }
+      out.neverPastTheLine = capped.length > 0 &&
+        capped.every(o => o.wd + o.hM <= hi + 5 + 1e-6);
+      Gen.stopAt(Infinity);
+
+      /* the clock it keeps is the race clock: a pause spends none of it */
+      Obstacles.clear();
+      Mysteries.next = Race.clock - 1;
+      App.set(ST.PAUSED);
+      for (let i = 0; i < 60; i++) update(1 / 60);
+      out.pauseDropsNothing = Obstacles.list.length === 0 &&
+        Mysteries.next === Race.clock - 1;
+      App.set(ST.PLAYING);
+      update(1 / 60);
+      out.dueMeansNow = Obstacles.list.filter(o => o.kind === 'mystery').length === 1;
+      out.thenWaitsAgain = Mysteries.next >= Race.clock + CFG.MYSTERY_GAP_MIN &&
+        Mysteries.next <= Race.clock + CFG.MYSTERY_GAP_MAX;
+      render();
+
+      /* a new run starts the clock over, and going home stops it */
+      Run.begin();
+      out.restarts = Mysteries.enabled === true && Mysteries.next >= CFG.MYSTERY_GAP_MIN;
+      Mysteries.stop();
+      Mysteries.next = 0;
+      update(1 / 60);
+      out.stopped = Obstacles.list.every(o => o.kind !== 'mystery');
+      Mysteries.reset();
+      return out;
+    });
+    for (const [name, ok] of Object.entries(r)) check(name, ok === true);
+    check('no errors while squares are dropped', errs.length === 0, errs.join(' | '));
     await page.close();
   }
 

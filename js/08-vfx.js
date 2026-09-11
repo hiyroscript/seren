@@ -52,6 +52,62 @@ var VFX = {
     }
   },
 
+  /* ---- a hazard coming apart ----
+     Ink on this track is never simply deleted: a hazard that is destroyed
+     breaks. Its face is split into shards that fly out of it, spinning and
+     falling with the ground they broke on, and a ring goes out through the
+     track in the colour of whatever broke it. Every piece is a world particle,
+     so the wreckage scrolls away with the course rather than hanging in the
+     air where the camera happens to be looking. */
+  smash: function (o, opt) {
+    opt = opt || {};
+    var r = o.rect ? o.rect() : o;
+    var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    /* the rings are measured against a column, never against the hazard: a
+       barrier across the whole track would otherwise throw a ring the width of
+       the playfield and read as the world ending rather than as a wall going */
+    var span = clamp(Math.max(r.w, r.h), colW() * 0.5, colW()), ink = opt.ink || '#000';
+    this.ripple(cx, cy, span * 0.22, span * 1.30, ink, .34, 2.6);
+    if (opt.color) this.ripple(cx, cy, span * 0.16, span * 1.05, opt.color, .46, 3.4);
+    this.burst(cx, cy, 10, { color: opt.color || ink, spMin: 110, spMax: 380,
+      sizeMax: 3.2, lifeMax: .5, streak: true, world: true });
+    if (Settings.reduced) return;
+
+    /* the face, cut into pieces: never finer than a few px on a phone, and
+       never coarser than a few pieces across, whatever shape the hazard is */
+    var cell = Math.max(5, Math.min(r.w, r.h) * 0.36);
+    var cols = clamp(Math.round(r.w / cell), 1, 8);
+    var rows = clamp(Math.round(r.h / cell), 1, 4);
+    var sw = r.w / cols, sh = r.h / rows;
+    for (var iy = 0; iy < rows; iy++) {
+      for (var ix = 0; ix < cols; ix++) {
+        var px = r.x + sw * (ix + 0.5), py = r.y + sh * (iy + 0.5);
+        var off = Math.hypot(px - cx, py - cy);
+        var a = off < 1 ? rand(0, TAU) : Math.atan2(py - cy, px - cx) + rand(-.5, .5);
+        var sp = rand(50, 130) * (0.6 + off / Math.max(1, span));
+        this.parts.push({
+          x: px, y: py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - rand(20, 90),
+          life: 0, max: rand(.28, .5), size: 0, color: ink,
+          drag: 2.1, grav: rand(240, 460), a0: .85, w: true,
+          shard: true, sw: sw * rand(.58, .88), sh: sh * rand(.58, .88),
+          rot: rand(0, TAU), spin: rand(-8, 8)
+        });
+      }
+    }
+  },
+  /* ---- the star's sparks: its own light, not the pad's streaks ---- */
+  twinkle: function (x, y, opt) {
+    opt = opt || {};
+    this.parts.push({
+      x: x, y: y, vx: opt.vx || 0, vy: opt.vy || 0,
+      life: 0, max: rand(opt.lifeMin || .26, opt.lifeMax || .5),
+      size: rand(opt.sizeMin || 2.4, opt.sizeMax || 5.2),
+      color: opt.color || '#fff', drag: opt.drag === undefined ? 1.5 : opt.drag,
+      grav: 0, a0: opt.a0 === undefined ? .95 : opt.a0, w: opt.world !== false,
+      spark: true, rot: rand(0, TAU), spin: rand(-5, 5)
+    });
+  },
+
   burst: function (x, y, n, opt) {
     opt = opt || {};
     n = Math.max(1, Math.round(n * this.scale()));
@@ -167,6 +223,20 @@ var VFX = {
         var ang = Math.atan2(p.vy, p.vx);
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(ang);
         ctx.fillRect(-len, -p.size * 0.35, len, p.size * 0.7);
+        ctx.restore();
+      } else if (p.shard) {
+        /* a piece of something broken: it keeps its own size and turns as it
+           falls, so the wreckage reads as the hazard rather than as dust */
+        var w = p.sw * (0.45 + a * 0.55), h = p.sh * (0.45 + a * 0.55);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot + p.spin * p.life);
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.restore();
+      } else if (p.spark) {
+        /* a four-point twinkle rather than a dot: the star's light reads as
+           its own even when a single speck of it is all that is left */
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot + p.spin * p.life);
+        starPath(0, 0, p.size * a * 1.6, 0.34, 0, 4);
+        ctx.fill();
         ctx.restore();
       } else {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size * a, 0, TAU); ctx.fill();

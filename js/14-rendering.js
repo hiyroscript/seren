@@ -293,13 +293,7 @@ function drawBolt(cx, cy, size) {
 function drawStar(x, y, size) {
   var r = size / 2;
   ctx.save();
-  ctx.beginPath();
-  for (var i = 0; i < 10; i++) {
-    var angle = -PI / 2 + i * PI / 5, radius = i % 2 ? r * 0.46 : r;
-    var sx = x + Math.cos(angle) * radius, sy = y + Math.sin(angle) * radius;
-    if (!i) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
-  }
-  ctx.closePath();
+  starPath(x, y, r, 0.46, 0, 5);
   ctx.fillStyle = starGradient(x - r, y - r, x + r, y + r);
   ctx.fill();
   ctx.lineWidth = Math.max(1.4, size * 0.045);

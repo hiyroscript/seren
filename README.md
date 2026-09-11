@@ -21,8 +21,11 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   speed (+150% instead of +75%) for the same 1.35 seconds. Their gradient is a band of
   purple running into blue that travels the length of the pad, held still if reduced
   motion is enabled. Pads refresh the effect without stacking.
-- Small bubbly squares marked `?` spawn ahead of the leader, like hazards, and
-  can be collected off camera. The first racer to touch one removes it for everyone.
+- Small bubbly squares marked `?` are not part of the course. They keep their own
+  clock and turn up anywhere the field is actually racing — any column, any moment,
+  as readily a marble in front of you as half a lap up the track — about one every
+  three quarters of a minute, the rate the roll table used to hand them out at. They
+  can be collected off camera, and the first racer to touch one removes it for everyone.
   They fill one item slot with one of three things, drawn at random:
   - a fake mystery square — drop it to leave a trap behind you; its question mark is
     upside down, and it disappears when it hits a racer, triggering the usual
@@ -33,10 +36,19 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
     five active seconds of full immunity, destroying every hazard you touch, including
     traps and crouch barriers. The marble wears the same gradient and moves at 3.25x
     the run speed, faster than the purple-blue pad’s 2.50x. Pads cannot weaken it.
+    It looks like nothing a pad does: no pad flare, no chevrons, but a six-point
+    corona turning behind the marble, a rim of the same light on it, twinkles shed
+    as it runs, and a ribbon of those same travelling colours laid down the track
+    behind it. The light gutters over its last second and a ring closes back onto
+    the marble as it goes out, so the moment you are touchable again is one you see.
 
   Collecting another pickup consumes the square but preserves your held item. Unclaimed squares last 10 seconds
   from spawning and blink during the final 2 seconds (a steady fade with reduced
   motion). Pausing freezes them.
+- A hazard that is destroyed does not simply disappear: it breaks where it stood.
+  Its face comes apart into shards that spin and fall with the ground they broke on,
+  and a ring goes out through the track in the colour of whatever broke it — a star
+  running one down, or a dropped trap spending itself on the racer it caught.
 - A white line on the right represents the whole race, from start at the bottom to
   finish at the top. Its bright section shows your progress; colored dots show all
   six racers, with a ring around yours. Like Redline, the finish distance is projected
@@ -119,10 +131,12 @@ seren/
     ├── 05-audio.js       Web Audio synthesis — every sound effect
     ├── 06-config-state.js  CFG balancing values, accent colour, device detection, App/ST
     ├── 07-layout.js      canvas, VIEW, PF, safe areas, responsive sizing
-    ├── 08-vfx.js         particles, ripples, dashes, speed lines, screen shake
+    ├── 08-vfx.js         particles, ripples, dashes, speed lines, screen shake,
+    │                     the break-up of a destroyed hazard and the star's sparks
     ├── 09-world.js       the canonical course in metres, obstacles, world-to-screen,
     │                     and the soap film every friendly thing on it wears
-    ├── 10-generator.js   the procedural course generator
+    ├── 10-generator.js   the procedural course generator, and the mystery
+    │                     squares' own clock, which is not part of it
     ├── 11-racers.js      Racer, the shared simulation, and Race
     ├── 12-ai.js          CPU decision-making across four difficulty levels
     ├── 13-run.js         run progression, countdown, final stage, the finish line
@@ -174,8 +188,9 @@ works from a project subpath as well as from a user or organisation root.
 
 `test/suite.js` drives the real game in a headless browser and asserts its
 invariants — no mocks, it calls the game's own `update()` and `render()`. It
-covers the speed readout, the ground the camera actually travels, the pads and
-the mystery square, all three items it hands out, the place readout's colour change,
+covers the speed readout, the ground the camera actually travels, the pads, the
+mystery square and where it turns up, all three items it hands out, the effect a
+destroyed hazard leaves behind, the place readout's colour change,
 the crouch tally, the generator's fairness floor, pause and restart, the finish
 line, the parked field past it and the results dialog over it, reduced motion,
 both languages, and full runs at three difficulties on desktop and mobile

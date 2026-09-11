@@ -101,6 +101,24 @@ var Sound = {
       case 'boostFar':
         this.tone({ f0: 300, f1: 760, dur: .14, type: 'sine', peak: .06 });
         break;
+      /* the star lighting up: a chord climbing out of the marble, nothing like
+         the pad's single swept shove */
+      case 'star':
+        this.tone({ f0: 784, f1: 1568, dur: .3, type: 'triangle', peak: .15 });
+        this.tone({ f0: 1175, dur: .2, type: 'sine', peak: .11, delay: .07 });
+        this.tone({ f0: 1976, dur: .28, type: 'sine', peak: .09, delay: .15 });
+        break;
+      case 'starFar':
+        this.tone({ f0: 880, f1: 1320, dur: .16, type: 'sine', peak: .05 });
+        break;
+      /* a hazard coming apart: the crack, then the pieces landing */
+      case 'smash':
+        this.noise({ dur: .17, peak: .28, cut: 4200, cut2: 600 });
+        this.tone({ f0: 420, f1: 90, dur: .2, type: 'square', peak: .13 });
+        break;
+      case 'smashFar':
+        this.noise({ dur: .1, peak: .09, cut: 2800, cut2: 700 });
+        break;
       /* the square opening: a question asked, then answered underneath by
          whichever effect it turned out to be */
       case 'mystery':

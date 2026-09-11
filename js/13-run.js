@@ -21,6 +21,7 @@ var Run = {
     Obstacles.clear(); VFX.clear();
     Race.reset();
     Gen.reset(0);
+    Mysteries.reset();
     Input.releaseAll();
     Results.hide();
     this.startCountdown(true);
@@ -121,6 +122,7 @@ var Run = {
     Race.tickClock(dt);
     Obstacles.update(dt);
     Gen.update(dt, this.mult, Race.leadD());
+    Mysteries.update();          /* on its own clock, not with the course */
     Race.update(dt, this.mult);
     this.checkCrossings();
     /* the run is as long as the track to the line: the run-out past it is not
