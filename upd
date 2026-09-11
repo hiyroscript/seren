@@ -1,3 +1,3 @@
-add a new item that the mystery square grants; the icon fo the item is a star that continuely gradiantly changes colors (the same 3 colors of the bubbles so the blue yellow and pink), on use the marble receives the same color effect as the star and the racer receives where they are fully immune and destroy any danger hazard on their paths, the user aslo receives a speed boost stronger than the purple-blue speed pad, this effect lasts 5 seconds.
-when a racer curretly has an item in the item slot and they collect a mystery square, the mystery square should not override the current item.
-look at the redline repo, in the redline game theres a white line that behaves as the map lenght, empliment that same mechanic in Seren.
+add a destroy effect to hazards that get destroyed.
+add a unique effect to the star item, so it doesnt use the same effect as the speed pads (inculding a back trail that uses the same color effect.
+change the way mystery squares spawn, instead of making them spawn like hazards they can spawn anywhere at anytime, tho keep their spawn rate the same
