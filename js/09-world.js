@@ -149,6 +149,7 @@ var Obstacles = {
           ctx.globalAlpha = 1;
         }
       }
+      if (o.kind === 'falseMystery') { this.drawMystery(o, r); continue; }
       if (!o.harmful) {
         if (o.kind === 'mystery') {
           ctx.save();
@@ -268,6 +269,10 @@ var Obstacles = {
        white paper, the same job the pads' glow does */
     drawSoapRect(x, y, w, h, { t: t, halo: soapPulse(o.wd) });
 
+    ctx.save();
+    if (o.kind === 'falseMystery') {
+      ctx.translate(cx, cy); ctx.rotate(PI); ctx.translate(-cx, -cy);
+    }
     /* the question mark, readable over paper and over film alike */
     setFont(rad * 1.15, 700);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -276,6 +281,7 @@ var Obstacles = {
     ctx.strokeText('?', cx, cy + 1);
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText('?', cx, cy + 1);
+    ctx.restore();
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   },
   /* redrawn over a ducking racer so it genuinely reads as passing underneath */

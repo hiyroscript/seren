@@ -46,6 +46,7 @@ function Racer(id, human, marbleKey) {
   this.bumpCd = 0;               /* short guard against repeat contacts */
   this.hitFlash = 0;
   this.respawnT = 0; this.collisions = 0; this.finished = false;
+  this.item = null; this.itemPickedAt = -10;
   this.result = 0;               /* the place it crossed the finish line in */
   this.rollV = 0;                /* metres a second left in the run-out */
   this.laneTime = CFG.LANE_TIME; /* seconds a column change takes, for this racer */
@@ -484,6 +485,7 @@ var Race = {
       var g = grid[i % grid.length];
       var p = this.racers[i];
       p.place(g.lane, -g.back * CFG.GRID_ROW);
+      p.item = null; p.itemPickedAt = -10;
       p.collisions = 0; p.finished = false; p.respawnT = 0; p.hitFlash = 0;
       p.result = 0; p.rollV = 0; p.laneTime = CFG.LANE_TIME;
       p.crouches = 0; p.crouchWas = false;
@@ -642,8 +644,34 @@ var Race = {
     var index = Obstacles.list.indexOf(o);
     if (index < 0 || Race.clock >= o.expiresAt) return;
     Obstacles.list.splice(index, 1);
+    p.item = 'falseMystery';
+    p.itemPickedAt = Race.clock;
+    if (p.onCamera()) {
+      var r = o.rect(), x = r.x + r.w / 2, y = r.y + r.h / 2;
+      VFX.pickups.push({ cxF: o.cxF, wd: o.wd, wF: o.wF, hM: o.hM,
+        start: Race.clock, human: p.human });
+      if (!Settings.reduced) {
+        VFX.burst(x, y, 18, { color: '#78dfff', spMax: 180, lifeMax: .45, world: true });
+        VFX.ripple(x, y, r.w / 3, r.w * 1.5, '#bd8de8', .4, 2);
+      }
+    }
     if (p.human) Sound.play('mystery');
     else if (p.onCamera()) Sound.play('mysteryFar');
+  },
+  useItem: function (p) {
+    var active = App.state === ST.PLAYING || App.state === ST.RESPAWNING ||
+      App.state === ST.FINISH || App.state === ST.COMPLETED;
+    if (App.blocked || !active ||
+        !p.alive || p.finished || p.inBubble() || p.item !== 'falseMystery') return false;
+    var h = pxToMetres(colW()) * CFG.MYSTERY_SIZE;
+    // Leave a full marble radius of clearance behind the actual moving racer.
+    var wd = p.d - pxToMetres(playerRadius()) - h - 0.4;
+    var o = new Obstacle('falseMystery', p.xF, CFG.MYSTERY_SIZE / 3,
+      h, false, [p.lane], wd);
+    Obstacles.list.push(o);
+    Obstacles.list.sort(function (a, b) { return a.wd - b.wd; });
+    p.item = null;
+    return true;
   },
   slowDown: function (q) {
     /* refreshed, never stacked */
@@ -830,7 +858,14 @@ var Race = {
           }
           if (p.immune > 0) continue;
           if (o.crouch && p.crouch) continue;
-          if (racerHits(p, o)) { this.destroy(p, 'hazard'); break; }
+          if (racerHits(p, o)) {
+            if (o.kind === 'falseMystery') {
+              var trapIndex = Obstacles.list.indexOf(o);
+              if (trapIndex < 0) continue;
+              Obstacles.list.splice(trapIndex, 1);
+            }
+            this.destroy(p, 'hazard'); break;
+          }
         }
       }
       if (!p.alive) {

@@ -23,7 +23,9 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   motion is enabled. Pads refresh the effect without stacking.
 - Small bubbly squares marked `?` spawn ahead of the leader, like hazards, and
   can be collected off camera. The first racer to touch one removes it for everyone.
-  They grant no effect yet. Unclaimed squares last 10 seconds from spawning and blink
+  They fill one item slot with a fake mystery square. Use it to drop a trap behind you;
+  its question mark is upside down, and it disappears when it hits a racer, triggering
+  the usual elimination and respawn. Collecting another pickup refills the same slot. Unclaimed squares last 10 seconds from spawning and blink
   during the final 2 seconds (a steady fade with reduced motion). Pausing freezes them.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
@@ -41,8 +43,8 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   furthest, every place behind stops one step earlier, each in the column the staircase
   hands it. The field parks in the order it finished.
 - The camera stops at the line when you cross it, so the run-out is something you watch.
-  The rest of the field is still racing for the places that are left, and the result is
-  read over the parked field rather than over a black slab.
+  The rest of the field keeps racing. No results dialog covers the parked field;
+  Play Again and Home buttons remain available below it.
 - The line itself wears the same soap film as the mystery squares and the respawn
   bubbles, drawn as a band across all three columns.
 
@@ -53,6 +55,7 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
 | Move left | `A`, `Q` or `←` |
 | Move right | `D` or `→` |
 | Crouch (hold) | `S`, `↓` or `Space` |
+| Use item | `Shift` or click the bottom-right slot |
 | Pause / resume | `Escape` |
 | Start from the home screen | `Enter` or `Space` |
 
@@ -67,6 +70,7 @@ portrait corridor inside it.
 | --- | --- |
 | Change column | A decisive swipe left or right (one column per flick) |
 | Crouch | Swipe down and keep your finger on the glass |
+| Use item | Tap the bottom-right slot or quickly double-tap the screen |
 | Pause | The pause button, top right |
 
 Portrait orientation is required.

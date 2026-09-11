@@ -4,6 +4,7 @@
    7. VFX — particles, ripples, speed lines, screen shake
    ========================================================================== */
 var VFX = {
+  pickups: [],
   parts: [], ripples: [], lines: [], shake: 0, shakeT: 0, moteAcc: 0,
 
   scale: function () { return Settings.reduced ? 0.35 : 1; },
@@ -130,10 +131,30 @@ var VFX = {
     this.shake = Math.max(0, this.shake - dt * 26);
   },
   clear: function () {
+    this.pickups.length = 0;
     this.parts.length = 0; this.ripples.length = 0; this.lines.length = 0;
     this.dashes.length = 0; this.shake = 0; this.moteAcc = 0;
   },
 
+  drawPickups: function () {
+    for (var i = this.pickups.length - 1; i >= 0; i--) {
+      var p = this.pickups[i], k = (Race.clock - p.start) / 0.55;
+      if (k >= 1) { this.pickups.splice(i, 1); continue; }
+      var slot = itemSlotRect(), size = p.wF * PF.w;
+      var x = PF.x + p.cxF * PF.w, y = screenY(p.wd + p.hM / 2);
+      if (p.human && !Settings.reduced) {
+        var f = easeOutCubic(k);
+        x = lerp(x, slot.x + slot.w / 2, f);
+        y = lerp(y, slot.y + slot.h / 2, f);
+      }
+      ctx.save();
+      ctx.globalAlpha = 1 - k;
+      var s = Settings.reduced ? size : size * (1 + Math.sin(k * PI) * .25);
+      Obstacles.drawMystery({ wd: p.wd, kind: 'mystery' },
+        { x: x - s / 2, y: y - s / 2, w: s, h: s });
+      ctx.restore();
+    }
+  },
   drawParticles: function () {
     var i, p, a;
     for (i = 0; i < this.parts.length; i++) {

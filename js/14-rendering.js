@@ -250,6 +250,26 @@ function drawFinishLine() {
     { t: t, halo: soapPulse(0), glints: 3 });
 }
 
+function itemSlotRect() {
+  var size = clamp(Math.min(VIEW.w, VIEW.h) * .12, 52, 76);
+  return { x: VIEW.w - INSET.r - size - 18, y: VIEW.h - INSET.b - size - 18,
+    w: size, h: size };
+}
+function drawItemSlot() {
+  if (App.state !== ST.PLAYING && App.state !== ST.RESPAWNING &&
+      App.state !== ST.COUNTDOWN && App.state !== ST.PAUSED) return;
+  var r = itemSlotRect();
+  ctx.save();
+  ctx.fillStyle = 'rgba(30,35,45,0.18)';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  drawSoapRect(r.x, r.y, r.w, r.h, { t: Settings.reduced ? 0 : Race.clock, halo: 0 });
+  if (Player.item) {
+    var s = r.w * .55;
+    Obstacles.drawMystery({ kind: 'falseMystery', wd: 0 },
+      { x: r.x + (r.w - s) / 2, y: r.y + (r.h - s) / 2, w: s, h: s });
+  }
+  ctx.restore();
+}
 function drawHUD() {
   var pad = IS_MOBILE ? INSET.l + 16 : 14;
   var top = hudTop() + 8;
@@ -371,6 +391,8 @@ function drawScene() {
   }
 
   drawHUD();
+  drawItemSlot();
+  VFX.drawPickups();
   drawCountdown();
   ctx.restore();
 }
