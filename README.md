@@ -21,10 +21,10 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   speed (+150% instead of +75%) for the same 1.35 seconds. Their gradient is a band of
   purple running into blue that travels the length of the pad, held still if reduced
   motion is enabled. Pads refresh the effect without stacking.
-- Bubbly squares marked `?` turn up regularly — about ten in a run. They hand out
-  nothing at the moment: reaching one lights it up and opens it for you, and that is
-  all. Each racer opens a given square once, and it stays on the track for the rest of
-  the field.
+- Small bubbly squares marked `?` spawn ahead of the leader, like hazards, and
+  can be collected off camera. The first racer to touch one removes it for everyone.
+  They grant no effect yet. Unclaimed squares last 10 seconds from spawning and blink
+  during the final 2 seconds (a steady fade with reduced motion). Pausing freezes them.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the

@@ -81,11 +81,11 @@ var Obstacles = {
     } else if (entry.kind === 'bar3') {
       out.push(new Obstacle('bar3', 0.5, 1, colM * 0.50, true, [0, 1, 2], wd));
     } else if (entry.kind === 'mystery') {
-      /* a square the size of the rare pad, and like the pads it blocks nothing:
-         it is there to be taken, not dodged */
-      var my = new Obstacle('mystery', laneCenterF(entry.lane), 0.50 / 3,
-        colM * 0.50, false, [entry.lane], wd);
+      /* compact, single-use pickup on the same canonical course as hazards */
+      var my = new Obstacle('mystery', laneCenterF(entry.lane), CFG.MYSTERY_SIZE / 3,
+        colM * CFG.MYSTERY_SIZE, false, [entry.lane], wd);
       my.harmful = false;
+      my.expiresAt = Race.clock + CFG.MYSTERY_LIFETIME;
       out.push(my);
     } else if (entry.kind === 'boost' || entry.kind === 'superBoost') {
       var strong = entry.kind === 'superBoost';
@@ -106,14 +106,15 @@ var Obstacles = {
   },
 
   /* the world only advances its own moving parts; nothing here depends on any
-     racer's position, and nothing is thrown away until every racer is past */
+     racer's position, and pickups expire on the race clock; other entries stay until every racer is past */
   update: function (dt) {
     var behind = Race.trailD() - 12;
     for (var i = this.list.length - 1; i >= 0; i--) {
       var o = this.list[i];
       o.advance();
       if (o.flash > 0) o.flash = Math.max(0, o.flash - dt);
-      if (o.wd + o.hM < behind) this.list.splice(i, 1);
+      if ((o.kind === 'mystery' && Race.clock >= o.expiresAt) ||
+          o.wd + o.hM < behind) this.list.splice(i, 1);
     }
   },
 
@@ -149,7 +150,12 @@ var Obstacles = {
         }
       }
       if (!o.harmful) {
-        if (o.kind === 'mystery') this.drawMystery(o, r); else this.drawBoost(o, r);
+        if (o.kind === 'mystery') {
+          ctx.save();
+          ctx.globalAlpha = this.mysteryAlpha(o);
+          this.drawMystery(o, r);
+          ctx.restore();
+        } else this.drawBoost(o, r);
         continue;
       }
       ctx.fillStyle = '#000';
@@ -237,6 +243,15 @@ var Obstacles = {
       ctx.stroke();
     }
   },
+  mysteryAlpha: function (o) {
+    var left = o.expiresAt - Race.clock;
+    if (left <= 0) return 0;
+    if (left > CFG.MYSTERY_BLINK) return 1;
+    /* Reduced motion uses a steady fade instead of blinking. */
+    if (Settings.reduced) return left / CFG.MYSTERY_BLINK;
+    return Math.floor((CFG.MYSTERY_BLINK - left) * 4) % 2 ? 0.2 : 1;
+  },
+
   /* The mystery square: the respawn bubble's soap film, squared off and with a
      "?" where the marble would be. Same halo, same film, same thin-film tints
      travelling the rim, same two highlights — a dashed stroke walks the tints
@@ -307,14 +322,6 @@ var Obstacles = {
     ctx.arc(cx + rad * 0.42, cy + rad * 0.34, rad * 0.10, 0, TAU);
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.fill();
-
-    /* just taken: the whole face lights up and fades back down */
-    if (o.flash > 0) {
-      ctx.globalAlpha = 0.85 * (o.flash / CFG.BOOST_FLASH);
-      ctx.fillStyle = '#EAF8FF';
-      ctx.fillRect(x, y, w, h);
-      ctx.globalAlpha = 1;
-    }
 
     /* the question mark, readable over paper and over film alike */
     setFont(rad * 1.15, 700);

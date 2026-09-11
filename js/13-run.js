@@ -153,7 +153,7 @@ var Run = {
         var gap = Math.max(r.x - px, px - (r.x + r.w));
         if (gap < pr * 1.5) near = { x: px, y: py };     /* squeezed by, or ducked under */
       }
-      VFX.whoosh(r, near);
+      VFX.whoosh(r, near, o.crouch && Player.crouch);
     }
   },
 

@@ -196,7 +196,7 @@ async function newPage(browser, opts) {
       out.kind = o.kind;
 
       /* taking one grants nothing at all: the racer leaves it exactly as it
-         arrived, and the square lights up to say it was reached */
+         arrived, and the square disappears */
       const p0 = Race.racers[0];
       p0.alive = true; p0.boost = 0; p0.boostPower = 1; p0.immune = 0; p0.slow = 0;
       const beforeTake = [p0.boost, p0.boostPower, p0.immune, p0.slow,
@@ -205,7 +205,8 @@ async function newPage(browser, opts) {
       Race.mysteryTake(p0, o);
       out.unchanged = [p0.boost, p0.boostPower, p0.immune, p0.slow,
                        p0.speedScale(), p0.d].join('|') === beforeTake;
-      out.lit = o.flash > 0;
+      out.removed = !Obstacles.list.includes(o);
+      out.smaller = o.wF * 3 < 0.50;
       out.noRollTable = typeof window.rollMystery === 'undefined' &&
                         typeof window.MYSTERY_ODDS === 'undefined';
 
@@ -231,7 +232,7 @@ async function newPage(browser, opts) {
       out.takesBySameRacer = byRacer[me.id] || 0;
       out.stillOnTrack = Obstacles.list.indexOf(sq) >= 0;
 
-      /* a second racer through opens the same square for themselves */
+      /* a second racer cannot collect the consumed square */
       const other = Race.racers[2];
       other.place(1, sq.wd + sq.hM / 2);
       other.alive = true; other.floating = false; other.coasting = false;
@@ -255,18 +256,64 @@ async function newPage(browser, opts) {
       for (let i = 0; i < 60; i++) { p2.d = sq2.wd + sq2.hM / 2; p2.floating = true; Race.update(1 / 60, 0); }
       out.bubbleTakes = (byRacer[p2.id] || 0) - before2;
       Race.mysteryTake = mt;
+
+      /* Generate beyond an off-camera leader using the real generator path. */
+      Obstacles.clear();
+      Race.racers.forEach(p => { p.finished = true; });
+      const leader = Race.racers[3];
+      leader.finished = false; leader.ai = null;
+      leader.place(1, 1000); leader.alive = true; leader.floating = false;
+      leader.coasting = false; leader.boost = 0; leader.slow = 0;
+      Race.camD = 0; Race.camLock = true;
+      Gen.reset(leader.d);
+      Gen.queue = Array.from({ length: 100 }, () => Object.assign(E_mystery(1), { gap: 1 }));
+      Gen.update(0, 1, Race.leadD()); Gen.stop();
+      const far = Obstacles.list[0];
+      out.aheadOfLeader = far.wd > leader.d && !leader.onCamera();
+      for (let i = 0; i < 180 && Obstacles.list.includes(far); i++) {
+        Race.tickClock(1 / 60); Obstacles.update(1 / 60); Race.update(1 / 60, 1);
+      }
+      out.leaderCollected = !!far.seen[leader.id] && !Obstacles.list.includes(far);
+
+      /* Expiry starts at spawn, freezes on pause, and applies off camera too. */
+      Obstacles.clear();
+      const exp = Obstacles.spawn(E_mystery(0), 2000)[0];
+      const start = Race.clock;
+      App.set(ST.PAUSED);
+      for (let i = 0; i < 120; i++) update(1 / 60);
+      out.pauseFreezes = Race.clock === start && Obstacles.list.includes(exp);
+      Settings.reduced = false;
+      Race.clock = exp.expiresAt - CFG.MYSTERY_BLINK - 0.01;
+      out.solidBeforeBlink = Obstacles.mysteryAlpha(exp) === 1;
+      Race.clock = exp.expiresAt - CFG.MYSTERY_BLINK + 0.1;
+      const alpha1 = Obstacles.mysteryAlpha(exp);
+      Race.clock += 0.25;
+      out.blinks = alpha1 !== Obstacles.mysteryAlpha(exp);
+      Settings.reduced = true;
+      const fade1 = Obstacles.mysteryAlpha(exp);
+      Race.clock += 0.25;
+      out.reducedFades = Obstacles.mysteryAlpha(exp) < fade1;
+      Race.clock = exp.expiresAt - 0.001; Obstacles.update(0);
+      out.presentUntilExpiry = Obstacles.list.includes(exp);
+      Race.clock = exp.expiresAt; Obstacles.update(0);
+      out.expired = !Obstacles.list.includes(exp);
       return out;
     });
     check('the square is a pickup, not a hazard', r.harmful === false);
     check('the square is square', r.square === true);
     check('taking one grants nothing — no shove, no cover, no setback', r.unchanged === true);
-    check('but the square lights up to say it was reached', r.lit === true);
+    check('collection removes the square immediately', r.removed === true);
+    check('mystery squares are smaller', r.smaller === true);
     check('the outcome table is gone rather than left dormant', r.noRollTable === true);
     check('one racer takes a given square exactly once', r.takesBySameRacer === 1, 'took ' + r.takesBySameRacer);
-    check('a taken square stays on the track for the rest of the field', r.stillOnTrack === true);
-    check('the next racer through opens it for themselves',
-      r.takesByOther === 1 && r.seenIds === 2, 'took ' + r.takesByOther + ', seen by ' + r.seenIds);
+    check('a taken square leaves the track for the whole field', r.stillOnTrack === false);
+    check('the next racer cannot collect it again',
+      r.takesByOther === 0 && r.seenIds === 1, 'took ' + r.takesByOther + ', seen by ' + r.seenIds);
     check('a racer in a respawn bubble takes nothing', r.bubbleTakes === 0, 'took ' + r.bubbleTakes);
+    for (const key of ['aheadOfLeader', 'leaderCollected', 'pauseFreezes',
+                       'solidBeforeBlink', 'blinks', 'reducedFades', 'presentUntilExpiry', 'expired']) {
+      check(key, r[key] === true);
+    }
     check('no errors', errs.length === 0, errs.join(' | '));
     await page.close();
   }
@@ -433,8 +480,14 @@ async function newPage(browser, opts) {
       VFX.clear(); render();
       const slowed = band();
       Player.slow = 0;
-      return { same: standing === crouching, ringStillThere: slowed !== standing };
+      Obstacles.clear(); VFX.clear(); Settings.reduced = false;
+      Player.crouch = true; Player.crouchAmt = 1;
+      Obstacles.spawn({ kind: 'bar3', crouch: true }, Player.d - 10);
+      Run.passFX();
+      const noDuckRing = VFX.ripples.length === 0 && VFX.parts.length > 0;
+      return { same: standing === crouching, ringStillThere: slowed !== standing, noDuckRing };
     });
+    check('passing under a barrier emits no ring', r.noDuckRing === true);
     check('crouching leaves the track beside the marble untouched', r.same === true);
     check('the bump ring is still drawn — it was never the crouch mark',
       r.ringStillThere === true);

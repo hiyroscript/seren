@@ -625,13 +625,11 @@ var Race = {
       VFX.ripple(x, y, r * 1.2, r * 8, ink, .22, 6);
     }
   },
-  /* The mystery square. It hands nothing out at the moment — the roll that
-     used to sit here is in the history if it is wanted back — so all a racer
-     gets for reaching one is the square lighting up under them and, if it is
-     the one being played, the sound of it opening. It is still marked taken
-     per racer, so it opens once each and never again. */
+  /* The first racer to reach it consumes it for the whole field. */
   mysteryTake: function (p, o) {
-    if (o) o.flash = CFG.BOOST_FLASH;
+    var index = Obstacles.list.indexOf(o);
+    if (index < 0 || Race.clock >= o.expiresAt) return;
+    Obstacles.list.splice(index, 1);
     if (p.human) Sound.play('mystery');
     else if (p.onCamera()) Sound.play('mysteryFar');
   },
@@ -808,9 +806,7 @@ var Race = {
         for (var k = 0; k < near.length; k++) {
           var o = near[k];
           if (!o.harmful) {
-            /* a pad or a square, not a pickup that leaves the track: it stays
-               in the world for everyone else, and it only acts on any given
-               racer once */
+            /* Pads act once per racer; mystery squares leave the world on contact. */
             if (!o.seen[p.id] && racerHits(p, o)) {
               o.seen[p.id] = 1;
               if (o.kind === 'mystery') this.mysteryTake(p, o);
