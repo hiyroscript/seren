@@ -78,6 +78,7 @@ var CFG = {
   SPAWN_MARGIN:     0.04,   /* spawn this far above the playfield (N) */
 
   /* timing */
+  POS_FLASH:        0.9,    /* seconds the place readout holds its new colour */
   COUNT_STEP:       0.68,
   SPLASH_TIME:      2.5,
   IRIS_IN:          0.55,

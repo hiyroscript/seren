@@ -10,6 +10,12 @@ function applyI18n() {
     var v = t(key);
     if (typeof v === 'string') nodes[i].textContent = v;
   }
+  /* the same lookup for the labels that are read rather than shown */
+  var aria = document.querySelectorAll('[data-i18n-aria]');
+  for (var n = 0; n < aria.length; n++) {
+    var av = t(aria[n].getAttribute('data-i18n-aria'));
+    if (typeof av === 'string') aria[n].setAttribute('aria-label', av);
+  }
   document.getElementById('noteKeys').style.display = IS_MOBILE ? 'none' : '';
   if (!IS_MOBILE) {   /* the tutorial speaks the language of the device it is on */
     var a = document.querySelector('[data-i18n="htLanes"]');
@@ -17,6 +23,8 @@ function applyI18n() {
     if (a) a.textContent = t('htLanesKb');
     if (b) b.textContent = t('htCrouchKb');
   }
+  /* a dialog already on screen changes language where it stands */
+  if (Results.open) Results.fill();
   var op = document.getElementById('panel-orient');
   if (op.classList.contains('show')) checkOrientation();
 }

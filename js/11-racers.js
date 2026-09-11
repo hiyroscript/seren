@@ -435,6 +435,11 @@ function racerHits(p, o) {
   return ex * ex + em * em <= 1;
 }
 
+/* What a mystery square can be carrying. One slot holds one of them, both are
+   spent the same way, and nothing stacks: the fake square is a trap left
+   behind you, the bolt is the yellow pad's shove carried in your pocket. */
+var ITEM_KINDS = ['falseMystery', 'boost'];
+
 /* ============================================================================
    RACE — the shared simulation every racer runs inside
    ========================================================================== */
@@ -644,7 +649,7 @@ var Race = {
     var index = Obstacles.list.indexOf(o);
     if (index < 0 || Race.clock >= o.expiresAt) return;
     Obstacles.list.splice(index, 1);
-    p.item = 'falseMystery';
+    p.item = pick(ITEM_KINDS);
     p.itemPickedAt = Race.clock;
     if (p.onCamera()) {
       var r = o.rect(), x = r.x + r.w / 2, y = r.y + r.h / 2;
@@ -658,11 +663,17 @@ var Race = {
     if (p.human) Sound.play('mystery');
     else if (p.onCamera()) Sound.play('mysteryFar');
   },
+  /* One slot, spent outright: whatever was in it goes off at once and the
+     slot is empty again, whichever of the two it was holding. */
   useItem: function (p) {
     var active = App.state === ST.PLAYING || App.state === ST.RESPAWNING ||
       App.state === ST.FINISH || App.state === ST.COMPLETED;
     if (App.blocked || !active ||
-        !p.alive || p.finished || p.inBubble() || p.item !== 'falseMystery') return false;
+        !p.alive || p.finished || p.inBubble() ||
+        ITEM_KINDS.indexOf(p.item) < 0) return false;
+    /* the bolt: the yellow pad's shove exactly, refreshed rather than stacked
+       like every other one, and with no pad on the track to light up */
+    if (p.item === 'boost') { p.item = null; this.shoveForward(p, null); return true; }
     var h = pxToMetres(colW()) * CFG.MYSTERY_SIZE;
     // Leave a full marble radius of clearance behind the actual moving racer.
     var wd = p.d - pxToMetres(playerRadius()) - h - 0.4;

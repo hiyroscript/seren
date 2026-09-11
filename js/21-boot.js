@@ -77,6 +77,8 @@ function wireEvents() {
     else if (act === 'pause-settings') { Sound.play('ui'); App.prev = ST.PAUSED; App.set(ST.SETTINGS); Screens.show('settings'); }
     else if (act === 'home') goHome(App.state === ST.COMPLETED);
     else if (act === 'again') { Screens.show(null); Sound.play('start'); Run.begin(); irisOut(VIEW.w / 2, VIEW.h / 2); }
+    else if (act === 'show-results') { Sound.play('ui'); Results.show(); }
+    else if (act === 'results-close') { Sound.play('uiBack'); Results.hide(); }
   });
 
   /* marble selection */

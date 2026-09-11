@@ -13,8 +13,37 @@ var Screens = {
   }
 };
 
+/* ---------------------------------------------------------------------------
+   THE RESULTS DIALOG
+
+   What crossing the line paid, laid over the parked field rather than instead
+   of it: the place in big type, then what taking it cost — times eliminated,
+   times ducked — and the two ways out. Closing it does not end the run's
+   screen; the three buttons at the foot of the screen take over, and Show
+   results brings it back. The field is on the track the whole time.
+   ------------------------------------------------------------------------- */
+var Results = {
+  open: false,
+  fill: function () {
+    var place = Player ? (Player.result || Player.pos || 1) : 1;
+    var names = t('places');
+    var el = document.getElementById('resultPlace');
+    if (el) el.textContent = (names && names[place - 1]) || String(place);
+    var hits = document.getElementById('resultHits');
+    if (hits) hits.textContent = numFmt(Player ? Player.collisions : 0);
+    var ducks = document.getElementById('resultDucks');
+    if (ducks) ducks.textContent = numFmt(Player ? Player.crouches : 0);
+  },
+  show: function () { this.fill(); this.open = true; syncChrome(); },
+  hide: function () { this.open = false; syncChrome(); }
+};
+
 function syncChrome() {
-  document.getElementById('finishActions').hidden = App.state !== ST.COMPLETED || App.blocked;
+  /* the run is over, and the racer is parked: one of these two is up, never
+     both, and neither of them while the orientation gate is */
+  var done = App.state === ST.COMPLETED && !App.blocked;
+  document.getElementById('resultsDialog').hidden = !(done && Results.open);
+  document.getElementById('finishActions').hidden = !done || Results.open;
   var b = document.getElementById('pauseBtn');
   var visible = (App.state === ST.PLAYING || App.state === ST.RESPAWNING || App.state === ST.COUNTDOWN);
   b.classList.toggle('show', visible && !App.blocked);

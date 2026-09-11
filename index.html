@@ -181,9 +181,29 @@
     </div>
   </section>
 
+  <!-- RESULTS — over the parked field, not instead of it -->
+  <section id="resultsDialog" role="dialog" aria-labelledby="resultPlace" hidden>
+    <button id="resultsClose" data-act="results-close" data-i18n-aria="closeResults" aria-label="Close the results">
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <p class="resultPlace" id="resultPlace">1ST</p>
+    <dl class="stats">
+      <div class="stat"><dt data-i18n="eliminated">Eliminated</dt><dd id="resultHits">0</dd></div>
+      <div class="stat"><dt data-i18n="crouched">Crouched</dt><dd id="resultDucks">0</dd></div>
+    </dl>
+    <div class="stack">
+      <button class="btn" data-act="again" data-i18n="playAgain"></button>
+      <button class="btn ghost" data-act="home" data-i18n="returnHome"></button>
+    </div>
+  </section>
+
   <div id="finishActions" hidden>
     <button class="btn" data-act="again" data-i18n="playAgain"></button>
     <button class="btn ghost" data-act="home" data-i18n="returnHome"></button>
+    <button class="btn ghost" data-act="show-results" data-i18n="showResults"></button>
   </div>
 
   <!-- ORIENTATION -->

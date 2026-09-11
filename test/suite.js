@@ -205,10 +205,21 @@ async function newPage(browser, opts) {
       out.unchanged = [p0.boost, p0.boostPower, p0.immune, p0.slow,
                        p0.speedScale(), p0.d].join('|') === beforeTake;
       out.removed = !Obstacles.list.includes(o);
-      out.itemGranted = p0.item === 'falseMystery';
+      out.itemGranted = ITEM_KINDS.indexOf(p0.item) >= 0;
       out.smaller = o.wF * 3 < 0.50;
-      out.noRollTable = typeof window.rollMystery === 'undefined' &&
-                        typeof window.MYSTERY_ODDS === 'undefined';
+
+      /* the slot is filled from the one known pool, and both of the two
+         things in it come up over a long enough run of squares */
+      const rolled = {};
+      for (let i = 0; i < 400; i++) {
+        const sq0 = Obstacles.spawn({ kind: 'mystery', lane: 1 }, Race.camD + 10)[0];
+        p0.item = null;
+        Race.mysteryTake(p0, sq0);
+        rolled[String(p0.item)] = (rolled[String(p0.item)] || 0) + 1;
+      }
+      p0.item = null; VFX.clear();
+      out.poolOnly = Object.keys(rolled).every(k => ITEM_KINDS.indexOf(k) >= 0);
+      out.bothItems = ITEM_KINDS.every(k => rolled[k] > 0);
 
       /* who took what, per racer — six of them share this track */
       const byRacer = {};
@@ -306,7 +317,8 @@ async function newPage(browser, opts) {
     check('collection removes the square immediately', r.removed === true);
     check('pickup fills the item slot', r.itemGranted === true);
     check('mystery squares are smaller', r.smaller === true);
-    check('the outcome table is gone rather than left dormant', r.noRollTable === true);
+    check('a square only ever hands out something from the item pool', r.poolOnly === true);
+    check('both items in the pool come up', r.bothItems === true);
     check('one racer takes a given square exactly once', r.takesBySameRacer === 1, 'took ' + r.takesBySameRacer);
     check('a taken square leaves the track for the whole field', r.stillOnTrack === false);
     check('the next racer cannot collect it again',
@@ -335,6 +347,19 @@ async function newPage(browser, opts) {
       Race.mysteryTake(Player, pickup);
       out.pickupFX = VFX.pickups.length === 1;
       render();
+
+      /* the bolt: the yellow pad's shove, and nothing left on the track */
+      Player.item = 'boost'; Player.boost = 0; Player.boostPower = 1;
+      const trackBefore = Obstacles.list.length;
+      render();                                  /* the slot draws the bolt */
+      Input.onKeyDown({ key: 'Shift', preventDefault() {} });
+      out.bolt = Player.item === null && Player.boost === CFG.BOOST_TIME &&
+        Player.boostPower === 1 && Player.speedScale() > 1 &&
+        Obstacles.list.length === trackBefore;
+      Player.boost = 0; Player.boostPower = 1;
+
+      /* the fake square: a trap left behind, clear of the racer that left it */
+      Player.item = 'falseMystery';
       Input.onKeyDown({ key: 'Shift', preventDefault() {} });
       const trap = Obstacles.list[0];
       out.drop = trap.kind === 'falseMystery' && trap.wd + trap.hM < Player.d &&
@@ -370,13 +395,79 @@ async function newPage(browser, opts) {
       out.slot = Player.item === null && slot.x >= 0 && slot.y + slot.h <= VIEW.h;
       Player.item = 'falseMystery'; restartRun();
       out.reset = Player.item === null && Obstacles.list.length === 0;
-      App.set(ST.COMPLETED); render();
-      out.noDialog = !document.getElementById('panel-complete') &&
-        !document.getElementById('finishActions').hidden;
+
+      /* the results dialog: what the line paid, over the parked field */
+      const dlg = document.getElementById('resultsDialog');
+      const bar = document.getElementById('finishActions');
+      Player.result = 2; Player.collisions = 3; Player.crouches = 7;
+      App.set(ST.COMPLETED); Results.show(); render();
+      out.dialogOpens = !dlg.hidden && bar.hidden;
+      out.dialogPlace = document.getElementById('resultPlace').textContent === '2ND';
+      out.dialogCounts = document.getElementById('resultHits').textContent === '3' &&
+        document.getElementById('resultDucks').textContent === '7';
+      /* the X hands the screen back without ending it */
+      document.getElementById('resultsClose').click();
+      out.dialogCloses = dlg.hidden && !bar.hidden;
+      out.threeButtons = Array.prototype.map.call(
+        bar.querySelectorAll('[data-act]'), b => b.getAttribute('data-act')
+      ).join(',') === 'again,home,show-results';
+      bar.querySelector('[data-act="show-results"]').click();
+      out.dialogReopens = !dlg.hidden && bar.hidden;
+      setLanguage('fr');
+      out.dialogTranslates = document.getElementById('resultPlace').textContent === '2E';
+      setLanguage('en');
+      restartRun();
+      out.dialogGone = dlg.hidden && bar.hidden && Results.open === false;
       return out;
     });
     for (const [name, ok] of Object.entries(r)) check(name, ok === true);
     check('item rendering has no browser errors', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
+  /* ------------------------------------------------------------------ */
+  console.log('\n[4c] the place readout changes colour when the place changes');
+  {
+    const { page, errs } = await newPage(browser);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      App.set(ST.HOME); Run.begin(); Gen.stop(); Obstacles.clear();
+      for (let i = 0; i < 60 * 3; i++) update(1 / 60);
+      const out = {};
+      /* the first frame of a run is not a change of place */
+      out.quietAtRest = Run.posFlash === 0 && Run.posShown === Player.pos;
+
+      /* put one rival past the human: a place lost, and the losing ink */
+      const rival = Race.racers.find(p => p !== Player && p.pos > Player.pos);
+      const was = Player.pos;
+      rival.d = Player.d + 40; Race.rank(); Run.trackPlace(1 / 60);
+      out.lostFlashes = Player.pos > was && Run.posFlash > 0.9 && Run.posDir === -1;
+      out.lossInk = posFlashInk(Run.posDir) === POS_LOSS_INK;
+
+      /* and it fades back to the resting ink, in the time it was given */
+      const mid = Run.posFlash;
+      for (let i = 0; i < 30; i++) Run.trackPlace(1 / 60);
+      out.fades = Run.posFlash < mid && Run.posFlash > 0;
+      for (let i = 0; i < 60 * 2; i++) Run.trackPlace(1 / 60);
+      out.settles = Run.posFlash === 0;
+
+      /* taking it back is the other ink, and standing still is neither */
+      const back = Player.pos;
+      rival.d = Player.d - 40; Race.rank(); Run.trackPlace(1 / 60);
+      out.gainFlashes = Player.pos < back && Run.posDir === 1 &&
+        posFlashInk(Run.posDir) === POS_GAIN_INK;
+      const held = Run.posFlash;
+      Run.trackPlace(1 / 60);
+      out.noFlashWithoutChange = Run.posFlash < held;
+      render();
+
+      /* a new run starts on ink, whatever the last one ended on */
+      restartRun();
+      out.resets = Run.posFlash === 0 && Run.posShown === 0 && Run.posDir === 0;
+      return out;
+    });
+    for (const [name, ok] of Object.entries(r)) check(name, ok === true);
+    check('no errors', errs.length === 0, errs.join(' | '));
     await page.close();
   }
 

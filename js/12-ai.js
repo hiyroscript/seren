@@ -20,10 +20,16 @@ var AI = {
     /* one temperament per decision, not one per lane: a racer that fancies a
        shove this instant must weigh every column with the same nerve */
     a.brave = Math.random() < L.aggr;
-    if (p.item && Race.clock - p.itemPickedAt > .6 && Race.racers.some(function (q) {
-      return q !== p && q.alive && !q.finished && !q.inBubble() &&
-        q.lane === p.lane && p.d - q.d > 2 && p.d - q.d < L.look;
-    })) Race.useItem(p);
+    /* what is in the slot decides when it is worth spending: a trap wants
+       somebody close behind in this column, a bolt wants clear track ahead */
+    if (p.item && Race.clock - p.itemPickedAt > .6) {
+      if (p.item === 'boost') {
+        if (!Race.dangerNow(p)) Race.useItem(p);
+      } else if (Race.racers.some(function (q) {
+        return q !== p && q.alive && !q.finished && !q.inBubble() &&
+          q.lane === p.lane && p.d - q.d > 2 && p.d - q.d < L.look;
+      })) Race.useItem(p);
+    }
 
     var best = p.lane, bestCost = 1e9, here = 0;
     for (var l = 0; l < 3; l++) {

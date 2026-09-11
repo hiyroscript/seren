@@ -224,6 +224,13 @@ function drawEdges() {
 }
 /* the speed pad: the one warm thing on the track */
 var BOOST_INK = '#F5C518';
+/* the two inks the place readout takes on for a moment when it changes.
+   A strictly black-and-white run keeps its ink and flashes on weight alone. */
+var POS_GAIN_INK = '#0E9E57', POS_LOSS_INK = '#D93A2B';
+function posFlashInk(dir) {
+  if (!ACCENT) return '#000';
+  return dir < 0 ? POS_LOSS_INK : POS_GAIN_INK;
+}
 /* the respawn bubble */
 var BUBBLE_INK = '#8FE3F0';
 
@@ -250,6 +257,39 @@ function drawFinishLine() {
     { t: t, halo: soapPulse(0), glints: 3 });
 }
 
+/* The bolt a mystery square can be carrying: the yellow pad's own face, cut to
+   the shape of the shove it hands out. Drawn in a unit box and scaled, so the
+   same bolt serves the slot on a phone and on a desktop corridor alike. */
+var BOLT = [[0.62, 0], [0.05, 0.56], [0.40, 0.56], [0.30, 1],
+            [0.95, 0.42], [0.55, 0.42]];
+function drawBolt(cx, cy, size) {
+  var w = size * 0.62, h = size, x0 = cx - w / 2, y0 = cy - h / 2, i;
+  /* the glow the pads wear, so the slot reads as loaded at a glance */
+  if (!Settings.reduced) {
+    var glow = ctx.createRadialGradient(cx, cy, size * 0.15, cx, cy, size * 0.85);
+    glow.addColorStop(0, 'rgba(245,197,24,0.42)');
+    glow.addColorStop(1, 'rgba(245,197,24,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cx - size, cy - size, size * 2, size * 2);
+  }
+  ctx.beginPath();
+  for (i = 0; i < BOLT.length; i++) {
+    var px = x0 + BOLT[i][0] * w, py = y0 + BOLT[i][1] * h;
+    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+  var g = ctx.createLinearGradient(0, y0, 0, y0 + h);
+  g.addColorStop(0, '#FFE680');
+  g.addColorStop(0.42, BOOST_INK);
+  g.addColorStop(1, '#D89400');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1.4, size * 0.07);
+  ctx.strokeStyle = '#000';
+  ctx.stroke();
+}
+
 function itemSlotRect() {
   var size = clamp(Math.min(VIEW.w, VIEW.h) * .12, 52, 76);
   return { x: VIEW.w - INSET.r - size - 18, y: VIEW.h - INSET.b - size - 18,
@@ -263,7 +303,9 @@ function drawItemSlot() {
   ctx.fillStyle = 'rgba(30,35,45,0.18)';
   ctx.fillRect(r.x, r.y, r.w, r.h);
   drawSoapRect(r.x, r.y, r.w, r.h, { t: Settings.reduced ? 0 : Race.clock, halo: 0 });
-  if (Player.item) {
+  if (Player.item === 'boost') {
+    drawBolt(r.x + r.w / 2, r.y + r.h / 2, r.w * .56);
+  } else if (Player.item) {
     var s = r.w * .55;
     Obstacles.drawMystery({ kind: 'falseMystery', wd: 0 },
       { x: r.x + (r.w - s) / 2, y: r.y + (r.h - s) / 2, w: s, h: s });
@@ -282,11 +324,21 @@ function drawHUD() {
      there. A boost or a shove moves the racer, not the speed of the run, and
      a readout that jumped about with them was reporting the wrong thing. */
   tracked(Run.mult.toFixed(2) + 'x', PF.x + pad, top + s1 * 1.5, s2, 500, 0.12, 'left', '#000', 0.42);
-  /* where this racer stands in a field of six */
+  /* Where this racer stands in a field of six, and the colour that arrives
+     with a change of place: one ink for a place taken, another for a place
+     lost, crossfading back to the resting colour over POS_FLASH seconds. The
+     resting text fades out underneath as the flash fades in, so the readout
+     changes colour rather than thickening. */
   var pos = (Player && Player.pos) ? Player.pos : 1;
-  tracked(t('position') + ' ' + pos + '/' + Race.racers.length,
-    PF.x + pad, top + s1 * 2.45, s2, 600, 0.12, 'left',
-    pos === 1 ? accent(1, 46) : '#000', pos === 1 ? 0.9 : 0.5);
+  var posTxt = t('position') + ' ' + pos + '/' + Race.racers.length;
+  var posX = PF.x + pad, posY = top + s1 * 2.45;
+  var posA = pos === 1 ? 0.9 : 0.5;
+  var fk = Run.posFlash > 0 ? easeOutCubic(Run.posFlash) : 0;
+  if (fk < 1) {
+    tracked(posTxt, posX, posY, s2, 600, 0.12, 'left',
+      pos === 1 ? accent(1, 46) : '#000', posA * (1 - fk));
+  }
+  if (fk > 0) tracked(posTxt, posX, posY, s2, 600, 0.12, 'left', posFlashInk(Run.posDir), fk * 0.95);
 
   /* The ducks this run, in a pane of smoked glass. Square whatever the count
      grows to: the side is taken from the widest of the digits and the base
