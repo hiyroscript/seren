@@ -26,7 +26,7 @@ function syncChrome() {
   var visible = (App.state === ST.PLAYING || App.state === ST.RESPAWNING || App.state === ST.COUNTDOWN);
   b.classList.toggle('show', visible && !App.blocked);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', (App.state === ST.COMPLETED || App.state === ST.SPLASH) ? '#000000' : '#ffffff');
+  if (meta) meta.setAttribute('content', App.state === ST.SPLASH ? '#000000' : '#ffffff');
 }
 
 /* ---------- pause / resume / navigation ---------- */
@@ -66,7 +66,8 @@ function goHome(fromBlack) {
   var cx = VIEW.w / 2, cy = VIEW.h / 2;
   var finish = function () {
     Obstacles.clear(); VFX.clear(); Gen.stop();
-    Run.seq = null; Run.wall = null; Run.finalActive = false;
+    Run.seq = null; Run.line = null; Run.finalActive = false;
+    Race.camLock = false;
     Player.reset(1);
     App.set(ST.HOME);
     irisOut(cx, cy);

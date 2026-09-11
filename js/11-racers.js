@@ -46,6 +46,9 @@ function Racer(id, human, marbleKey) {
   this.bumpCd = 0;               /* short guard against repeat contacts */
   this.hitFlash = 0;
   this.respawnT = 0; this.collisions = 0; this.finished = false;
+  this.result = 0;               /* the place it crossed the finish line in */
+  this.rollV = 0;                /* metres a second left in the run-out */
+  this.laneTime = CFG.LANE_TIME; /* seconds a column change takes, for this racer */
   this.dustT = 0; this.boostT = 0; this.dash = null; this.yOff = 0; this.scaleMul = 1;
   this.ai = human ? null : { next: 0, want: 1, duckFor: null, duckOk: true, seen: 0 };
 }
@@ -66,6 +69,7 @@ Racer.prototype.place = function (lane, d) {
   this.boost = 0; this.entryD = 0; this.floating = false; this.dash = null;
   this.bubble = 0; this.bubbleAge = 0; this.landing = 0;
   this.coasting = false;
+  this.rollV = 0; this.laneTime = CFG.LANE_TIME;
   this.yOff = 0; this.scaleMul = 1;
   if (d !== undefined) this.d = d;
   if (this.ai) { this.ai.next = 0; this.ai.duckFor = null; }
@@ -86,15 +90,15 @@ Racer.prototype.x = function () {
   var sway = k ? playerRadius() * 0.10 * k * Math.sin(App.time * 1.6 + this.id * 2.1) : 0;
   return PF.x + this.xF * PF.w + sway;
 };
-/* the camera rides the human racer by definition, so that racer sits on its
-   mark exactly — the rest are placed relative to it */
+/* Every racer is drawn where the world puts it. For the human that is its own
+   mark exactly, because the camera rides it — its distance and the camera's
+   are the same number — and once the camera stops at the finish line, this is
+   what lets that racer roll out up the screen instead of dragging the line
+   back down to itself. */
 Racer.prototype.y = function () {
   var k = this.floatK();
   /* lifted clear of the track, with a slow bob on top of it */
   var lift = k ? playerRadius() * k * (1.30 + 0.13 * Math.sin(App.time * 2.4 + this.id)) : 0;
-  if (this.human) {
-    return PF.y + (CFG.PLAYER_Y - this.entryD / CFG.METERS_VISIBLE) * PF.h + this.yOff - lift;
-  }
   return screenY(this.d + this.entryD) + this.yOff - lift;
 };
 Racer.prototype.onCamera = function () {
@@ -166,7 +170,7 @@ Racer.prototype.update = function (dt, active) {
 
   /* lane interpolation with a soft overshoot */
   if (this.moveT < 1) {
-    this.moveT = Math.min(1, this.moveT + dt / CFG.LANE_TIME);
+    this.moveT = Math.min(1, this.moveT + dt / (this.laneTime || CFG.LANE_TIME));
     var e = easeOutBack(this.moveT) * 0.12 + easeOutQuint(this.moveT) * 0.88;
     this.xF = lerp(this.fromF, this.toF, e);
     if (this.dash) { this.dash.x1 = this.x(); this.dash.y = this.y(); }
@@ -351,12 +355,11 @@ Racer.prototype.draw = function () {
   if (this.inBubble()) this.drawBubble();
 };
 
-/* A soap bubble built the way the mystery bubbles are: a soft blue halo
-   outside it, a film that is clear in the middle and bright at the edge, three
-   thin-film tints sliding round the rim, and two highlights sitting on the
-   curve. Line weights are proportional to the radius so it holds together at
-   any size. The marble shows through the middle in place of the "?" — the
-   racer inside is the whole point of this one. */
+/* The soap film of drawSoapRect, drawn round a circle instead of a rectangle:
+   the same halo, the same film, the same three tints sliding round the rim,
+   the same two highlights, every weight proportional to the radius. The marble
+   shows through the middle in place of the mystery square's "?" — the racer
+   inside is the whole point of this one. */
 Racer.prototype.drawBubble = function () {
   var base = playerRadius() * 1.38;                          /* it hugs the marble */
   var k = this.landing > 0 ? 1 - clamp(this.landing / CFG.BUBBLE_DROP, 0, 1) : 0;
@@ -387,11 +390,10 @@ Racer.prototype.drawBubble = function () {
 
   /* thin-film colour sliding around the rim */
   ctx.lineWidth = Math.max(1.2, r * 0.11);
-  var tints = ['rgba(120,235,255,0.85)', 'rgba(255,140,225,0.7)', 'rgba(255,235,150,0.7)'];
   for (var i = 0; i < 3; i++) {
     ctx.beginPath();
     ctx.arc(x, y, r - ctx.lineWidth * 0.4, t * 0.6 + i * 2.1, t * 0.6 + i * 2.1 + 1.5);
-    ctx.strokeStyle = tints[i];
+    ctx.strokeStyle = SOAP_TINTS[i];
     ctx.stroke();
   }
   ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
@@ -440,6 +442,7 @@ var Player = null;          /* the human racer, once the grid is built */
 var Race = {
   racers: [], human: null, camD: 0, clock: 0, standings: [], finishOrder: [], entryT: 0,
   camLock: false,
+  parkRot: 0,          /* which column the parked staircase starts in */
 
   build: function () {
     this.racers.length = 0;
@@ -482,7 +485,8 @@ var Race = {
       var p = this.racers[i];
       p.place(g.lane, -g.back * CFG.GRID_ROW);
       p.collisions = 0; p.finished = false; p.respawnT = 0; p.hitFlash = 0;
-      p.result = 0; p.crouches = 0; p.crouchWas = false;
+      p.result = 0; p.rollV = 0; p.laneTime = CFG.LANE_TIME;
+      p.crouches = 0; p.crouchWas = false;
       /* they roll up onto the grid rather than appearing on it */
       p.entryFrom = -CFG.ENTRY_DIST;
       p.entryD = p.entryFrom;
@@ -491,6 +495,7 @@ var Race = {
     }
     this.entryT = 0;
     this.camLock = false;
+    this.parkRot = 0;
     this.camD = this.human.d;
     this.rank();
   },
@@ -537,8 +542,15 @@ var Race = {
     }
     this.human.draw();
   },
+  /* Anyone over the line is ahead of anyone still on the track, and stays in
+     the place it crossed in — once the leaders have rolled out and stopped,
+     the distances alone no longer say who is winning. */
   rank: function () {
-    this.standings = this.racers.slice().sort(function (a, b) { return b.d - a.d; });
+    this.standings = this.racers.slice().sort(function (a, b) {
+      if (a.result && b.result) return a.result - b.result;
+      if (a.result !== b.result) return a.result ? -1 : 1;
+      return b.d - a.d;
+    });
     for (var i = 0; i < this.standings.length; i++) this.standings[i].pos = i + 1;
   },
   /* a racer close enough beside another for contact to make sense */
@@ -796,7 +808,9 @@ var Race = {
     /* then movement, collisions and respawns */
     for (i = 0; i < this.racers.length; i++) {
       p = this.racers[i];
-      if (p.finished) continue;
+      /* over the line: out of play, rolling out onto the mark its place
+         earned rather than racing for one it can no longer take */
+      if (p.finished) { Run.rollOut(p, dt); continue; }
 
       p.d += CFG.BASE_SPEED * mult * p.speedScale() * dt;
       p.update(dt, true);

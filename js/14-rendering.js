@@ -227,33 +227,27 @@ var BOOST_INK = '#F5C518';
 /* the respawn bubble */
 var BUBBLE_INK = '#8FE3F0';
 
-/* the finish wall's palette: solid, saturated, and never two at once */
-var WALL_COLORS = ['#E5484D', '#F5A524', '#30A46C', '#00A2C7', '#3E63DD', '#8E4EC6'];
-var WALL_HOLD = 0.40, WALL_FADE = 0.52;   /* seconds held, seconds crossfading */
+/* ---------------------------------------------------------------------------
+   THE FINISH LINE — a band of the same soap film the mystery squares and the
+   respawn bubbles are made of, laid across all three columns. It is a thing on
+   the track like any other: it lives at a world distance, it comes up over the
+   horizon with the ground, and racers roll over it rather than into it.
+   ------------------------------------------------------------------------- */
+function drawFinishLine() {
+  var L = Run.line; if (!L) return;
+  var depth = Run.lineDepth();
+  var h = metresToPx(depth);
+  var y = screenY(L.d + depth);
+  /* off camera, with a band's worth of margin so its halo is never cut off
+     the frame before the band that casts it is */
+  if (y - h > PF.y + PF.h || y + h * 2 < PF.y) return;
 
-function drawFinishWall() {
-  var w = Run.wall; if (!w) return;
-  var bottom = Run.wallEdgeY();         /* the face, wherever the camera is */
-  if (!(bottom > -1)) return;
-
-  /* One blank slab, one colour at a time: it holds, then crossfades into the
-     next. Painted well past every edge of the screen so that a shake, a notch
-     or a desktop margin can never uncover a strip of the world beside it. */
-  var over = 96, x = -over, y = -over, w = VIEW.w + over * 2, h = bottom + over;
-  var cyc = (WALL_HOLD + WALL_FADE) * (Settings.reduced ? 1.7 : 1);
-  var p = App.time / cyc;
-  var i = Math.floor(p) % WALL_COLORS.length;
-  var into = (p - Math.floor(p)) * cyc - WALL_HOLD * (Settings.reduced ? 1.7 : 1);
-  var mix = easeInOutCubic(clamp(into / (WALL_FADE * (Settings.reduced ? 1.7 : 1)), 0, 1));
-
-  ctx.fillStyle = WALL_COLORS[i];
-  ctx.fillRect(x, y, w, h);
-  if (mix > 0) {
-    ctx.globalAlpha = mix;
-    ctx.fillStyle = WALL_COLORS[(i + 1) % WALL_COLORS.length];
-    ctx.fillRect(x, y, w, h);
-    ctx.globalAlpha = 1;
-  }
+  /* it breathes on the shared race clock, so every racer sees the same band
+     doing the same thing at the same moment */
+  var t = Settings.reduced ? 0 : Race.clock * 1.4;
+  var bh = h * (Settings.reduced ? 1 : 1 + Math.sin(t * 1.3) * 0.045);
+  drawSoapRect(PF.x, y + (h - bh) / 2, PF.w, bh,
+    { t: t, halo: soapPulse(0), glints: 3 });
 }
 
 function drawHUD() {
@@ -300,14 +294,26 @@ function drawHUD() {
   ctx.globalAlpha = 1;
   tracked(ducks, bx + side / 2, by0 + side * 0.66, ds, 700, 0.06, 'center', '#000', 0.7);
 
-  if (Run.finalActive) {
-    var prog = Math.min(CFG.FINAL_DISTANCE, Math.floor(Run.finalProgress()));
-    var label = t('final') + ' \u2014 ' + prog + ' / ' + CFG.FINAL_DISTANCE + ' ' + t('meters');
+  /* The final stage counts the 500 metres up to the line being planted. After
+     that the only number worth a readout is the track left to the line — and
+     once this racer is over it there is nothing left to count at all. */
+  if (Run.finalActive && !(Player && Player.finished)) {
+    var label, k;
+    if (Run.line) {
+      var left = Math.max(0, Math.ceil(Run.line.d - Player.d));
+      var runIn = Math.max(1e-6, Run.line.d - Run.line.from);
+      label = t('toLine') + ' \u2014 ' + numFmt(left) + ' ' + t('meters');
+      k = clamp((Player.d - Run.line.from) / runIn, 0, 1);
+    } else {
+      var prog = Math.min(CFG.FINAL_DISTANCE, Math.floor(Run.finalProgress()));
+      label = t('final') + ' \u2014 ' + prog + ' / ' + CFG.FINAL_DISTANCE + ' ' + t('meters');
+      k = prog / CFG.FINAL_DISTANCE;
+    }
     var fs = clamp(PF.w * 0.032, 11, 15);
     var by = PF.y + PF.h - (IS_MOBILE ? INSET.b + 26 : 24);
     tracked(label, PF.x + PF.w / 2, by, fs, 700, 0.14, 'center', '#000', 0.9);
     /* thin progress rule under the label */
-    var bw = Math.min(PF.w * 0.5, 220), k = prog / CFG.FINAL_DISTANCE;
+    var bw = Math.min(PF.w * 0.5, 220);
     ctx.globalAlpha = 0.16; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(PF.x + PF.w / 2 - bw / 2, by + fs); ctx.lineTo(PF.x + PF.w / 2 + bw / 2, by + fs); ctx.stroke();
     ctx.globalAlpha = 0.85;
@@ -343,29 +349,19 @@ function drawScene() {
   drawTrack();
   VFX.drawSpeedLines();
   Obstacles.draw();
+  drawFinishLine();               /* on the track, and under everything on it */
   drawHorizon();
   drawEdges();
-  if (!Run.wall) {
-    VFX.drawDashes();
-    VFX.drawRipples();
-    Race.drawRacers();
-    Obstacles.drawOverhead();     /* a barrier you duck under passes over you */
-    VFX.drawParticles();
-  }
+  VFX.drawDashes();
+  VFX.drawRipples();
+  Race.drawRacers();
+  Obstacles.drawOverhead();       /* a barrier you duck under passes over you */
+  VFX.drawParticles();
 
   ctx.restore();
 
-  /* the wall cuts off the whole screen, corridor framing included, so it is
-     drawn unclipped, and the player rides on its face until it absorbs him */
-  if (Run.wall) {
-    drawFinishWall();
-    VFX.drawRipples();
-    Race.drawRacers();
-    VFX.drawParticles();
-  }
-
   /* desktop framing: two hairlines that hold the corridor on a wide screen */
-  if (!IS_MOBILE && !Run.wall) {
+  if (!IS_MOBILE) {
     ctx.globalAlpha = 0.13; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(PF.x + .5, PF.y); ctx.lineTo(PF.x + .5, PF.y + PF.h);

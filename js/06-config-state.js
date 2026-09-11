@@ -13,8 +13,20 @@ var CFG = {
   SPEED_STEP_TIME:  20,     /* ...one every twenty seconds of active play */
   SPEED_MAX:        3.00,
   FINAL_DISTANCE:   500,    /* metres of the final stage */
-  SUCTION_DISTANCE: 100,    /* metres of gap at which the wall takes hold */
   WORLD_AHEAD:      46,     /* metres of course authored beyond the leader */
+
+  /* the finish line, and the run-out past it. The band and the two park
+     measurements are in marbles across rather than metres, so the line reads
+     the same against the racers, and the field parks the same way, in a
+     phone's playfield as in a desktop corridor. */
+  LINE_LEAD:        120,    /* metres ahead of the leader the line is planted */
+  LINE_CLEAR:       10,     /* metres of clear run-in authored before it */
+  LINE_DEPTH:       0.70,   /* marbles of track the band itself covers */
+  PARK_BASE:        0.75,   /* marbles past the band the last racer home stops */
+  PARK_STEP:        0.60,   /* marbles between one place and the next */
+  PARK_EASE:        3.9,    /* how hard the run-out closes on the mark */
+  PARK_CROSS:       0.55,   /* seconds a finisher takes to glide into its column */
+  PARK_HOLD:        0.9,    /* seconds parked before the panel comes up */
 
   /* racers */
   RACERS:           6,      /* one human, five rivals */
@@ -75,7 +87,7 @@ var CFG = {
 /* ---------------------------------------------------------------------------
    ACCENT — the world is ink on paper, but its *energy* takes on colour, and
    that colour travels round the wheel as the run accelerates: cool at 1.00x,
-   hot at SPEED_MAX, resolving into the full spectrum of the finish wall.
+   hot at SPEED_MAX, and spent by the time the finish line comes up.
    Set ACCENT to false for a strictly black-and-white run.
    ------------------------------------------------------------------------- */
 var ACCENT = true;

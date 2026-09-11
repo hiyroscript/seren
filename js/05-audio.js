@@ -136,9 +136,12 @@ var Sound = {
         this.tone({ f0: 294, dur: .5, type: 'triangle', peak: .13, delay: .1 });
         this.tone({ f0: 392, dur: .7, type: 'sine', peak: .12, delay: .2 });
         break;
-      case 'suction':
-        this.tone({ f0: 880, f1: 90, dur: 1.15, type: 'sawtooth', peak: .11 });
-        this.noise({ dur: 1.1, peak: .12, cut: 900, cut2: 120 });
+      case 'crossLine':
+        /* going through the film, not into a wall: a bright rise and the soft
+           rush of the band breaking behind you */
+        this.tone({ f0: 660, f1: 1320, dur: .24, type: 'sine', peak: .17 });
+        this.tone({ f0: 990, f1: 1760, dur: .3, type: 'triangle', peak: .1, delay: .05 });
+        this.noise({ dur: .38, peak: .09, cut: 500, cut2: 3600 });
         break;
       case 'complete':
         this.tone({ f0: 523, dur: .3, type: 'triangle', peak: .2 });

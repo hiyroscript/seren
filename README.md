@@ -4,7 +4,7 @@ A minimalist three-column parkour racing game built with vanilla HTML, CSS and J
 
 You are one of six marbles racing down a three-column track. Hazards are generated
 procedurally ahead of whoever is leading, speed climbs from 1.00x to 3.00x, and the run
-ends with a final 500 metre stage that finishes against a wall. The readout under the
+ends with a final 500 metre stage and a finish line to cross. The readout under the
 distance is the speed of the run and nothing else: it steps up with the climb and holds
 there, because a boost or a shove moves the racer rather than the run. The five rivals
 run the same simulation you do — same movement, same hazards, same collisions, same
@@ -33,7 +33,18 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   you hold it, reset at the start of each run.
 - Moving into an occupied column shoves whoever is there one column further the same way.
   Run out of track and that racer is out.
-- Speed climbs to 3.00x, then you travel the final 500 metres to the wall.
+- Speed climbs to 3.00x, then the finish line is planted ahead of the leader. Hazards
+  carry on right up to a short clear run-in, and nothing is ever authored past the line.
+- Crossing the line pays a place. A finisher is out of play from that instant — nothing on
+  the track can touch it, and no boost, shove or bubble follows it over — and instead of
+  stopping where it crossed it rolls out onto the mark its place earned: first place rolls
+  furthest, every place behind stops one step earlier, each in the column the staircase
+  hands it. The field parks in the order it finished.
+- The camera stops at the line when you cross it, so the run-out is something you watch.
+  The rest of the field is still racing for the places that are left, and the result is
+  read over the parked field rather than over a black slab.
+- The line itself wears the same soap film as the mystery squares and the respawn
+  bubbles, drawn as a band across all three columns.
 
 ### Computer controls
 
@@ -65,6 +76,7 @@ Portrait orientation is required.
 ```text
 seren/
 ├── index.html            markup, metadata, panels and the ordered script tags
+├── favicon.svg           the mark: one marble in three columns
 ├── README.md
 ├── .gitignore
 │
@@ -84,11 +96,12 @@ seren/
     ├── 06-config-state.js  CFG balancing values, accent colour, device detection, App/ST
     ├── 07-layout.js      canvas, VIEW, PF, safe areas, responsive sizing
     ├── 08-vfx.js         particles, ripples, dashes, speed lines, screen shake
-    ├── 09-world.js       the canonical course in metres, obstacles, world-to-screen
+    ├── 09-world.js       the canonical course in metres, obstacles, world-to-screen,
+    │                     and the soap film every friendly thing on it wears
     ├── 10-generator.js   the procedural course generator
     ├── 11-racers.js      Racer, the shared simulation, and Race
     ├── 12-ai.js          CPU decision-making across four difficulty levels
-    ├── 13-run.js         run progression, countdown, final stage, finish sequence
+    ├── 13-run.js         run progression, countdown, final stage, the finish line
     ├── 14-rendering.js   every canvas drawing routine, in draw order
     ├── 15-input.js       keyboard, mouse and the gesture system
     ├── 16-home.js        the interactive canvas home screen
@@ -139,8 +152,8 @@ works from a project subpath as well as from a user or organisation root.
 invariants — no mocks, it calls the game's own `update()` and `render()`. It
 covers the speed readout, the ground the camera actually travels, the pads and
 the mystery square, the crouch tally, the generator's fairness floor, pause and
-restart, reduced motion, both languages, and full runs at three difficulties on
-desktop and mobile viewports.
+restart, the finish line and the parked field past it, reduced motion, both
+languages, and full runs at three difficulties on desktop and mobile viewports.
 
 It is a development tool and is not part of the site. It needs a static server
 and Playwright's Chromium:
@@ -157,6 +170,7 @@ installed Playwright works too: `NODE_PATH=$(npm root -g) node test/suite.js`.
 
 None. No frameworks, no libraries, no npm packages, no bundler, no build step. The sounds
 are synthesised at runtime with the Web Audio API rather than loaded from files, and the
-only images are the inline SVGs in `index.html`. The test suite above is the one exception,
+only images are the inline SVGs in `index.html` and `favicon.svg`. The test suite above is
+the one exception,
 and it ships nothing to the browser: it needs Playwright to drive one, but the site does
 not.
