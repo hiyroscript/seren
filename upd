@@ -1,3 +1,2 @@
-add a destroy effect to hazards that get destroyed.
-add a unique effect to the star item, so it doesnt use the same effect as the speed pads (inculding a back trail that uses the same color effect.
-change the way mystery squares spawn, instead of making them spawn like hazards they can spawn anywhere at anytime, tho keep their spawn rate the same
+add a new item that the mystery square grants,a shield, the item icon is a shield, on use give the racer the exact same bubble as the spawn bubble but remove the soap and oonly leave the 3 colors. this shield will serve as protection, when a racer collides with a hazards the hazards gets destroyed and the racer staves alive but the shield breaks,when a racer bumps into a shielded racer they either get pushed back or destroyed depending on the situation. this shield lasts forever until breaking.
+look at the redline repo, the redline game has meteor hazards that fall from the sky. add the same azards in seren but instead of meteors its black squares.
