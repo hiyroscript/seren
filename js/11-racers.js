@@ -52,6 +52,8 @@ function Racer(id, human, marbleKey) {
   this.rollV = 0;                /* metres a second left in the run-out */
   this.laneTime = CFG.LANE_TIME; /* seconds a column change takes, for this racer */
   this.dustT = 0; this.boostT = 0; this.dash = null; this.yOff = 0; this.scaleMul = 1;
+  this.starTrail = [];           /* the ribbon a star lays on the track behind it */
+  this.starT = 0;
   this.ai = human ? null : { next: 0, want: 1, duckFor: null, duckOk: true, seen: 0 };
 }
 
@@ -69,7 +71,7 @@ Racer.prototype.place = function (lane, d) {
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
   this.boostPower = 1;
   this.boost = 0; this.entryD = 0; this.floating = false; this.dash = null;
-  this.star = 0;
+  this.star = 0; this.starTrail.length = 0; this.starT = 0;
   this.bubble = 0; this.bubbleAge = 0; this.landing = 0;
   this.coasting = false;
   this.rollV = 0; this.laneTime = CFG.LANE_TIME;
@@ -114,10 +116,14 @@ Racer.prototype.radiusPx = function () {
 Racer.prototype.radiusM = function () { return pxToMetres(this.radiusPx()); };
 Racer.prototype.marbleDef = function () { return MARBLES[this.marble] || MARBLES.blue; };
 
+/* the ink of the pad that shoved this racer. The star has its own light, and
+   never borrows the pads' — the whole point of it is that it is not a pad. */
 Racer.prototype.boostColor = function () {
-  if (this.star > 0) return 'rgb(' + starRGB(starPhase()) + ')';
   return this.boostPower > 1 ? '#704CF5' : BOOST_INK;
 };
+/* the star's colour this instant: the bubbles' blue, pink and yellow, off the
+   shared race clock, so all six racers see the same one at the same moment */
+Racer.prototype.starColor = function () { return 'rgb(' + starRGB(starPhase()) + ')'; };
 /* how fast this racer is covering ground right now, as a fraction of the
    shared multiplier: a timed status effect, never a permanent change */
 Racer.prototype.speedScale = function () {
@@ -183,7 +189,7 @@ Racer.prototype.update = function (dt, active) {
   } else { this.xF = this.toF; }
 
   /* a boosted racer throws off sparks in the pad's colour */
-  if (active && this.alive && (this.boost > 0 || this.star > 0) && !Settings.reduced && this.onCamera()) {
+  if (active && this.alive && this.boost > 0 && !Settings.reduced && this.onCamera()) {
     this.boostT -= dt;
     if (this.boostT <= 0) {
       this.boostT = this.human ? 0.035 : 0.07;
@@ -196,6 +202,10 @@ Racer.prototype.update = function (dt, active) {
       });
     }
   }
+
+  /* a starred racer does none of that: it lays a ribbon of its own colours
+     down the track and sheds light rather than pad streaks */
+  this.updateStar(dt, active);
 
   /* dust kicked up along the ground while crouching */
   if (active && this.alive && this.crouchAmt > 0.55 && !Settings.reduced && this.onCamera()) {
@@ -252,6 +262,71 @@ Racer.prototype.update = function (dt, active) {
   }
 };
 
+/* The ribbon a starred marble leaves behind it. Its samples are kept in world
+   coordinates — a distance down the course and a column across it — so the
+   trail stays on the ground it was laid on however the camera moves, the way
+   everything else on this track does. It is the marble's own colour cycle,
+   walking back up the ribbon, so the trail and the marble are plainly the
+   same effect and neither is the speed pad's. */
+Racer.prototype.updateStar = function (dt, active) {
+  var head = this.d + this.entryD;
+  for (var i = this.starTrail.length - 1; i >= 0; i--) {
+    var s = this.starTrail[i];
+    s.t += dt;
+    /* the ribbon is a length of track rather than a number of seconds, so it
+       is the same band of colour at 1.00x as it is at the ceiling; the half
+       second is only there to sweep it up behind a racer that has stopped */
+    if (head - s.d >= CFG.STAR_TRAIL || s.t >= 0.5) this.starTrail.splice(i, 1);
+  }
+  if (!active || this.star <= 0 || !this.alive || this.inBubble()) return;
+  this.starTrail.push({ d: head, xF: this.xF, rF: this.dims().rx / PF.w, t: 0 });
+  if (this.starTrail.length > 90) this.starTrail.shift();
+  if (Settings.reduced || !this.onCamera()) return;
+
+  this.starT -= dt;
+  if (this.starT > 0) return;
+  this.starT = this.human ? 0.045 : 0.09;
+  var d = this.dims();
+  VFX.twinkle(this.x() + rand(-d.rx, d.rx) * 1.25, this.y() + rand(-d.ry, d.ry) * 1.25, {
+    vx: rand(-40, 40), vy: rand(70, 200),
+    color: 'rgb(' + starRGB(starPhase() + rand(0, 0.4)) + ')',
+    sizeMax: this.human ? 5.4 : 4, world: true
+  });
+};
+/* drawn under every marble, so six trails and six racers never fight */
+Racer.prototype.drawStarTrail = function () {
+  var n = this.starTrail.length;
+  if (n < 2) return;
+  var head = this.d + this.entryD;
+  var pts = [], i, s, k;
+  for (i = n - 1; i >= 0; i--) {                   /* head first, tail last */
+    s = this.starTrail[i];
+    k = clamp(1 - (head - s.d) / CFG.STAR_TRAIL, 0, 1);
+    pts.push({ x: PF.x + s.xF * PF.w, y: screenY(s.d), w: s.rF * PF.w * k });
+  }
+  if (pts[0].y < PF.y - PF.h * 0.4 || pts[pts.length - 1].y > PF.y + PF.h * 1.4) return;
+  var phase = starPhase();
+  ctx.save();
+  /* twice over: a wide haze with a bright core inside it, because a single
+     band of pale colour disappears into white paper */
+  for (var pass = 0; pass < 2; pass++) {
+    var wide = pass === 0;
+    ctx.globalAlpha = wide ? 0.18 : 0.92;
+    for (i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], b = pts[i + 1];
+      var aw = a.w * (wide ? 1.5 : 0.74), bw = b.w * (wide ? 1.5 : 0.74);
+      ctx.fillStyle = 'rgb(' + starRGB(phase + i * 0.05) + ')';
+      ctx.beginPath();
+      ctx.moveTo(a.x - aw, a.y); ctx.lineTo(a.x + aw, a.y);
+      ctx.lineTo(b.x + bw, b.y); ctx.lineTo(b.x - bw, b.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+};
+
 Racer.prototype.draw = function () {
   if (!this.alive || !this.onCamera()) return;
   var x = this.x(), y = this.y();
@@ -270,7 +345,10 @@ Racer.prototype.draw = function () {
     alpha = 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(App.time * 26));
   }
 
-  var bk = this.star > 0 ? 1 : (this.boost > 0 ? clamp(this.boost / CFG.BOOST_TIME, 0, 1) : 0);
+  var bk = this.boost > 0 ? clamp(this.boost / CFG.BOOST_TIME, 0, 1) : 0;
+  /* the star's own strength, guttering over its last second so that running
+     out of it is something you can see coming */
+  var sk = this.star > 0 ? (this.star >= 1 ? 1 : 0.4 + 0.6 * this.star) : 0;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -280,13 +358,32 @@ Racer.prototype.draw = function () {
   /* boosted: a pad-coloured flare around the marble for as long as the shove lasts */
   if (bk > 0) {
     var puls = Settings.reduced ? 1 : 0.72 + 0.28 * Math.sin(App.time * 22);
-    var rgb = this.star > 0 ? starRGB(starPhase()) : (this.boostPower > 1 ? '112,76,245' : '245,197,24');
+    var rgb = this.boostPower > 1 ? '112,76,245' : '245,197,24';
     var gl = ctx.createRadialGradient(0, 0, rr * 0.45, 0, 0, rr * 2.15);
     gl.addColorStop(0, 'rgba(' + rgb + ',' + (0.46 * bk * puls).toFixed(3) + ')');
     gl.addColorStop(0.55, 'rgba(' + rgb + ',' + (0.20 * bk * puls).toFixed(3) + ')');
     gl.addColorStop(1, 'rgba(' + rgb + ',0)');
     ctx.fillStyle = gl;
     ctx.fillRect(-rr * 2.3, -rr * 2.3, rr * 4.6, rr * 4.6);
+  }
+
+  /* a star burns instead: a corona of its own light turning behind the marble,
+     inside a halo of the colour it is cycling through. No pad can put this on
+     you, and it looks like nothing a pad does. */
+  if (sk > 0) {
+    var sPuls = Settings.reduced ? 1 : 0.88 + 0.12 * Math.sin(App.time * 7.5);
+    var srgb = starRGB(starPhase());
+    var sh = ctx.createRadialGradient(0, 0, rr * 0.5, 0, 0, rr * 2.9);
+    sh.addColorStop(0, 'rgba(' + srgb + ',' + (0.44 * sk).toFixed(3) + ')');
+    sh.addColorStop(0.6, 'rgba(' + srgb + ',' + (0.18 * sk).toFixed(3) + ')');
+    sh.addColorStop(1, 'rgba(' + srgb + ',0)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(-rr * 3, -rr * 3, rr * 6, rr * 6);
+    ctx.globalAlpha = alpha * 0.7 * sk;
+    starPath(0, 0, rr * 2.5 * sPuls, 0.30, Settings.reduced ? 0 : App.time * 1.1, 6);
+    ctx.fillStyle = starGradient(-rr * 2, rr * 2, rr * 2, -rr * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
   }
 
   /* body */
@@ -319,7 +416,20 @@ Racer.prototype.draw = function () {
   ctx.lineWidth = Math.max(1.4, rr * 0.085);
   ctx.strokeStyle = '#000'; ctx.stroke();
 
-  /* and it trails chevrons behind it, pointing the way the pad sent it */
+  /* a rim of the same light on the marble itself, so the body reads as lit
+     rather than merely coloured */
+  if (sk > 0) {
+    ctx.globalAlpha = alpha * sk;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, Math.max(1, rx * 1.16), Math.max(1, ry * 1.16), 0, 0, TAU);
+    ctx.lineWidth = Math.max(1.2, rr * 0.13);
+    ctx.strokeStyle = starGradient(-rx, -ry, rx, ry);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+  }
+
+  /* and a boosted marble trails chevrons behind it, pointing the way the pad
+     sent it — the pads' own mark, which the star never wears */
   if (bk > 0) {
     ctx.strokeStyle = this.boostColor();
     ctx.lineWidth = Math.max(1.4, rr * 0.16);
@@ -549,6 +659,8 @@ var Race = {
   },
   drawRacers: function () {
     var i;
+    /* every ribbon first: six trails under six marbles, never through them */
+    for (i = 0; i < this.racers.length; i++) this.racers[i].drawStarTrail();
     for (i = 0; i < this.racers.length; i++) {
       if (!this.racers[i].human) this.racers[i].draw();
     }
@@ -649,6 +761,46 @@ var Race = {
       VFX.ripple(x, y, r * 1.2, r * 8, ink, .22, 6);
     }
   },
+  /* The star lighting up. Deliberately nothing like shoveForward above: no pad
+     to flash, no fan of streaks up the track, no chevrons. Rings of its own
+     colour close on the marble and a wheel of twinkles goes out around it. */
+  starFX: function (p) {
+    if (p.human) { Sound.play('star'); VFX.addShake(6); }
+    else if (p.onCamera()) Sound.play('starFar');
+    if (!p.onCamera()) return;
+    var x = p.x(), y = p.y(), r = playerRadius(), big = p.human ? 1 : 0.6;
+    VFX.ripple(x, y, r * 0.5, r * 4.6 * big, p.starColor(), .6, 3.4);
+    VFX.ripple(x, y, r * 0.3, r * 2.6 * big, '#FFFFFF', .42, 2);
+    if (Settings.reduced) return;
+    var n = Math.round(14 * big);
+    for (var i = 0; i < n; i++) {
+      var a = (i / n) * TAU + rand(-0.2, 0.2), sp = rand(120, 340);
+      VFX.twinkle(x, y, { vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        color: 'rgb(' + starRGB(starPhase() + i / n) + ')',
+        sizeMin: 3, sizeMax: 6.5, lifeMax: .7, drag: 2.4, world: true });
+    }
+  },
+  /* and the light going out: a ring closing back onto the marble, so the
+     instant that racer can be touched again is one you can see */
+  starSpent: function (p) {
+    if (!p.alive || p.finished || !p.onCamera()) return;
+    var r = playerRadius();
+    VFX.ripple(p.x(), p.y(), r * 2.4, r * 0.8, p.starColor(), .42, 2.2);
+    if (p.human) Sound.play('immuneEnd');
+  },
+  /* Nothing on this track simply disappears. A hazard that is destroyed — run
+     through by a star, or a dropped trap spending itself on the racer it
+     caught — comes apart where it stood, in its own ink. */
+  breakUp: function (o, by) {
+    if (!o.onCamera()) return;
+    /* a hazard is ink, a dropped square is film: each breaks in its own colour */
+    VFX.smash(o, { ink: o.kind === 'falseMystery' ? BUBBLE_INK : '#000',
+      color: by ? by.starColor() : BUBBLE_INK });
+    if (!by) return;                  /* the racer it caught is the sound */
+    if (by.human) { VFX.addShake(6); Sound.play('smash'); }
+    else Sound.play('smashFar');
+  },
+
   /* The first racer to reach it consumes it for the whole field. */
   mysteryTake: function (p, o) {
     var index = Obstacles.list.indexOf(o);
@@ -682,8 +834,7 @@ var Race = {
       p.item = null;
       p.star = CFG.STAR_TIME;
       p.slow = 0;
-      if (p.human) Sound.play('boost');
-      else if (p.onCamera()) Sound.play('boostFar');
+      this.starFX(p);
       return true;
     }
     /* the bolt: the yellow pad's shove exactly, refreshed rather than stacked
@@ -889,11 +1040,7 @@ var Race = {
               var hazardIndex = Obstacles.list.indexOf(o);
               if (hazardIndex >= 0) {
                 Obstacles.list.splice(hazardIndex, 1);
-                if (p.onCamera() && !Settings.reduced) {
-                  var rect = o.rect();
-                  VFX.burst(rect.x + rect.w / 2, rect.y + rect.h / 2, 12,
-                    { color: p.boostColor(), spMax: 220, lifeMax: .4, world: true });
-                }
+                this.breakUp(o, p);
               }
             }
             continue;
@@ -905,6 +1052,7 @@ var Race = {
               var trapIndex = Obstacles.list.indexOf(o);
               if (trapIndex < 0) continue;
               Obstacles.list.splice(trapIndex, 1);
+              this.breakUp(o, null);
             }
             this.destroy(p, 'hazard'); break;
           }
@@ -914,7 +1062,7 @@ var Race = {
          resume countdowns do not spend any of the five active seconds. */
       if (p.star > 0) {
         p.star = Math.max(0, p.star - dt);
-        if (p.star < 1e-9) p.star = 0;
+        if (p.star < 1e-9) { p.star = 0; this.starSpent(p); }
       }
       if (!p.alive) {
         p.respawnT -= dt;

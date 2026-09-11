@@ -87,7 +87,7 @@ function goHome(fromBlack) {
   Sound.play('uiBack');
   var cx = VIEW.w / 2, cy = VIEW.h / 2;
   var finish = function () {
-    Obstacles.clear(); VFX.clear(); Gen.stop();
+    Obstacles.clear(); VFX.clear(); Gen.stop(); Mysteries.stop();
     Run.seq = null; Run.line = null; Run.finalActive = false;
     Race.camLock = false;
     Player.reset(1);

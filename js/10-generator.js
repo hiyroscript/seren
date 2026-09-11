@@ -37,7 +37,9 @@ function E_bar3() { return { kind: 'bar3', crouch: true, safe: [0, 1, 2] }; }
 function E_boost(lane, strong) {
   return { kind: strong ? 'superBoost' : 'boost', lane: lane, crouch: false, safe: [0, 1, 2] };
 }
-/* the mystery square blocks nothing either — it is a gamble to steer into */
+/* the mystery square blocks nothing either — it is a gamble to steer into.
+   It is no longer rolled with the course: Mysteries below drops them on their
+   own clock, and this is the entry it hands to the world. */
 function E_mystery(lane) {
   return { kind: 'mystery', lane: lane, crouch: false, safe: [0, 1, 2] };
 }
@@ -76,12 +78,7 @@ var KINDS = [
   { id: 'boost',   min: 0.00, w: function (k) { return 4; },
     make: function (last) { return E_boost(rollLane(last)); } },
   { id: 'superBoost', min: 0.00, w: function (k) { return 1; },
-    make: function (last) { return E_boost(rollLane(last), true); } },
-  /* A regular sight rather than a curiosity: a weight of 2 against the rare
-     pad's 1 puts roughly ten on a run. It hands nothing out at the moment, so
-     meeting one costs nothing either way. */
-  { id: 'mystery', min: 0.00, w: function (k) { return 2; },
-    make: function (last) { return E_mystery(rollLane(last)); } }
+    make: function (last) { return E_boost(rollLane(last), true); } }
 ];
 function rollLane(last) {
   var l = randInt(0, 2);
@@ -134,7 +131,7 @@ var Gen = {
     while (this.queue.length < 3) {
       var k = this.roll(prog);
       var e = k.make(this.lastLane);
-      e.gap = (k.id === 'boost' || k.id === 'superBoost' || k.id === 'mystery')
+      e.gap = (k.id === 'boost' || k.id === 'superBoost')
         ? rand(1.9, 2.6) : this.rollGap();
       e.wall = !!k.wall;
       this.lastKind = k.id;
@@ -149,8 +146,6 @@ var Gen = {
     var g = CFG.REACTION_BASE + laneDistance(a.safe, b.safe) * CFG.REACTION_LANE;
     if (a.crouch) g += CFG.CROUCH_RELEASE;
     if (a.kind === 'mover' || a.kind === 'shuttle') g += CFG.CROUCH_RELEASE;
-    /* a mystery hands nothing out for now, so nobody leaves one travelling any
-       faster than they met it and the track after it needs no extra room */
     if (a.kind === 'superBoost') g *= 1 + (CFG.BOOST_SCALE - 1) * CFG.SUPER_BOOST_POWER;
     else if (a.kind === 'boost') g *= CFG.BOOST_SCALE;   /* they will arrive faster */
     return g;
@@ -175,5 +170,79 @@ var Gen = {
       gap = Math.max(gap, this.fairGap(e, next));
       this.frontier += gap * CFG.BASE_SPEED * mult;   /* seconds of travel -> metres */
     }
+  }
+};
+
+/* ============================================================================
+   MYSTERY SQUARES — weather, not course
+
+   A mystery square is not a hazard. It blocks nothing, it is gone ten seconds
+   after it appears, and only the first racer to reach one gets anything out of
+   it. So it is no longer authored into the track ahead of the leader with
+   everything else: it simply turns up. Any column, any moment, anywhere on the
+   stretch of course the field is actually running — a marble's length in front
+   of you as readily as half a lap up the track.
+
+   The one thing it keeps from the days it was rolled with the hazards is how
+   often it comes: a square every three quarters of a minute or so, which is
+   what a weight of 2 in the table above used to hand out over a run. The
+   interval is measured on the race clock, so a pause costs nobody a square.
+   ========================================================================== */
+var Mysteries = {
+  enabled: false, next: 0,
+
+  reset: function () { this.enabled = true; this.schedule(); },
+  stop: function () { this.enabled = false; },
+  schedule: function (from) {
+    this.next = (from === undefined ? Race.clock : from) +
+      rand(CFG.MYSTERY_GAP_MIN, CFG.MYSTERY_GAP_MAX);
+  },
+  update: function () {
+    if (!this.enabled || Race.clock < this.next) return;
+    /* nowhere clear to put one this instant is not a square skipped: the
+       course moves on, and the next moment is another place to try */
+    if (this.drop()) this.schedule();
+    else this.next = Race.clock + 0.5;
+  },
+
+  /* the stretch a square may appear on: from a little ahead of the racer at
+     the back — anything behind that is ground nobody covers again, and the
+     world sweeps it up — to the far edge of the authored course, and never
+     past the run-in the finish line reserves for itself */
+  band: function (hM) {
+    var lo = Race.trailD() + CFG.MYSTERY_TAIL;
+    var hi = Math.min(Race.leadD() + CFG.WORLD_AHEAD, Gen.limit) - hM;
+    return hi > lo ? { lo: lo, hi: hi } : null;
+  },
+  drop: function () {
+    var hM = pxToMetres(colW()) * CFG.MYSTERY_SIZE;
+    var b = this.band(hM);
+    if (!b) return false;
+    for (var i = 0; i < 12; i++) {
+      var lane = randInt(0, 2), wd = rand(b.lo, b.hi);
+      if (!this.roomAt(wd, hM, lane)) continue;
+      Obstacles.spawn(E_mystery(lane), wd);
+      /* it can land anywhere along the course, and the course is read in
+         order — the same sort the dropped trap takes */
+      Obstacles.list.sort(function (a, c) { return a.wd - c.wd; });
+      return true;
+    }
+    return false;
+  },
+  /* nothing is dropped on top of anything: not a hazard, not another pickup,
+     and not a racer, which would be handed a square it never steered for */
+  roomAt: function (wd, hM, lane) {
+    var i, list = Obstacles.list, pad = hM * 1.2;
+    for (i = 0; i < list.length; i++) {
+      var o = list[i];
+      if (o.wd - pad > wd + hM || o.wd + o.hM + pad < wd) continue;
+      if (o.blocks(lane)) return false;
+    }
+    for (i = 0; i < Race.racers.length; i++) {
+      var p = Race.racers[i];
+      if (p.finished || p.lane !== lane) continue;
+      if (Math.abs(p.d - (wd + hM / 2)) < p.radiusM() + hM) return false;
+    }
+    return true;
   }
 };
