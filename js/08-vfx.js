@@ -33,7 +33,7 @@ var VFX = {
     }
   },
   /* ---- an obstacle sweeping past the player ---- */
-  whoosh: function (r, near) {
+  whoosh: function (r, near, ducked) {
     if (Settings.reduced) return;
     var y = r.y + r.h * 0.5;
     for (var side = 0; side < 2; side++) {
@@ -45,7 +45,7 @@ var VFX = {
       });
     }
     if (near) {
-      this.ripple(near.x, near.y, playerRadius() * 0.9, playerRadius() * 2.6, accent(1), .34, 1.6);
+      if (!ducked) this.ripple(near.x, near.y, playerRadius() * 0.9, playerRadius() * 2.6, accent(1), .34, 1.6);
       this.burst(near.x, near.y, 6, { color: accent(1), spMin: 60, spMax: 220,
         sizeMax: 2.6, lifeMax: .32, streak: true });
     }

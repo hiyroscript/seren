@@ -27,6 +27,9 @@ var CFG = {
   SUPER_BOOST_POWER: 2,    /* twice the added speed, for the same duration */
   BOOST_TIME:       1.35,   /* seconds the shove forward lasts */
   BOOST_FLASH:      0.32,   /* seconds a pad stays lit after it fires */
+  MYSTERY_SIZE:     0.35,   /* fraction of one column, square */
+  MYSTERY_LIFETIME: 10,     /* active seconds from spawning to expiry */
+  MYSTERY_BLINK:    2,      /* final seconds blink before disappearing */
   MOVER_PERIOD:     1.7,    /* seconds a moving square takes to cross and back */
   SHUTTLE_PERIOD:   1.05,   /* the quick one */
   BUMP_RANGE:       2.6,    /* metres of overlap needed for contact to make sense */
