@@ -62,8 +62,11 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
 - Falling black squares use Redline's meteor timing: a red landing marker warns
   for 0.9–3.2 active seconds, then a square drops onto that fixed track position.
   Its impact is dangerous for 0.4 seconds before clearing. Boosting or slowing
-  does not change its clock; pausing does. They appear on clear stretches of
-  track and stay out of the finish run-in. Shields and stars protect against them.
+  does not change its clock; pausing does. They are dropped the same way mystery
+  squares are — every few seconds, in any column, anywhere along the stretch the
+  field is actually running rather than aimed at any one racer — and only onto a
+  clear row of track, never past the finish run-in. Shields and stars protect
+  against them.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
@@ -144,8 +147,9 @@ seren/
     ├── 07-layout.js      canvas, VIEW, PF, safe areas, responsive sizing
     ├── 08-vfx.js         particles, ripples, dashes, speed lines, screen shake,
     │                     the break-up of a destroyed hazard and the star's sparks
-    ├── 09-world.js       the canonical course in metres, obstacles, world-to-screen,
-    │                     and the soap film every friendly thing on it wears
+    ├── 09-world.js       the canonical course in metres, obstacles, the loose
+    │                     squares dropped onto it, world-to-screen, and the soap
+    │                     film every friendly thing on it wears
     ├── 10-generator.js   the procedural course generator, and the mystery
     │                     squares' own clock, which is not part of it
     ├── 11-racers.js      Racer, the shared simulation, and Race

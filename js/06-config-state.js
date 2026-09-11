@@ -45,9 +45,15 @@ var CFG = {
   MYSTERY_SIZE:     0.35,   /* fraction of one column, square */
   MYSTERY_LIFETIME: 10,     /* active seconds from spawning to expiry */
   MYSTERY_BLINK:    2,      /* final seconds blink before disappearing */
-  MYSTERY_GAP_MIN:  32,     /* seconds between one square turning up and... */
-  MYSTERY_GAP_MAX:  68,     /* ...the next: the rate the roll table used to give */
-  MYSTERY_TAIL:     4,      /* metres ahead of the last racer one may appear */
+  MYSTERY_GAP_MIN:  26,     /* seconds between one square turning up and... */
+  MYSTERY_GAP_MAX:  56,     /* ...the next: a little oftener than the old roll */
+  FALL_SIZE:        0.72,   /* fraction of one column, square */
+  FALL_GAP_MIN:     2.6,    /* seconds between one falling square and... */
+  FALL_GAP_MAX:     4.8,    /* ...the next: weather too, and heavier than it was */
+  FALL_LEAD:        4,      /* seconds of clear track before the first one */
+  FALL_CLEAR:       0.45,   /* seconds of travel it keeps clear of any hazard */
+  DROP_TAIL:        4,      /* metres ahead of the last racer a loose square —
+                               mystery or falling — may be dropped */
   MOVER_PERIOD:     1.7,    /* seconds a moving square takes to cross and back */
   SHUTTLE_PERIOD:   1.05,   /* the quick one */
   BUMP_RANGE:       2.6,    /* metres of overlap needed for contact to make sense */
