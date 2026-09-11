@@ -23,7 +23,9 @@ var AI = {
     /* what is in the slot decides when it is worth spending: a trap wants
        somebody close behind in this column, a bolt wants clear track ahead */
     if (p.item && Race.clock - p.itemPickedAt > .6) {
-      if (p.item === 'star') {
+      if (p.item === 'shield') {
+        if (!p.shield) Race.useItem(p);
+      } else if (p.item === 'star') {
         if (p.star <= 0) Race.useItem(p);
       } else if (p.item === 'boost') {
         if (!Race.dangerNow(p)) Race.useItem(p);

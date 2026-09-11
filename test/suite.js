@@ -212,7 +212,7 @@ async function newPage(browser, opts) {
       out.itemGranted = ITEM_KINDS.indexOf(p0.item) >= 0;
       out.smaller = o.wF * 3 < 0.50;
 
-      /* the slot is filled from the one known pool, and all three
+      /* the slot is filled from the one known pool, and all four
          things in it come up over a long enough run of squares */
       const rolled = {};
       for (let i = 0; i < 400; i++) {
@@ -475,6 +475,91 @@ async function newPage(browser, opts) {
   }
 
   /* ------------------------------------------------------------------ */
+  console.log('\n[4shield] shields and falling squares');
+  for (const opts of [{ viewport: { width: 1200, height: 900 } },
+    { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {
+    const { page, errs } = await newPage(browser, opts);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      Run.begin(); Gen.stop(); Mysteries.stop(); App.set(ST.PLAYING);
+      Race.racers.forEach((p, i) => { p.ai = null; p.place(0, -1000 - i * 10); });
+      const out = {}, q = Race.racers[1];
+      function reset() {
+        Obstacles.clear(); Player.place(1, 100); Race.camD = 100;
+        q.place(0, -1000); App.set(ST.PLAYING);
+      }
+      reset(); Player.item = 'shield';
+      out.useShield = ITEM_KINDS.includes('shield') && Race.useItem(Player) &&
+        Player.shield && Player.item === null && !Player.intangible() && Player.speedScale() === 1;
+      for (let i = 0; i < 600; i++) Race.update(.05, 0);
+      out.noExpiry = Player.shield;
+      for (const kind of ['square', 'bar3', 'falseMystery', 'fallingSquare']) {
+        reset(); Player.shield = true;
+        const o = new Obstacle(kind, .5, .24, 1, kind === 'bar3', [1], 100);
+        if (kind === 'fallingSquare') { o.fall = 0; o.blast = .4; }
+        Obstacles.list.push(o); Race.update(0, 1);
+        out['shield absorbs ' + kind] = Player.alive && !Player.shield && !Obstacles.list.includes(o);
+      }
+      reset(); Player.shield = true;
+      Obstacles.spawn({ kind: 'square', lane: 1 }, 100);
+      Obstacles.spawn({ kind: 'square', lane: 1 }, 100);
+      Race.update(0, 1); out.onlyOneHit = !Player.alive;
+      reset(); Player.shield = true; Player.star = 5;
+      Obstacles.spawn({ kind: 'square', lane: 1 }, 100); Race.update(0, 1);
+      out.starPreservesShield = Player.alive && Player.shield && !Obstacles.list.length;
+      reset(); Player.shield = true; Player.crouch = true;
+      Obstacles.spawn({ kind: 'bar3' }, 100); Race.update(0, 1);
+      out.duckPreservesShield = Player.shield;
+      reset(); q.place(2, 100); q.shield = true; Race.move(Player, 1);
+      out.bounce = Player.alive && Player.lane === 0 && q.lane === 2 && !q.shield;
+      reset(); Player.place(0, 100); q.place(1, 100); q.shield = true; Race.move(Player, 1);
+      out.edge = !Player.alive && q.alive && !q.shield && q.lane === 1;
+      reset(); Player.shield = true; q.place(2, 100); q.shield = true; Race.move(Player, 1);
+      out.twoShields = Player.alive && q.alive && !Player.shield && !q.shield;
+      reset(); Player.shield = true; q.place(2, 100); Race.move(Player, 1);
+      out.shieldAttack = Player.alive && !Player.shield && !q.alive;
+      reset(); q.place(2, 100); q.shield = true;
+      const rear = Race.racers[2]; rear.place(0, 100); Race.move(Player, 1);
+      out.blockedRebound = !Player.alive && q.alive && !q.shield;
+      rear.place(0, -1200);
+      reset(); q.place(0, 100); q.item = 'shield'; q.itemPickedAt = -10;
+      q.ai = { next: 0, want: 0, duckFor: null, duckOk: true, seen: 0 };
+      AI.think(q, .1); out.cpuShield = q.shield && q.item === null; q.ai = null;
+      reset(); q.place(1, 100); q.shield = true; Race.separate();
+      out.overlap = q.d === 100 && Player.d !== 100 && !q.shield;
+      reset(); Player.shield = true;
+      const o = Obstacles.spawn({ kind: 'fallingSquare', lane: 1, fall: 1 }, 100)[0];
+      Race.update(0, 1); out.warningSafe = Player.alive && Player.shield && !racerHits(Player, o);
+      const wd = o.wd; App.set(ST.PAUSED); update(.5);
+      out.pausedFall = o.fall === 1;
+      App.set(ST.PLAYING); Run.mult = 3; Obstacles.update(.5);
+      out.independentFall = o.fall === .5 && o.wd === wd;
+      render(); Obstacles.update(.5); Race.update(0, 1);
+      out.impactShield = Player.alive && !Player.shield && !Obstacles.list.includes(o);
+      reset();
+      const hit = Obstacles.spawn({ kind: 'fallingSquare', lane: 1, fall: 1 }, 100)[0];
+      Obstacles.update(1); Race.update(0, 1);
+      out.impactKills = !Player.alive;
+      Obstacles.update(.41); out.impactClears = !Obstacles.list.includes(hit);
+      reset(); Run.mult = 1; Race.clock = 10; Obstacles.nextFall = 0; Obstacles.rain();
+      out.rainSpawns = Obstacles.list.some(o => o.kind === 'fallingSquare' && o.fall >= .9 && o.fall <= 3.2);
+      Run.line = { d: -2000 }; Obstacles.clear(); Obstacles.nextFall = 0; Obstacles.rain();
+      out.finishRunIn = !Obstacles.list.length;
+      Run.line = null; reset(); Player.item = 'shield'; Player.shield = true;
+      for (const reduced of [false, true]) {
+        Settings.effects = reduced ? 'reduced' : 'full';
+        Obstacles.spawn({ kind: 'fallingSquare', lane: 0, fall: 1 }, 102);
+        render();
+      }
+      Run.plantLine(); Run.cross(Player); out.finishClearsShield = !Player.shield;
+      Player.shield = true; Run.begin(); out.restart = !Player.shield && Obstacles.nextFall === 6;
+      return out;
+    });
+    for (const [name, ok] of Object.entries(r)) check(name, ok === true);
+    check('shield and falling square render without errors', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
   console.log('\n[4d] star power, occupied slots and race-length ladder');
   for (const opts of [{ viewport: { width: 1200, height: 900 } },
     { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]) {

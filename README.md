@@ -26,7 +26,13 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   as readily a marble in front of you as half a lap up the track — about one every
   three quarters of a minute, the rate the roll table used to hand them out at. They
   can be collected off camera, and the first racer to touch one removes it for everyone.
-  They fill one item slot with one of three things, drawn at random:
+  They fill one item slot with one of four things, drawn at random:
+  - a shield — a blue, pink and yellow rim around the marble, with the spawn
+    bubble's shape but no soap film. It has no timer: one hazard hit breaks it
+    and destroys the hazard instead of eliminating the racer. Contact with a
+    shielded racer breaks the shield and rebounds the attacker; an edge or
+    occupied retreat column eliminates an unshielded attacker. Two shields
+    absorb the contact and both break. Stars and spawn immunity take priority;
   - a fake mystery square — drop it to leave a trap behind you; its question mark is
     upside down, and it disappears when it hits a racer, triggering the usual
     elimination and respawn;
@@ -53,6 +59,11 @@ Black ink on paper white, sounds synthesised in the browser, English and French.
   finish at the top. Its bright section shows your progress; colored dots show all
   six racers, with a ring around yours. Like Redline, the finish distance is projected
   until the real finish line is planted.
+- Falling black squares use Redline's meteor timing: a red landing marker warns
+  for 0.9–3.2 active seconds, then a square drops onto that fixed track position.
+  Its impact is dangerous for 0.4 seconds before clearing. Boosting or slowing
+  does not change its clock; pausing does. They appear on clear stretches of
+  track and stay out of the finish run-in. Shields and stars protect against them.
 - Moving squares travel between two neighbouring columns, so the third column is always
   a way through.
 - A hit removes you for two seconds; you respawn in a bubble that carries you over the
@@ -189,7 +200,7 @@ works from a project subpath as well as from a user or organisation root.
 `test/suite.js` drives the real game in a headless browser and asserts its
 invariants — no mocks, it calls the game's own `update()` and `render()`. It
 covers the speed readout, the ground the camera actually travels, the pads, the
-mystery square and where it turns up, all three items it hands out, the effect a
+mystery square and where it turns up, all four items it hands out, the effect a
 destroyed hazard leaves behind, the place readout's colour change,
 the crouch tally, the generator's fairness floor, pause and restart, the finish
 line, the parked field past it and the results dialog over it, reduced motion,

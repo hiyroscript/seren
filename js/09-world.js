@@ -72,14 +72,21 @@ function superPhase() { return Settings.reduced ? 0 : Race.clock * 0.42; }
 
 var Obstacles = {
   list: [],
-  clear: function () { this.list.length = 0; },
+  nextFall: 6,
+  clear: function () { this.list.length = 0; this.nextFall = 6; },
 
   /* factory: sizes derive from the column width, so they scale everywhere */
   spawn: function (entry, wd) {
     if (wd === undefined) wd = Race.camD + CFG.METERS_VISIBLE * CFG.PLAYER_Y + 2;
     var colM = pxToMetres(colW());     /* one column width, in metres */
     var out = [];
-    if (entry.kind === 'square') {
+    if (entry.kind === 'fallingSquare') {
+      var fs = new Obstacle('fallingSquare', laneCenterF(entry.lane), .72 / 3,
+        colM * .72, false, [entry.lane], wd);
+      fs.fall = fs.fallMax = clamp(entry.fall || 2, .9, 3.2);
+      fs.blast = 0;
+      out.push(fs);
+    } else if (entry.kind === 'square') {
       out.push(new Obstacle('square', laneCenterF(entry.lane), 0.78 / 3, colM * 0.78, false, [entry.lane], wd));
     } else if (entry.kind === 'twin') {
       for (var i = 0; i < entry.lanes.length; i++) {
@@ -123,10 +130,72 @@ var Obstacles = {
     for (var i = this.list.length - 1; i >= 0; i--) {
       var o = this.list[i];
       o.advance();
+      if (o.kind === 'fallingSquare') {
+        if (o.fall > 0) {
+          o.fall = Math.max(0, o.fall - dt);
+          if (o.fall === 0) { o.blast = .4; Race.breakUp(o, null); }
+        } else {
+          o.blast -= dt;
+          if (o.blast <= 0) { this.list.splice(i, 1); continue; }
+        }
+      }
       if (o.flash > 0) o.flash = Math.max(0, o.flash - dt);
       if ((o.kind === 'mystery' && Race.clock >= o.expiresAt) ||
           o.wd + o.hM < behind) this.list.splice(i, 1);
     }
+  },
+
+  /* Like Redline's meteors: a fixed road mark and an independent fall clock.
+     Only fill a clear stretch, leaving both neighbouring columns available. */
+  rain: function () {
+    if (Race.clock < this.nextFall) return;
+    this.nextFall = Race.clock + rand(5, 9);
+    var live = Race.racers.filter(function (p) { return p.alive && !p.finished; });
+    if (!live.length) return;
+    var p = pick(live), fall = rand(.9, 3.2), lane = randInt(0, 2);
+    var h = pxToMetres(colW()) * .72;
+    var wd = p.d + CFG.BASE_SPEED * Run.mult * p.speedScale() * fall - h / 2;
+    /* Stay inside the authored horizon so future rows cannot fill this gap. */
+    if (wd + h > Race.leadD() + CFG.WORLD_AHEAD || wd + h > Gen.limit) return;
+    if (Run.line && wd + h >= Run.line.d - CFG.LINE_CLEAR) return;
+    if (this.list.some(function (o) {
+      return o.harmful && o.wd < wd + h + 3 && o.wd + o.hM > wd - 3;
+    })) { this.nextFall = Race.clock + 1; return; }
+    this.spawn({ kind: 'fallingSquare', lane: lane, fall: fall }, wd);
+  },
+
+  drawFalling: function (o, r) {
+    var x = r.x + r.w / 2, y = r.y + r.h / 2;
+    ctx.save();
+    if (o.fall > 0) {
+      var progress = 1 - o.fall / o.fallMax;
+      var period = lerp(.46, .13, progress);
+      var on = Settings.reduced || (Race.clock % period) < period * .55;
+      ctx.strokeStyle = '#D52B35'; ctx.fillStyle = '#D52B35';
+      ctx.globalAlpha = on ? .2 : .08;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.globalAlpha = on ? .9 : .4;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      var ring = r.w * (.1 + .4 * (1 - progress));
+      ctx.beginPath(); ctx.arc(x, y, ring, 0, TAU); ctx.stroke();
+      var lead = Math.max(.2, o.fallMax * .66);
+      if (o.fall < lead) {
+        var k = o.fall / lead, altitude = PF.h * .5 * k;
+        var size = r.w * .45 * (1 + k * .5);
+        ctx.globalAlpha = .16 + (1 - k) * .2; ctx.fillStyle = '#000';
+        ctx.fillRect(x - size / 2, y - size / 4, size, size / 2);
+        ctx.globalAlpha = 1;
+        ctx.fillRect(x - size / 2, y - altitude - size / 2, size, size);
+      }
+    } else {
+      ctx.globalAlpha = clamp(o.blast / .4, 0, 1) * .6;
+      ctx.fillStyle = '#000'; ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+      var spread = r.w * (1 - o.blast / .4) * .3;
+      ctx.strokeRect(r.x - spread, r.y - spread, r.w + spread * 2, r.h + spread * 2);
+    }
+    ctx.restore();
   },
 
   /* the hazards a racer could be touching or about to touch */
@@ -147,6 +216,7 @@ var Obstacles = {
       var o = this.list[i];
       if (o.wd > top || o.wd + o.hM < bot) continue;      /* off camera */
       var r = o.rect();
+      if (o.kind === 'fallingSquare') { this.drawFalling(o, r); continue; }
       /* a moving square drags a short afterimage so its travel reads instantly */
       if (o.move && !Settings.reduced) {
         var d = o.cxF - o.lastCxF;
