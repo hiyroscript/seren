@@ -282,17 +282,18 @@ async function newPage(browser, opts) {
       App.set(ST.PAUSED);
       for (let i = 0; i < 120; i++) update(1 / 60);
       out.pauseFreezes = Race.clock === start && Obstacles.list.includes(exp);
-      Settings.reduced = false;
+      Settings.effects = 'full';
       Race.clock = exp.expiresAt - CFG.MYSTERY_BLINK - 0.01;
       out.solidBeforeBlink = Obstacles.mysteryAlpha(exp) === 1;
       Race.clock = exp.expiresAt - CFG.MYSTERY_BLINK + 0.1;
       const alpha1 = Obstacles.mysteryAlpha(exp);
       Race.clock += 0.25;
       out.blinks = alpha1 !== Obstacles.mysteryAlpha(exp);
-      Settings.reduced = true;
+      Settings.effects = 'reduced';
       const fade1 = Obstacles.mysteryAlpha(exp);
       Race.clock += 0.25;
       out.reducedFades = Obstacles.mysteryAlpha(exp) < fade1;
+      Settings.effects = 'full';
       Race.clock = exp.expiresAt - 0.001; Obstacles.update(0);
       out.presentUntilExpiry = Obstacles.list.includes(exp);
       Race.clock = exp.expiresAt; Obstacles.update(0);
@@ -480,7 +481,7 @@ async function newPage(browser, opts) {
       VFX.clear(); render();
       const slowed = band();
       Player.slow = 0;
-      Obstacles.clear(); VFX.clear(); Settings.reduced = false;
+      Obstacles.clear(); VFX.clear(); Settings.effects = 'full';
       Player.crouch = true; Player.crouchAmt = 1;
       Obstacles.spawn({ kind: 'bar3', crouch: true }, Player.d - 10);
       Run.passFX();
@@ -576,6 +577,95 @@ async function newPage(browser, opts) {
   }
 
   /* ------------------------------------------------------------------ */
+  console.log('\n[7b] the finish line, and the run-out past it');
+  {
+    const { page, errs } = await newPage(browser);
+    const r = await page.evaluate(() => {
+      Settings.lang = 'en'; Settings.muted = true; App.blocked = false;
+      Settings.effects = 'full';
+      App.set(ST.HOME); Run.begin();
+
+      /* run until the line is planted, then look at where it went */
+      for (let i = 0; i < 60 * 1500; i++) { update(1 / 60); if (Run.line) break; }
+      const lineD = Run.line ? Run.line.d : 0;
+      const aheadOfAll = Race.racers.every(p => p.d < lineD);
+      const anyoneFinished = Race.racers.some(p => p.finished);
+
+      /* it is a place on the track, not a place on the screen: it never moves */
+      for (let i = 0; i < 60 * 1500; i++) {
+        update(1 / 60); render();
+        if (App.state === ST.COMPLETED) break;
+      }
+      const held = Run.line.d === lineD;
+      const clearRunIn = Obstacles.list.every(o => o.wd + o.hM <= lineD + 1e-6);
+
+      /* everybody crossed, once, and the places run 1..6 */
+      const places = Race.racers.map(p => p.result).sort((a, b) => a - b);
+      const allHome = Race.racers.every(p => p.finished && p.alive);
+      const order = Race.finishOrder.map(p => p.result).join(',');
+
+      /* the field parks in the order it finished: first place furthest out,
+         every place behind it one step earlier, each in its own column */
+      const marks = Race.racers.slice().sort((a, b) => a.result - b.result)
+        .map(p => ({ place: p.result, lane: p.lane, d: p.d,
+                     mark: Run.parkDistFor(p.result), onCam: p.onCamera() }));
+      let descends = true, onMark = true, ownColumn = true, onCamera = true;
+      for (let i = 0; i < marks.length; i++) {
+        if (Math.abs(marks[i].d - marks[i].mark) > 1e-6) onMark = false;
+        if (!marks[i].onCam) onCamera = false;
+        if (i && marks[i].d >= marks[i - 1].d) descends = false;
+        for (let j = 0; j < i; j++) {
+          if (marks[i].lane === marks[j].lane && i - j < 3) ownColumn = false;
+        }
+      }
+      /* and the last one home comes to rest clear of the band itself */
+      const last = marks[marks.length - 1];
+      const clearOfBand = last.d - Player.radiusM() > lineD + Run.lineDepth();
+
+      /* a finisher is out of play: a hazard dropped on top of a parked racer
+         cannot take the place it earned back off it */
+      Obstacles.clear();
+      Obstacles.spawn({ kind: 'square', lane: Player.lane }, Player.d - 1);
+      Obstacles.spawn({ kind: 'bar3' }, Player.d - 1);
+      const hits0 = Run.collisions, parkedAt = Player.d;
+      for (let i = 0; i < 60; i++) update(1 / 60);
+      const untouchable = Player.alive && Player.finished && Player.d === parkedAt;
+
+      return {
+        aheadOfAll, anyoneFinished, held, clearRunIn, places, allHome, order,
+        descends, onMark, ownColumn, onCamera, clearOfBand, untouchable,
+        hitsUnchanged: Run.collisions === hits0,
+        camLocked: Race.camLock,
+        /* the run is as long as the track to the line — the roll-out past it
+           is not ground the racer had to earn */
+        distanceAtLine: Math.abs(Run.distance - lineD) < Run.marbleM(),
+        distanceShort: Run.distance < Player.d,
+        pos: Player.pos, place: Player.result,
+        statPos: document.getElementById('statPos').textContent
+      };
+    });
+    check('the line is planted ahead of the whole field', r.aheadOfAll === true && r.anyoneFinished === false);
+    check('it is a place on the track, and it stays there', r.held === true);
+    check('nothing is ever authored past the line', r.clearRunIn === true);
+    check('every racer crosses, and the places run 1 to 6',
+      r.places.join(',') === '1,2,3,4,5,6' && r.allHome === true, r.places.join(','));
+    check('the order recorded is the order they crossed in', r.order === '1,2,3,4,5,6', r.order);
+    check('first place rolls furthest, every place behind stops earlier', r.descends === true);
+    check('every finisher comes to rest exactly on its mark', r.onMark === true);
+    check('no two racers park in the same column within three places', r.ownColumn === true);
+    check('the last one home parks clear of the band', r.clearOfBand === true);
+    check('the whole parked field is on camera', r.onCamera === true && r.camLocked === true);
+    check('a hazard cannot take a place back off a parked racer',
+      r.untouchable === true && r.hitsUnchanged === true);
+    check('the run is measured to the line, not past it',
+      r.distanceAtLine === true && r.distanceShort === true);
+    check('the place the racer crossed in is the place it is given',
+      r.pos === r.place && r.statPos === r.place + ' / 6', r.statPos);
+    check('no errors', errs.length === 0, errs.join(' | '));
+    await page.close();
+  }
+
+  /* ------------------------------------------------------------------ */
   console.log('\n[8] reduced motion holds every animation still');
   {
     const { page, errs } = await newPage(browser);
@@ -594,20 +684,32 @@ async function newPage(browser, opts) {
                                    Math.round((rr.y + rr.h * 0.14) * VIEW.dpr), 1, 1).data;
         return d[0] + ',' + d[1] + ',' + d[2];
       };
-      const movingM = [], movingS = [], stillM = [], stillS = [];
-      for (let s = 0; s < 4; s++) { Race.clock += 0.5; render(); movingM.push(sample('mystery')); movingS.push(sample('superBoost')); }
+      /* the finish line wears the same film, and answers to the same clock */
+      Run.line = { d: Race.camD + 6 };
+      const sampleLine = () => {
+        const h = metresToPx(Run.lineDepth()), yy = screenY(Run.line.d + Run.lineDepth());
+        const d = ctx.getImageData(Math.round((PF.x + PF.w * 0.08) * VIEW.dpr),
+                                   Math.round((yy + h * 0.5) * VIEW.dpr), 1, 1).data;
+        return d[0] + ',' + d[1] + ',' + d[2];
+      };
+      const movingM = [], movingS = [], movingL = [], stillM = [], stillS = [], stillL = [];
+      for (let s = 0; s < 4; s++) { Race.clock += 0.5; render(); movingM.push(sample('mystery')); movingS.push(sample('superBoost')); movingL.push(sampleLine()); }
       Settings.effects = 'reduced';
-      for (let s = 0; s < 4; s++) { Race.clock += 0.9; render(); stillM.push(sample('mystery')); stillS.push(sample('superBoost')); }
+      for (let s = 0; s < 4; s++) { Race.clock += 0.9; render(); stillM.push(sample('mystery')); stillS.push(sample('superBoost')); stillL.push(sampleLine()); }
       Settings.effects = 'full';
+      Run.line = null;
       return {
         mysteryMoves: new Set(movingM).size > 1, superMoves: new Set(movingS).size > 1,
-        mysteryStill: new Set(stillM).size === 1, superStill: new Set(stillS).size === 1
+        mysteryStill: new Set(stillM).size === 1, superStill: new Set(stillS).size === 1,
+        lineMoves: new Set(movingL).size > 1, lineStill: new Set(stillL).size === 1
       };
     });
     check('the mystery square animates with full effects', r.mysteryMoves === true);
     check('the rare pad animates with full effects', r.superMoves === true);
     check('the mystery square holds still under reduced motion', r.mysteryStill === true);
     check('the rare pad holds still under reduced motion', r.superStill === true);
+    check('the finish line animates with full effects', r.lineMoves === true);
+    check('the finish line holds still under reduced motion', r.lineStill === true);
     check('no errors', errs.length === 0, errs.join(' | '));
     await page.close();
   }

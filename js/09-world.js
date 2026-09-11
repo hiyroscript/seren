@@ -252,11 +252,9 @@ var Obstacles = {
     return Math.floor((CFG.MYSTERY_BLINK - left) * 4) % 2 ? 0.2 : 1;
   },
 
-  /* The mystery square: the respawn bubble's soap film, squared off and with a
-     "?" where the marble would be. Same halo, same film, same thin-film tints
-     travelling the rim, same two highlights — a dashed stroke walks the tints
-     round a square the way an arc sweeps them round a circle. It breathes on
-     the shared race clock, so all six racers see the same square. */
+  /* The mystery square: the soap film below, squared off and with a "?" where
+     the marble would be. It breathes on the shared race clock, so all six
+     racers see the same square. */
   drawMystery: function (o, r) {
     var t = Settings.reduced ? 0 : Race.clock * 1.4 + o.wd;
     var breathe = Settings.reduced ? 1 : 1 + Math.sin(t * 1.3) * 0.045;
@@ -265,63 +263,10 @@ var Obstacles = {
     var x = cx - w / 2, y = cy - h / 2, rad = Math.min(w, h) / 2;
     if (rad < 2) return;
 
-    /* the halo it sits in — brighter and breathing than the one the respawn
-       bubble wears, because this one has to be worth spotting from the top of
-       the screen on white paper, the same job the pads' glow does */
-    if (!Settings.reduced) {
-      var pulse = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(Race.clock * 4.2 + o.wd));
-      var glow = ctx.createRadialGradient(cx, cy, rad * 0.55, cx, cy, rad * 2.1);
-      glow.addColorStop(0, 'rgba(120,205,250,' + (0.46 * pulse).toFixed(3) + ')');
-      glow.addColorStop(1, 'rgba(120,205,250,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(cx - rad * 2.2, cy - rad * 2.2, rad * 4.4, rad * 4.4);
-    }
-
-    /* soap film: clear in the middle, bright at the edge */
-    var film = ctx.createRadialGradient(cx, cy, rad * 0.2, cx, cy, rad);
-    film.addColorStop(0,    'rgba(255,255,255,0.05)');
-    film.addColorStop(0.62, 'rgba(190,230,255,0.14)');
-    film.addColorStop(0.88, 'rgba(255,255,255,0.42)');
-    film.addColorStop(1,    'rgba(255,255,255,0.08)');
-    ctx.fillStyle = film;
-    ctx.fillRect(x, y, w, h);
-
-    /* thin-film colour walking around the rim */
-    var per = (w + h) * 2;
-    var lw = Math.max(1.2, rad * 0.22);
-    ctx.save();
-    ctx.lineWidth = lw;
-    ctx.lineCap = 'butt';
-    var tints = ['rgba(120,235,255,0.85)', 'rgba(255,140,225,0.7)', 'rgba(255,235,150,0.7)'];
-    if (ctx.setLineDash) {
-      ctx.setLineDash([per * 0.24, per * 0.76]);
-      for (var i = 0; i < 3; i++) {
-        ctx.lineDashOffset = -(t * 0.10 + i / 3) * per;
-        ctx.strokeStyle = tints[i];
-        ctx.strokeRect(x + lw * 0.4, y + lw * 0.4, w - lw * 0.8, h - lw * 0.8);
-      }
-      ctx.setLineDash([]);
-    }
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = Math.max(0.8, rad * 0.11);
-    ctx.strokeRect(x, y, w, h);
-
-    /* the pale ink line that seats it on the paper, the way every other thing
-       on this track is seated */
-    ctx.strokeStyle = 'rgba(0,0,0,0.34)';
-    ctx.lineWidth = Math.max(1, rad * 0.07);
-    ctx.strokeRect(x, y, w, h);
-
-    /* highlights, sitting on the curve it would have if it had one */
-    ctx.beginPath();
-    ctx.ellipse(cx - rad * 0.34, cy - rad * 0.40, rad * 0.26, rad * 0.16, -0.7, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(cx + rad * 0.42, cy + rad * 0.34, rad * 0.10, 0, TAU);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fill();
+    /* its halo is brighter and breathing where the respawn bubble's is steady,
+       because this one has to be worth spotting from the top of the screen on
+       white paper, the same job the pads' glow does */
+    drawSoapRect(x, y, w, h, { t: t, halo: soapPulse(o.wd) });
 
     /* the question mark, readable over paper and over film alike */
     setFont(rad * 1.15, 700);
@@ -367,3 +312,111 @@ var Obstacles = {
     }
   }
 };
+
+/* ============================================================================
+   THE SOAP FILM
+
+   The one skin every friendly thing on this track wears: the respawn bubble,
+   the mystery square and the finish line. A soft blue halo outside it, a film
+   that is clear in the middle and bright at the edge, three thin-film tints
+   walking the rim, a white rim over a pale ink seat, and highlights sitting on
+   the curve it would have if it had one.
+
+   The bubble draws it round a circle, because there is a marble inside it
+   (Racer.drawBubble). Everything else draws it round a rectangle, which is
+   what this is. Every weight is proportional to `rad`, so the same skin holds
+   together from a marble to the full width of the track, and the halo and the
+   film are ellipses inscribed in the rectangle rather than circles, so a long
+   band is lit along its length exactly as a square is lit into its corners.
+   ========================================================================== */
+var SOAP_TINTS = ['rgba(120,235,255,0.85)', 'rgba(255,140,225,0.7)', 'rgba(255,235,150,0.7)'];
+/* how hard the halo is breathing this instant: off the shared race clock, so
+   every racer sees the same thing glow at the same moment */
+function soapPulse(phase) {
+  if (Settings.reduced) return 0;
+  return 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(Race.clock * 4.2 + (phase || 0)));
+}
+/* o.t     : the film's own clock, 0 to hold it still
+   o.halo  : strength of the halo outside it, 0 for none
+   o.rad   : the radius every weight is taken from  (default: the short side)
+   o.glints: how many pairs of highlights to space along the long side       */
+function drawSoapRect(x, y, w, h, o) {
+  var hw = w / 2, hh = h / 2;
+  var rad = o.rad || Math.min(hw, hh);
+  if (rad < 2 || hw < 1 || hh < 1) return;
+  var cx = x + hw, cy = y + hh, t = o.t || 0, i;
+
+  /* the halo it sits in, held the same distance off every edge, so a band
+     glows along its length rather than swelling into a cloud at its ends */
+  if (o.halo > 0) {
+    var gx = hw + rad * 1.1, gy = hh + rad * 1.1;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(gx / gy, 1);
+    var glow = ctx.createRadialGradient(0, 0, gy * 0.262, 0, 0, gy);
+    glow.addColorStop(0, 'rgba(120,205,250,' + (0.46 * o.halo).toFixed(3) + ')');
+    glow.addColorStop(1, 'rgba(120,205,250,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(-gy, -gy, gy * 2, gy * 2);
+    ctx.restore();
+  }
+
+  /* soap film: clear in the middle, bright at the edge */
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(hw / hh, 1);
+  var film = ctx.createRadialGradient(0, 0, hh * 0.2, 0, 0, hh);
+  film.addColorStop(0,    'rgba(255,255,255,0.05)');
+  film.addColorStop(0.62, 'rgba(190,230,255,0.14)');
+  film.addColorStop(0.88, 'rgba(255,255,255,0.42)');
+  film.addColorStop(1,    'rgba(255,255,255,0.08)');
+  ctx.fillStyle = film;
+  ctx.fillRect(-hh, -hh, hh * 2, hh * 2);
+  ctx.restore();
+
+  /* thin-film colour walking around the rim: a dashed stroke carries the tints
+     round a rectangle the way an arc sweeps them round a circle */
+  var per = (w + h) * 2, lw = Math.max(1.2, rad * 0.22);
+  /* A square's rim carries one run of each tint. A band's rim is many times
+     longer, and one run stretched over it would read as a painted bar rather
+     than as colour travelling, so it carries a run every few marbles instead —
+     the same length of colour, repeated, and still walking at the same pace. */
+  var segs = Math.max(1, Math.round(per / (rad * 14))), seg = per / segs;
+  if (ctx.setLineDash) {
+    ctx.save();
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([seg * 0.24, seg * 0.76]);
+    for (i = 0; i < 3; i++) {
+      ctx.lineDashOffset = -(t * 0.10 * per + (i / 3) * seg);
+      ctx.strokeStyle = SOAP_TINTS[i];
+      ctx.strokeRect(x + lw * 0.4, y + lw * 0.4, w - lw * 0.8, h - lw * 0.8);
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = Math.max(0.8, rad * 0.11);
+  ctx.strokeRect(x, y, w, h);
+
+  /* the pale ink line that seats it on the paper, the way every other thing on
+     this track is seated */
+  ctx.strokeStyle = 'rgba(0,0,0,0.34)';
+  ctx.lineWidth = Math.max(1, rad * 0.07);
+  ctx.strokeRect(x, y, w, h);
+
+  /* highlights. A square gets the one pair the bubble has; a band gets a pair
+     per column it crosses, so the glints read the whole way along it. */
+  var n = o.glints || 1;
+  for (i = 0; i < n; i++) {
+    var gc = n === 1 ? cx : x + w * (i + 0.5) / n;
+    ctx.beginPath();
+    ctx.ellipse(gc - rad * 0.34, cy - rad * 0.40, rad * 0.26, rad * 0.16, -0.7, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(gc + rad * 0.42, cy + rad * 0.34, rad * 0.10, 0, TAU);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fill();
+  }
+}

@@ -7,7 +7,7 @@ var Run = {
   distance: 0, mult: 1, speedTimer: 0, collisions: 0, playT: 0,
   hudPulse: 0, milestone: 0,
   finalActive: false, finalStart: 0,
-  wall: null, seq: null, lineAcc: 0,
+  line: null, seq: null, lineAcc: 0,
   countT: 0, countIdx: 0, gridStart: false,
 
   /* ---------- lifecycle ---------- */
@@ -15,7 +15,7 @@ var Run = {
     this.distance = 0; this.mult = 1; this.speedTimer = 0; this.collisions = 0;
     this.hudPulse = 0; this.milestone = 0;
     this.playT = 0; this.finalActive = false; this.finalStart = 0;
-    this.wall = null; this.seq = null; this.lineAcc = 0;
+    this.line = null; this.seq = null; this.lineAcc = 0;
     Obstacles.clear(); VFX.clear();
     Race.reset();
     Gen.reset(0);
@@ -90,18 +90,8 @@ var Run = {
     }
 
     /* --- the world, then the racers in it --- */
-    var before = Player.d;
-    Race.tickClock(dt);
-    Obstacles.update(dt);
-    Gen.update(dt, this.mult, Race.leadD());
-    Race.update(dt, this.mult);
-
-    /* the camera rides the human racer: everything drawn scrolls by exactly
-       as much ground as that racer covered */
-    var moved = Player.d - before;
+    this.tickWorld(dt);
     var ground = this.groundMult();     /* what that came to, boosts and all */
-    this.distance = Player.d;
-    VFX.scrollWorld(metresToPx(moved));
     VFX.motes(dt, ground);
     this.passFX();
 
@@ -115,24 +105,25 @@ var Run = {
 
     /* --- final stage --- */
     if (!this.finalActive && this.mult >= CFG.SPEED_MAX - 1e-9) this.enterFinal();
-    if (this.finalActive && !this.wall && this.finalProgress() >= CFG.FINAL_DISTANCE) {
-      Gen.stop();
-      /* placed ahead of whoever leads, so no racer is ever behind the wall */
-      this.wall = { d: Race.leadD() + CFG.SUCTION_DISTANCE + 22 };
-    }
-    if (this.wall) {
-      this.retireFinishers();
-      if (this.wallGap() <= CFG.SUCTION_DISTANCE) this.beginFinish();
-    }
+    if (this.finalActive && !this.line && this.finalProgress() >= CFG.FINAL_DISTANCE) this.plantLine();
   },
 
-  /* a rival that reaches the wall has finished its race */
-  retireFinishers: function () {
-    for (var i = 0; i < Race.racers.length; i++) {
-      var p = Race.racers[i];
-      if (p.human || p.finished) continue;
-      if (p.d >= this.wall.d) { p.finished = true; p.alive = false; Race.finish(p); }
-    }
+  /* One step of the world every racer shares: the clock, the hazards, the
+     racers in them, and whoever that has just put over the line. The world
+     scrolls by the camera's own travel — up to the finish that is the human
+     racer's travel exactly, because the camera rides it, and after the finish
+     the camera is the only thing on screen still moving. */
+  tickWorld: function (dt) {
+    var cam = Race.camD;
+    Race.tickClock(dt);
+    Obstacles.update(dt);
+    Gen.update(dt, this.mult, Race.leadD());
+    Race.update(dt, this.mult);
+    this.checkCrossings();
+    /* the run is as long as the track to the line: the run-out past it is not
+       ground the racer had to earn */
+    if (!Player.finished) this.distance = Player.d;
+    VFX.scrollWorld(metresToPx(Race.camD - cam));
   },
 
   finalProgress: function () { return Math.max(0, this.distance - this.finalStart); },
@@ -173,108 +164,152 @@ var Run = {
     VFX.addShake(4);
   },
 
-  /* ---------- finish sequence ---------- */
-  /* metres of open track still between the player and the face of the wall */
-  wallGap: function () {
-    if (!this.wall) return Infinity;
-    return this.wall.d - Player.d;
-  },
-  /* The face of the wall, in screen pixels. Up to the finish it is simply
-     where the world puts it. Once the camera locks it is pinned just above the
-     frame — the racer travels the last hundred metres up to it, rather than it
-     being dragged down to the racer — and after that it sweeps over everything. */
-  wallEdgeY: function () {
-    if (!this.wall) return -1e9;
-    if (this.seq) return this.seq.edge;
-    return screenY(this.wall.d);
-  },
-  wallCovered: function () {
-    return !!this.wall && this.wallEdgeY() >= VIEW.h + 24;
+  /* ---------- the finish line ---------------------------------------------
+     The run ends at a line laid across the track rather than at a wall that
+     swallows it. Racers cross it, and what crossing pays is a place. A
+     finisher is out of play the instant it is over — nothing on the track can
+     touch it, and nothing it was carrying comes over the line with it — and
+     instead of stopping dead where it crossed it rolls out onto a mark its
+     place earned: first place rolls furthest and every place behind stops one
+     step earlier, in the column the staircase hands it, so the field parks in
+     the order it finished and no two racers are ever aimed at the same piece
+     of track.
+     --------------------------------------------------------------------- */
+  plantLine: function () {
+    /* planted ahead of whoever leads, so no racer is ever behind the line, and
+       far enough ahead that the course already authored stops short of it */
+    this.line = { d: Race.leadD() + CFG.LINE_LEAD, from: this.distance };
+    Gen.stopAt(this.line.d - CFG.LINE_CLEAR);   /* hazards up to the run-in, none past it */
   },
 
+  /* one marble across, in metres. The band and every park measurement are in
+     these, so the line reads the same against the racers, and the field parks
+     the same way, whatever shape the playfield is. */
+  marbleM: function () { return pxToMetres(playerRadius() * 2); },
+  lineDepth: function () { return this.marbleM() * CFG.LINE_DEPTH; },
+  parkLaneFor: function (place) { return (place - 1 + Race.parkRot) % 3; },
+  /* measured from the far edge of the band, not from its face, so the last
+     racer home comes to rest clear of the line rather than on top of it */
+  parkDistFor: function (place) {
+    var field = Race.racers.length;
+    return this.line.d + this.lineDepth() + this.marbleM() *
+      (CFG.PARK_BASE + (field - place) * CFG.PARK_STEP);
+  },
+  /* Where the camera settles to watch it: the stretch from the line to the
+     furthest mark, centred. The whole parked field is on screen, and there is
+     still track under the line to watch the rest of them come in on. */
+  parkCamD: function () {
+    return (this.line.d + this.parkDistFor(1)) / 2 -
+      CFG.METERS_VISIBLE * (CFG.PLAYER_Y - 0.5);
+  },
+  /* The staircase can start in any of the three columns and still be a
+     staircase, so it starts in whichever one the field is closest to already:
+     ordering the racers by how far down the track they are guesses the
+     finishing order well enough at the line, and the rotation that leaves the
+     most of them in the column they are already in is the one that makes the
+     fewest cut across the others on the way out. Picked once, by the first
+     racer home, so every later finisher joins the same staircase. */
+  pickParkRot: function () {
+    var all = Race.racers.slice().sort(function (a, b) { return b.d - a.d; });
+    var best = 0, bestCost = 1e9;
+    for (var rot = 0; rot < 3; rot++) {
+      var cost = 0;
+      for (var i = 0; i < all.length; i++) if (all[i].lane !== (i + rot) % 3) cost++;
+      if (cost < bestCost) { bestCost = cost; best = rot; }
+    }
+    return best;
+  },
+
+  /* whoever is over the line, in the order they got there */
+  checkCrossings: function () {
+    if (!this.line) return;
+    for (var i = 0; i < Race.racers.length; i++) {
+      var p = Race.racers[i];
+      if (!p.finished && p.d >= this.line.d) this.cross(p);
+    }
+  },
+
+  cross: function (p) {
+    if (!Race.finishOrder.length) Race.parkRot = this.pickParkRot();
+    /* what it was doing as it crossed is what it has to shed on the way out */
+    p.rollV = CFG.BASE_SPEED * this.mult * (p.alive ? p.speedScale() : 1);
+    p.finished = true;
+    Race.finish(p);
+
+    /* out of play, and clean: a shove, a boost, a bubble or a hit the same
+       frame does not follow a racer over the line */
+    p.alive = true; p.coasting = false; p.respawnT = 0; p.spawnT = 1;
+    p.boost = 0; p.boostPower = 1; p.slow = 0; p.bumpCd = 0; p.hitFlash = 0;
+    p.crouch = false;
+    p.floating = false; p.bubble = 0; p.bubbleAge = 0; p.landing = 0;
+    p.immune = 0; p.immuneExt = 0;
+    p.dash = null; p.yOff = 0; p.scaleMul = 1;
+
+    /* the column its place earned, and the long glide across onto it */
+    p.laneTime = CFG.PARK_CROSS;
+    var lane = this.parkLaneFor(p.result);
+    if (lane !== p.lane) p.slideTo(lane, lane > p.lane ? 1 : -1, true);
+
+    if (p.onCamera()) {
+      var r = playerRadius();
+      VFX.ripple(p.x(), p.y(), r * 0.7, r * 3.6, BUBBLE_INK, 0.5, 1.6);
+      if (!Settings.reduced) {
+        VFX.burst(p.x(), p.y(), p.human ? 16 : 8, {
+          color: BUBBLE_INK, spMin: 90, spMax: 380, sizeMax: 3,
+          lifeMax: .5, streak: true, world: true
+        });
+      }
+    }
+    if (p.human) this.beginFinish();
+  },
+
+  /* The run-out, taken outright the way a brake is: it can only ever slow a
+     racer, so crossing the line never hands speed back. The last of it is
+     below the speed anything can be seen moving at, so it is closed outright
+     rather than eased forever — two pixels is nothing to look at, but it is
+     the difference between the field being evenly spaced and being evenly
+     spaced apart from one of them. */
+  rollOut: function (p, dt) {
+    if (this.line && p.result) {
+      var rem = this.parkDistFor(p.result) - p.d;
+      if (rem <= 0 || rem * CFG.PARK_EASE < pxToMetres(8)) {
+        p.d += Math.max(0, rem); p.rollV = 0;
+      } else {
+        p.rollV = Math.min(p.rollV, rem * CFG.PARK_EASE);
+        p.d += p.rollV * dt;
+      }
+    }
+    p.update(dt, false);
+  },
+
+  /* ---------- the human racer's finish ---------- */
   beginFinish: function () {
     if (App.state === ST.FINISH || App.state === ST.COMPLETED) return;
     App.set(ST.FINISH);
-    Gen.stop();
-    Sound.play('suction');
-    if (!Player.alive) {                 /* never end the run with no player on screen */
-      var d = Player.d;
-      Player.place(1); Player.d = d; Player.spawnT = 1;
-    }
-    Player.crouch = false;
-    Player.coasting = false;
-    Player.floating = false;             /* the finish takes over from the bubble */
-    Player.bubble = 0; Player.landing = 0; Player.bubbleAge = 0;
-    Player.immune = 999;                 /* the finish is not a place to die */
-    /* the world holds still from here: the last hundred metres are the racer's
-       to cover, and the camera stays put to show them covering it */
+    Sound.play('crossLine');
+    Input.releaseAll();
+    /* the camera stops riding the racer and settles on the line instead, so
+       the run-out is something to watch rather than something to follow */
     Race.camLock = true;
-    this.seq = {
-      t: 0, k: 0, fromX: Player.x(), startD: Player.d,
-      edge: PF.y - PF.h * 0.02, soundDone: false, particleT: 0
-    };
+    this.seq = { t: 0, hold: 0 };
+    VFX.addShake(3);
   },
 
   updateFinish: function (dt) {
     var s = this.seq;
-    if (!s || !this.wall) return;
+    if (!s || !this.line) return;
     s.t += dt;
-
-    /* everything else carries on: the rivals keep racing, the hazards keep
-       moving. Only the camera has stopped, so on screen the world holds still
-       and the racer is the thing that moves. */
-    Race.tickClock(dt);
-    Obstacles.update(dt);
-    Race.update(dt, this.mult);
-    this.retireFinishers();
-    this.distance = Player.d;
-
-    var home = PF.y + CFG.PLAYER_Y * PF.h;
-    var r = playerRadius();
-    /* how much of the last hundred metres this racer has actually covered.
-       Kept one-way: a rival nudging it clear during separation must not make
-       the glide stutter backwards. */
-    s.k = Math.max(s.k, clamp((Player.d - s.startD) / CFG.SUCTION_DISTANCE, 0, 1));
-    var k = s.k, e = easeInCubic(k);
-
-    Player.xF = (lerp(s.fromX, PF.x + PF.w / 2, e) - PF.x) / PF.w;
-    Player.yOff = lerp(home, s.edge - r * 0.9, e) - home;
-    Player.scaleMul = 1 - 0.97 * e;
-    Player.moveT = 1; Player.toF = Player.xF; Player.fromF = Player.xF;
-
-    /* everything loose on the track is dragged the same way */
-    var tx = PF.x + PF.w / 2, ty = Math.max(s.edge, PF.y - PF.h * 0.12);
-    s.particleT -= dt;
-    if (s.particleT <= 0 && Player.alive) {
-      s.particleT = 0.02;
-      var n = Settings.reduced ? 1 : 2 + Math.round(k * 2);
-      for (var i = 0; i < n; i++) {
-        var ang = rand(0, TAU), dist = rand(PF.w * 0.35, PF.w * 0.95);
-        var px = tx + Math.cos(ang) * dist, py = home + Math.sin(ang) * dist * 0.8;
-        var toA = Math.atan2(ty - py, tx - px);
-        var sp = rand(400, 780) * (0.6 + k * 0.8);
-        VFX.parts.push({
-          x: px, y: py, vx: Math.cos(toA) * sp, vy: Math.sin(toA) * sp,
-          life: 0, max: rand(.35, .6), size: rand(1.5, 3.4), color: '#000',
-          drag: -0.9, grav: 0, streak: true
-        });
-      }
-    }
-    if (!Settings.reduced && Player.alive) VFX.addShake(0.6 + 2.4 * k);
-
-    /* absorbed: the racer is gone, and the slab comes down over the rest */
-    if (e >= 0.97 && Player.alive) {
-      if (!s.soundDone) { s.soundDone = true; Sound.play('complete'); }
-      Player.alive = false;
-      Player.coasting = true;
-      Player.respawnT = 1e9;
-      Race.finish(Player);
-    }
-    if (!Player.alive) {
-      s.edge += metresToPx(CFG.BASE_SPEED * this.mult * dt * 1.4);
-    }
-    if (App.state === ST.FINISH && !Player.alive && (this.wallCovered() || s.t >= 14)) {
+    /* everything carries on: the rivals still on the track are still racing
+       for the places that are left. Only the camera has stopped. */
+    this.tickWorld(dt);
+    Race.camD = approach(Race.camD, this.parkCamD(), 2.4, dt);
+    if (App.state !== ST.FINISH) return;
+    /* the panel waits for the racer to come to rest on its mark, and a beat
+       longer, so the rest of the field can still be seen coming in */
+    if (Player.rollV <= 0) s.hold += dt;
+    if (s.hold >= CFG.PARK_HOLD || s.t >= 14) {
       App.set(ST.COMPLETED);
+      Sound.play('complete');
       Screens.showComplete();
     }
   }

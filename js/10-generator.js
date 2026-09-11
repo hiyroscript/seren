@@ -91,13 +91,18 @@ function rollLane(last) {
 
 var Gen = {
   queue: [], frontier: 0, sinceWall: 99, lastKind: '', lastLane: -1, enabled: false,
+  limit: Infinity,          /* the course is authored no further than this */
 
   reset: function (from) {
     this.queue.length = 0; this.sinceWall = 99;
     this.lastKind = ''; this.lastLane = -1; this.enabled = true;
+    this.limit = Infinity;
     this.frontier = (from || 0) + CFG.METERS_VISIBLE * 0.9;   /* a clear start line */
   },
   stop: function () { this.enabled = false; },
+  /* Once the finish line is planted the course runs out at it: hazards carry
+     on right up to the run-in, and nothing is ever authored past the line. */
+  stopAt: function (d) { this.limit = d; },
 
   /* spacing, in seconds of travel. The fair-gap floor below still guarantees
      everything is passable; this only tightens the stretches that were roomier
@@ -159,7 +164,7 @@ var Gen = {
     var prog = clamp((mult - 1) / (CFG.SPEED_MAX - 1), 0, 1);
     this.sinceWall += dt;
     this.refill(prog);
-    var horizon = leadD + CFG.WORLD_AHEAD;
+    var horizon = Math.min(leadD + CFG.WORLD_AHEAD, this.limit);
     var guard = 0;
     while (this.frontier < horizon && guard++ < 40) {
       var e = this.queue.shift();
