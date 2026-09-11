@@ -36,6 +36,7 @@ function Racer(id, human, marbleKey) {
   this.slow = 0;                 /* bump slowdown, seconds remaining */
   this.boostPower = 1;
   this.boost = 0;                /* speed-pad boost, seconds remaining */
+  this.star = 0;
   this.floating = false;         /* in a bubble at all */
   this.bubble = 0;               /* guaranteed carry left, seconds */
   this.bubbleAge = 0;            /* how long it has been floating altogether */
@@ -58,7 +59,7 @@ Racer.prototype.laneF = function (l) { return (l + 0.5) / 3; };
 /* off the ground in a bubble: carrying, waiting for a gap, or dropping */
 Racer.prototype.inBubble = function () { return this.floating; };
 /* nothing on the track can touch it — not a hazard, not another racer */
-Racer.prototype.intangible = function () { return this.immune > 0 || this.inBubble(); };
+Racer.prototype.intangible = function () { return this.star > 0 || this.immune > 0 || this.inBubble(); };
 Racer.prototype.place = function (lane, d) {
   this.lane = clamp(lane, 0, 2);
   this.xF = this.fromF = this.toF = this.laneF(this.lane);
@@ -68,6 +69,7 @@ Racer.prototype.place = function (lane, d) {
   this.immune = 0; this.immuneExt = 0; this.slow = 0; this.bumpCd = 0;
   this.boostPower = 1;
   this.boost = 0; this.entryD = 0; this.floating = false; this.dash = null;
+  this.star = 0;
   this.bubble = 0; this.bubbleAge = 0; this.landing = 0;
   this.coasting = false;
   this.rollV = 0; this.laneTime = CFG.LANE_TIME;
@@ -113,6 +115,7 @@ Racer.prototype.radiusM = function () { return pxToMetres(this.radiusPx()); };
 Racer.prototype.marbleDef = function () { return MARBLES[this.marble] || MARBLES.blue; };
 
 Racer.prototype.boostColor = function () {
+  if (this.star > 0) return 'rgb(' + starRGB(starPhase()) + ')';
   return this.boostPower > 1 ? '#704CF5' : BOOST_INK;
 };
 /* how fast this racer is covering ground right now, as a fraction of the
@@ -121,6 +124,7 @@ Racer.prototype.speedScale = function () {
   /* eliminated: the world stops dead for this racer and does not start again
      until it is back on the track. Everyone else carries on without it. */
   if (!this.alive) return this.coasting ? 1 : 0;
+  if (this.star > 0) return CFG.STAR_SPEED;
   var s = 1;
   if (this.boost > 0) s *= 1 + (CFG.BOOST_SCALE - 1) * this.boostPower;
   if (this.slow > 0) s *= CFG.BUMP_SLOW_SCALE;
@@ -179,7 +183,7 @@ Racer.prototype.update = function (dt, active) {
   } else { this.xF = this.toF; }
 
   /* a boosted racer throws off sparks in the pad's colour */
-  if (active && this.alive && this.boost > 0 && !Settings.reduced && this.onCamera()) {
+  if (active && this.alive && (this.boost > 0 || this.star > 0) && !Settings.reduced && this.onCamera()) {
     this.boostT -= dt;
     if (this.boostT <= 0) {
       this.boostT = this.human ? 0.035 : 0.07;
@@ -262,11 +266,11 @@ Racer.prototype.draw = function () {
   var alpha = 1;
   /* inside the bubble the marble is solid: the shell is the signal, and a
      blinking marble underneath it would only read as noise */
-  if (this.immune > 0 && !this.inBubble()) {
+  if (this.immune > 0 && !this.inBubble() && this.star <= 0) {
     alpha = 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(App.time * 26));
   }
 
-  var bk = this.boost > 0 ? clamp(this.boost / CFG.BOOST_TIME, 0, 1) : 0;
+  var bk = this.star > 0 ? 1 : (this.boost > 0 ? clamp(this.boost / CFG.BOOST_TIME, 0, 1) : 0);
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -276,7 +280,7 @@ Racer.prototype.draw = function () {
   /* boosted: a pad-coloured flare around the marble for as long as the shove lasts */
   if (bk > 0) {
     var puls = Settings.reduced ? 1 : 0.72 + 0.28 * Math.sin(App.time * 22);
-    var rgb = this.boostPower > 1 ? '112,76,245' : '245,197,24';
+    var rgb = this.star > 0 ? starRGB(starPhase()) : (this.boostPower > 1 ? '112,76,245' : '245,197,24');
     var gl = ctx.createRadialGradient(0, 0, rr * 0.45, 0, 0, rr * 2.15);
     gl.addColorStop(0, 'rgba(' + rgb + ',' + (0.46 * bk * puls).toFixed(3) + ')');
     gl.addColorStop(0.55, 'rgba(' + rgb + ',' + (0.20 * bk * puls).toFixed(3) + ')');
@@ -289,7 +293,7 @@ Racer.prototype.draw = function () {
   var mb = this.marbleDef();
   ctx.beginPath();
   ctx.ellipse(0, 0, Math.max(1, rx), Math.max(1, ry), 0, 0, TAU);
-  ctx.fillStyle = mb.color; ctx.fill();
+  ctx.fillStyle = this.star > 0 ? starGradient(-rx, -ry, rx, ry) : mb.color; ctx.fill();
 
   /* the device inside it, turning with the ground this racer has covered */
   var r0 = Math.max(1, rr);
@@ -421,7 +425,7 @@ Racer.prototype.drawBubble = function () {
    both measured in metres and playfield fractions rather than pixels, so the
    answer is the same wherever the camera happens to be looking
    ------------------------------------------------------------------------- */
-function racerHits(p, o) {
+function racerHits(p, o, fromD) {
   var capX = colW() * 0.10 / PF.w, capM = pxToMetres(colW() * 0.10);
   var sx = Math.min(o.wF * CFG.OBSTACLE_FORGIVE, capX);
   var sm = Math.min(o.hM * CFG.OBSTACLE_FORGIVE, capM);
@@ -430,15 +434,16 @@ function racerHits(p, o) {
   if (x1 <= x0 || d1 <= d0) return false;
   var rx = p.radiusPx() * CFG.HITBOX_FORGIVE / PF.w;
   var rm = p.radiusM() * CFG.HITBOX_FORGIVE;
-  var nx = clamp(p.xF, x0, x1), nd = clamp(p.d, d0, d1);
-  var ex = (p.xF - nx) / rx, em = (p.d - nd) / rm;
+  /* Stars travel fast: test the swept distance so thin hazards cannot tunnel
+     between frames. Ordinary contacts retain their existing hitbox. */
+  var d = fromD === undefined ? p.d : clamp((d0 + d1) / 2, Math.min(fromD, p.d), Math.max(fromD, p.d));
+  var nx = clamp(p.xF, x0, x1), nd = clamp(d, d0, d1);
+  var ex = (p.xF - nx) / rx, em = (d - nd) / rm;
   return ex * ex + em * em <= 1;
 }
 
-/* What a mystery square can be carrying. One slot holds one of them, both are
-   spent the same way, and nothing stacks: the fake square is a trap left
-   behind you, the bolt is the yellow pad's shove carried in your pocket. */
-var ITEM_KINDS = ['falseMystery', 'boost'];
+/* One slot, three equally likely items; effects refresh rather than stack. */
+var ITEM_KINDS = ['falseMystery', 'boost', 'star'];
 
 /* ============================================================================
    RACE — the shared simulation every racer runs inside
@@ -649,8 +654,10 @@ var Race = {
     var index = Obstacles.list.indexOf(o);
     if (index < 0 || Race.clock >= o.expiresAt) return;
     Obstacles.list.splice(index, 1);
-    p.item = pick(ITEM_KINDS);
-    p.itemPickedAt = Race.clock;
+    if (!p.item) {
+      p.item = pick(ITEM_KINDS);
+      p.itemPickedAt = Race.clock;
+    }
     if (p.onCamera()) {
       var r = o.rect(), x = r.x + r.w / 2, y = r.y + r.h / 2;
       VFX.pickups.push({ cxF: o.cxF, wd: o.wd, wF: o.wF, hM: o.hM,
@@ -664,13 +671,21 @@ var Race = {
     else if (p.onCamera()) Sound.play('mysteryFar');
   },
   /* One slot, spent outright: whatever was in it goes off at once and the
-     slot is empty again, whichever of the two it was holding. */
+     slot is empty again, whichever item it was holding. */
   useItem: function (p) {
     var active = App.state === ST.PLAYING || App.state === ST.RESPAWNING ||
       App.state === ST.FINISH || App.state === ST.COMPLETED;
     if (App.blocked || !active ||
         !p.alive || p.finished || p.inBubble() ||
         ITEM_KINDS.indexOf(p.item) < 0) return false;
+    if (p.item === 'star') {
+      p.item = null;
+      p.star = CFG.STAR_TIME;
+      p.slow = 0;
+      if (p.human) Sound.play('boost');
+      else if (p.onCamera()) Sound.play('boostFar');
+      return true;
+    }
     /* the bolt: the yellow pad's shove exactly, refreshed rather than stacked
        like every other one, and with no pad on the track to light up */
     if (p.item === 'boost') { p.item = null; this.shoveForward(p, null); return true; }
@@ -685,6 +700,7 @@ var Race = {
     return true;
   },
   slowDown: function (q) {
+    if (q.star > 0) return;
     /* refreshed, never stacked */
     q.slow = CFG.BUMP_SLOW_TIME;
   },
@@ -702,7 +718,7 @@ var Race = {
 
   /* ---------- destruction and respawn ---------- */
   destroy: function (p, cause) {
-    if (!p.alive || p.immune > 0) return;
+    if (!p.alive || p.finished || p.intangible()) return;
     p.alive = false;
     p.coasting = false;
     p.crouchAmt = 0;
@@ -851,11 +867,12 @@ var Race = {
          earned rather than racing for one it can no longer take */
       if (p.finished) { Run.rollOut(p, dt); continue; }
 
+      var fromD = p.d;
       p.d += CFG.BASE_SPEED * mult * p.speedScale() * dt;
       p.update(dt, true);
 
       if (p.alive && !p.inBubble()) {        /* over the top of all of it */
-        var near = Obstacles.near(p.d, 2, 2);
+        var near = Obstacles.near(p.d, 2, p.star > 0 ? 2 + p.d - fromD : 2);
         for (var k = 0; k < near.length; k++) {
           var o = near[k];
           if (!o.harmful) {
@@ -864,6 +881,20 @@ var Race = {
               o.seen[p.id] = 1;
               if (o.kind === 'mystery') this.mysteryTake(p, o);
               else this.shoveForward(p, o);
+            }
+            continue;
+          }
+          if (p.star > 0) {
+            if (racerHits(p, o, fromD)) {
+              var hazardIndex = Obstacles.list.indexOf(o);
+              if (hazardIndex >= 0) {
+                Obstacles.list.splice(hazardIndex, 1);
+                if (p.onCamera() && !Settings.reduced) {
+                  var rect = o.rect();
+                  VFX.burst(rect.x + rect.w / 2, rect.y + rect.h / 2, 12,
+                    { color: p.boostColor(), spMax: 220, lifeMax: .4, world: true });
+                }
+              }
             }
             continue;
           }
@@ -878,6 +909,12 @@ var Race = {
             this.destroy(p, 'hazard'); break;
           }
         }
+      }
+      /* Collision protection covers the movement just simulated. Pauses and
+         resume countdowns do not spend any of the five active seconds. */
+      if (p.star > 0) {
+        p.star = Math.max(0, p.star - dt);
+        if (p.star < 1e-9) p.star = 0;
       }
       if (!p.alive) {
         p.respawnT -= dt;
@@ -896,10 +933,10 @@ var Race = {
   separate: function () {
     for (var i = 0; i < this.racers.length; i++) {
       var a = this.racers[i];
-      if (!a.alive || a.finished || a.inBubble()) continue;
+      if (!a.alive || a.finished || a.inBubble() || a.star > 0) continue;
       for (var j = i + 1; j < this.racers.length; j++) {
         var b = this.racers[j];
-        if (!b.alive || b.finished || b.inBubble()) continue;
+        if (!b.alive || b.finished || b.inBubble() || b.star > 0) continue;
         if (a.lane !== b.lane) continue;
         var gap = a.d - b.d;
         var need = (a.radiusM() + b.radiusM()) * 0.92;

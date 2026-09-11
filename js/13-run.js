@@ -147,6 +147,25 @@ var Run = {
 
   finalProgress: function () { return Math.max(0, this.distance - this.finalStart); },
 
+  /* Redline's whole-race ladder: start at zero, a projected finish until the
+     real line exists. Integrate Seren's remaining speed steps, adjusted by
+     the player's observed pace (including stops and boosts). */
+  raceSpan: function () {
+    if (this.line) return { from: 0, to: this.line.d };
+    var elapsed = 0, remaining = 0;
+    var steps = Math.ceil((CFG.SPEED_MAX - 1) / CFG.SPEED_STEP);
+    for (var i = 0; i < steps; i++) {
+      var spent = clamp(this.speedTimer - i * CFG.SPEED_STEP_TIME, 0, CFG.SPEED_STEP_TIME);
+      var speed = CFG.BASE_SPEED * Math.min(CFG.SPEED_MAX, 1 + i * CFG.SPEED_STEP);
+      elapsed += spent * speed;
+      remaining += (CFG.SPEED_STEP_TIME - spent) * speed;
+    }
+    var pace = elapsed > CFG.BASE_SPEED * 4 ? clamp(Math.max(0, Player.d) / elapsed, 0.5, CFG.STAR_SPEED) : 1;
+    var stageEnd = this.finalActive ? this.finalStart + CFG.FINAL_DISTANCE :
+      Math.max(0, Player.d) + remaining * pace + CFG.FINAL_DISTANCE;
+    return { from: 0, to: Math.max(stageEnd, Race.leadD()) + CFG.LINE_LEAD };
+  },
+
   /* an obstacle sweeping past the player: air displacement, and a spark
      when it goes by close enough to be felt */
   passFX: function () {
@@ -258,7 +277,7 @@ var Run = {
     /* out of play, and clean: a shove, a boost, a bubble or a hit the same
        frame does not follow a racer over the line */
     p.alive = true; p.coasting = false; p.respawnT = 0; p.spawnT = 1;
-    p.boost = 0; p.boostPower = 1; p.slow = 0; p.bumpCd = 0; p.hitFlash = 0;
+    p.boost = 0; p.boostPower = 1; p.star = 0; p.slow = 0; p.bumpCd = 0; p.hitFlash = 0;
     p.crouch = false;
     p.floating = false; p.bubble = 0; p.bubbleAge = 0; p.landing = 0;
     p.immune = 0; p.immuneExt = 0;
