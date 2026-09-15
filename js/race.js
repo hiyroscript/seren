@@ -118,15 +118,13 @@ function spawnRivals(){
       human:i < seats.length, seat:i + 1, pad:i + 1,
       padId:(G.padIds && G.padIds[i + 1] !== undefined ? G.padIds[i + 1] : null),
       pk:newPadKeys(),
-      wantBoost:false, blindPts:[], petals:[],
+      wantBoost:false, blindPts:[],
       abs:0, changeT:rand(0.2, 0.7),          /* standing start: everyone from zero */
-      slow:0, blind:0, dead:0, immune:0, shock:0, launch:0, bumpCD:0,
-      chrono:0, ordered:0, orderBy:null, clutter:0, clutterLv:0, cleanse:0,
-      orderDir:1, slip:0,
+      slow:0, blind:0, dead:0, immune:0, launch:0, bumpCD:0, slip:0,
       item:null, itemRow:-1, canT:0, useT:rand(0.6, 2.4), item:null, canT:0, useT:0,
       inDanger:false, willReact:true, reactT:0, swapT:0,
-      ult:0, ultOn:false, ultT:0, ultMax:ULT_TIME, powered:0,
-      ultWait:rand(1, 3), ultHeld:0, orbs:0, fireT:0, orbFireT:0,
+      ult:0, ultOn:false, ultT:0, ultMax:ULT_TIME,
+      ultWait:rand(1, 3), ultHeld:0,
       charge:1, boostLock:false, boosting:false,
       finished:null, parkM:0,
       /* the launch, on exactly the player's terms: a brake that sheds speed,
@@ -188,19 +186,18 @@ function startRace(){
   G.tier = 0; G.speedT = SPEED_SECONDS; G.blind = 0; G.blindPts = [];
   G.dead = 0; G.immune = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
-  G.ultT = 0; G.ultMax = ULT_TIME; G.powered = 0; G.orbFireT = 0;
-  G.orbs = 0; G.bolts = []; G.shockT = 0; G.launchT = 0; G.bumpCD = 0;
+  G.ultT = 0; G.ultMax = ULT_TIME;
+  G.launchT = 0; G.bumpCD = 0;
   G.brakeOn = false; G.brakeKey = false; G.brakePtr = false; G.brakeSpent = false;
   G.airMeter = 1; G.airWind = 0;
   G.airT = 0; G.airMax = 0; G.airPow = 0; G.launchCD = 0;
-  G.chronoT = 0; G.chronoWorld = 0; G.chronoOwner = null;
-  G.orderedT = 0; G.orderBy = null;
-  G.bloomT = 0; G.clutterLv = 0; G.cleanseT = 0; G.petals = []; G.slipT = 0;
+
+  G.slipT = 0;
   G.item = null; G.swapT = 0; G.boxes = []; G.slicks = []; G.missiles = []; G.canT = 0;
   G.padBoost = false; G.padBrake = false; G.pk = newPadKeys();
   G.boxGap = 0; G.nextRow = rand(2200, 3400);      /* the first row comes a bit sooner */
   G.lastTap = -9; G.tapClock = 0;
-  G.sirenOwner = null; G.bloomOwner = null;
+
   clearEffects();                    /* nothing carries over from the last race */
   G.cdT = 0; G.cdStep = -1; G.wasCounting = false;
   G.raceT = 0; G.finishAt = 0; G.finished = null; G.results = []; G.parkRot = 0;
@@ -360,7 +357,7 @@ function checkFinish(){
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
       if(R.ultOn) endUlt(R);
-      R.boosting = false; R.orbs = 0;
+      R.boosting = false;
       scrubBad(R);                               /* Winner: out of play, and clean */
     }
   }
@@ -369,7 +366,7 @@ function checkFinish(){
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
     if(G.ultOn) endUlt("me");
-    G.orbs = 0; G.boosting = false;
+    G.boosting = false;
     G.keyBoost = G.ptrBoost = G.ultKey = G.padBoost = false;
     scrubBad("me");                             /* Winner: out of play, and clean */
     killLaunch();                              /* nobody crosses the line mid-flight */
@@ -517,20 +514,17 @@ function update(dt){
   }
   else if(st === "over") target = Math.max(0, G.speed - 900*dt);
   else if(airborne()){
-    /* Off the road entirely: nothing on the ground reaches up to hold you, so
-       a pin or a drag waits until the wheels are back down. The clock still
-       reaches you up there, though - chronokinesis is not on the road. */
+    /* Airborne pace retains launch behavior and the shared speed multiplier. */
     target = BASE_SPEED*speedMult()*lerp(AIR_MIN_K, AIR_MAX_K, G.airPow);
+    if(G.ultOn) target *= ULT_SPEED;
     if(G.canT > 0) target *= CAN_SPEED;
-    if(G.chronoT > 0) target *= CHRONO_RATE;
   }
-  else if(G.dead > 0 || G.shockT > 0) target = 0;   /* wrecked or pinned: you stop,
+  else if(G.dead > 0) target = 0;   /* wrecked: you stop,
                                                  the race goes on without you */
   else {
     target = BASE_SPEED*speedMult();
     if(G.ultOn) target *= ULT_SPEED;
-    else if(G.slowT > 0) target *= 0.5;
-    if(G.chronoT > 0) target *= CHRONO_RATE;     /* dragged down with the world */
+    if(G.slowT > 0) target *= 0.5;
     if(G.boosting) target *= 1.5;
     if(G.canT > 0) target *= CAN_SPEED;          /* the can is free speed */
     if(G.launchT > 0) target *= LAUNCH_BOOST;
@@ -625,7 +619,7 @@ function update(dt){
     if(G.trapGap >= G.nextTrap){ G.trapGap = 0; spawnTrap(); G.nextTrap = rand(430, 900); }
   }
 
-  /* ultimate: charges slowly, then burns down over its five seconds */
+  /* ultimate: charges slowly, then counts down over its fifteen seconds */
   if(st === "running"){
     if(G.ultOn) tickUlt("me", dt);
     else if(G.ult < 1 && G.dead <= 0 && ruleOn("ults")) G.ult = Math.min(1, G.ult + dt/ULT_CHARGE);
@@ -639,21 +633,9 @@ function update(dt){
 
   /* hit states */
   if(G.blind > 0)  G.blind  = Math.max(0, G.blind - dt);
-  if(G.shockT > 0) G.shockT = Math.max(0, G.shockT - dt);
-  if(G.chronoT > 0) G.chronoT = Math.max(0, G.chronoT - dt);
-  if(G.orderedT > 0){
-    G.orderedT = Math.max(0, G.orderedT - dt);
-    if(G.orderedT === 0) G.orderBy = null;
-  }
   if(G.slipT > 0) G.slipT = Math.max(0, G.slipT - dt);
   if(G.canT > 0) G.canT = Math.max(0, G.canT - dt);
   if(G.swapT > 0) G.swapT = Math.max(0, G.swapT - dt);
-  if(G.bloomT > 0){
-    G.bloomT = Math.max(0, G.bloomT - dt);
-    if(G.bloomT === 0){ G.petals = []; G.clutterLv = 0; }
-  }
-  if(G.cleanseT > 0) G.cleanseT = Math.max(0, G.cleanseT - dt);
-  if(G.chronoWorld > 0){ G.chronoWorld = Math.max(0, G.chronoWorld - dt); if(G.chronoWorld === 0) endChrono(); }
   if(G.launchT > 0) G.launchT = Math.max(0, G.launchT - dt);
   updateLaunch(dt, st);
   G.tapClock += dt;
@@ -674,8 +656,6 @@ function update(dt){
     if(inFront && inFront.y < playerY) rearEnd("me", inFront);
   }
   updateRivals(dt, st);
-  serveOrders();                 /* Siren's orders, made good wherever she ends up */
-  updateBolts(dt);
   checkFinish();
   updateFx(dt, d);
   if(G.seam !== null){
@@ -727,26 +707,13 @@ function updateRival(R, dt, st){
   if(R.slow > 0)   R.slow   = Math.max(0, R.slow - dt);
   if(R.blind > 0)  R.blind  = Math.max(0, R.blind - dt);
   if(R.immune > 0) R.immune = Math.max(0, R.immune - dt);
-  if(R.shock > 0){ R.shock = Math.max(0, R.shock - dt); R.boosting = false; }
-  if(R.chrono > 0) R.chrono = Math.max(0, R.chrono - dt);
-  if(R.cleanse > 0) R.cleanse = Math.max(0, R.cleanse - dt);
-  if(R.ordered > 0){
-    R.ordered = Math.max(0, R.ordered - dt);
-    R.boosting = false;                          /* ordered: no controls at all */
-    if(R.ordered === 0) R.orderBy = null;
-  }
   if(R.slip > 0) R.slip = Math.max(0, R.slip - dt);
   if(R.canT > 0) R.canT = Math.max(0, R.canT - dt);
-  if(R.clutter > 0){
-    R.clutter = Math.max(0, R.clutter - dt);
-    if(R.clutter === 0){ R.clutterLv = 0; R.petals = []; }
-  }
   if(R.launch > 0) R.launch = Math.max(0, R.launch - dt);
   if(R.swapT > 0) R.swapT = Math.max(0, R.swapT - dt);
   if(R.bumpCD > 0) R.bumpCD = Math.max(0, R.bumpCD - dt);
   if(R.changeT > 0) R.changeT -= dt;
   if(R.reactT > 0)  R.reactT -= dt;
-  if(R.fireT > 0)   R.fireT -= dt;
   if(R.senseT > 0)  R.senseT -= dt;
   if(R.hurtT > 0){                               /* who last did something to it */
     R.hurtT = Math.max(0, R.hurtT - dt);
@@ -818,8 +785,7 @@ function updateRival(R, dt, st){
        second, which is the order the player's own frame runs in. */
     R.boosting = ruleOn("boost") &&
                  !!R.wantBoost && !R.boostLock && R.charge > 0 && !R.brakeOn &&
-                 G.state === "running" && R.dead <= 0 && R.finished === null &&
-                 R.shock <= 0 && R.ordered <= 0;
+                 G.state === "running" && R.dead <= 0 && R.finished === null;
     if(R.boosting){
       R.charge = clamp(R.charge - dt*0.4, 0, 1);
       if(R.charge <= 0.001){ R.charge = 0; R.boostLock = true; R.wantBoost = false; R.boosting = false; }
@@ -842,24 +808,21 @@ function updateRival(R, dt, st){
     const chase = s.front ? 0.85 : (s.place > 1 ? 0.6 : 0.25);
     const eager = chase*(gapM < -20 ? 1.1 : 1)*D.boost*(0.6 + R.temper.nerve*0.7);
     if(ruleOn("boost") && !R.boostLock && !R.brakeOn && R.charge > 0.5 && clearAhead &&
-       R.shock <= 0 && R.ordered <= 0 && Math.random() < eager*dt*2) R.boosting = true;
+       Math.random() < eager*dt*2) R.boosting = true;
   }
-  if(R.human && R.boosting && (R.brakeOn || R.shock > 0 || R.ordered > 0)) R.boosting = false;
+  if(R.human && R.boosting && R.brakeOn) R.boosting = false;
 
   /* pace: identical to everyone else unless something is acting on it */
   let want = BASE_SPEED*speedMult();
   let hold = false;
   if(R.airT > 0){
-    /* Off the road entirely: nothing on the ground reaches up to hold it, but
-       the clock still does - chronokinesis is not on the road. */
+    /* Airborne pace retains launch behavior and the shared speed multiplier. */
     want *= lerp(AIR_MIN_K, AIR_MAX_K, R.airPow);
-    if(R.canT > 0) want *= CAN_SPEED;
-    if(R.chrono > 0) want *= CHRONO_RATE;
-  } else if(R.shock > 0) want = 0;
-  else {
     if(R.ultOn) want *= ULT_SPEED;
-    else if(R.slow > 0) want *= 0.5;
-    if(R.chrono > 0) want *= CHRONO_RATE;       /* dragged down with the world */
+    if(R.canT > 0) want *= CAN_SPEED;
+  } else {
+    if(R.ultOn) want *= ULT_SPEED;
+    if(R.slow > 0) want *= 0.5;
     if(R.boosting) want *= 1.5;
     if(R.canT > 0) want *= CAN_SPEED;
     if(R.launch > 0) want *= LAUNCH_BOOST;
@@ -882,16 +845,13 @@ function updateRival(R, dt, st){
   const inLane = s.now[R.lane] === 1;
   if(inLane && !R.inDanger){
     R.inDanger = true;
-    /* At stage one it still sometimes sees the trap coming; by stage five the
-       screen is gone and it never does. */
-    R.willReact = R.clutter > 0
-      ? Math.random() > lerp(0.55, 1, clutterK(R.clutterLv))
-      : Math.random() > D.lapse;
-    R.reactT = rand(D.react[0], D.react[1])*(R.clutter > 0 ? lerp(1.8, 3.4, clutterK(R.clutterLv)) : 1);
+    /* Reaction quality depends on difficulty. */
+    R.willReact = Math.random() > D.lapse;
+    R.reactT = rand(D.react[0], D.react[1]);
   } else if(!inLane) R.inDanger = false;
 
-  if(!R.human && R.changeT <= 0 && R.blind <= 0 && R.shock <= 0 && R.ordered <= 0){
-    R.changeT = rand(D.tick[0], D.tick[1])*(R.clutter > 0 ? lerp(2.2, 4.2, clutterK(R.clutterLv)) : 1);
+  if(!R.human && R.changeT <= 0 && R.blind <= 0){
+    R.changeT = rand(D.tick[0], D.tick[1]);
     botLook(R, dt, true);                       /* look again, then decide */
     rivalThink(R, dt);
   }
@@ -902,9 +862,7 @@ function updateRival(R, dt, st){
 
   /* hazards, on exactly the terms the player gets them - including being over
      the top of them, where the road is simply not where the car is */
-  const smash = R.ultOn && CARS[R.car].power === "burn";
-  const ghost = R.ultOn && CARS[R.car].power === "phase";
-  if(R.immune <= 0 && !ghost && R.airT <= 0 && !finishedCar(R)){
+  if(R.immune <= 0 && R.airT <= 0 && !finishedCar(R)){
     const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
     const bit = 2 << G.rivals.indexOf(R);
     for(let i=G.traps.length-1;i>=0;i--){
@@ -918,9 +876,7 @@ function updateRival(R, dt, st){
         : dx*dx + dy*dy <= o.r*o.r*0.86;
       if(!hit){ markPassed(o, rc, bit); continue; }
       o.hit |= bit;
-      if(smash){ smashFx(o.x, o.y, (o.rx || o.r)*1.1, "#D8C49A", R.car); G.traps.splice(i,1); continue; }
       ultDelta(R, ULT_ON_TRAP);
-      clutterUp(R);                                    /* hitting things while blind blinds you more */
       if(warded(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
       if(o.kind === "weed"){ R.slow = SLOW_TIME; puffFx(o.x, o.y); G.traps.splice(i,1); }
       else { R.blind = BLIND_TIME; R.blindPts = blindSpray(); puffFx(o.x, o.y); }

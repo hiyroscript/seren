@@ -25,12 +25,6 @@ function logEffect(id){
   const def = EFFECTS[id];
   if(!def) return;
   if(id === "immune") return;              /* immune has its own treatment */
-  if(id === "cleansed"){                   /* and so does the cleanse flash */
-    const c = $("#cleanseTag");
-    c.textContent = t(def.key);
-    c.classList.remove("on"); void c.offsetWidth; c.classList.add("on");
-    return;
-  }
   const have = effEls[id];
   if(have){
     if(have.out){                          /* caught on the way out: bring it back */
@@ -101,7 +95,6 @@ function clearEffects(){
   G.effLog = [];
   const host = effHost();
   while(host && host.children && host.children.length) host.removeChild(host.children[0]);
-  $("#cleanseTag").classList.remove("on");
   $("#immuneTag").classList.remove("on");
   $("#shell").classList.remove("immune");
 }
@@ -109,22 +102,15 @@ function clearEffects(){
    screen is derived here and nowhere else, so a state that has quietly lapsed
    cannot leave its label behind. */
 function syncEffects(){
-  const p = CARS[G.car].power;
   const won = finishedMe();
   const faster = G.boosting || G.launchT > 0 || G.canT > 0 || airborne() ||
-                 (G.ultOn && ULT_EFFECTS[p].indexOf("boosted") >= 0);
-  const slower = G.slowT > 0 || G.chronoT > 0;
+                 G.ultOn;
+  const slower = G.slowT > 0;
   const on = {
     winner:    won,
     slowed:    !won && slower,
-    cluttered: !won && (G.blind > 0 || G.bloomT > 0),
+    cluttered: !won && G.blind > 0,
     boosted:   !won && faster,
-    shocked:   !won && G.shockT > 0,
-    chrono:    !won && G.chronoT > 0,
-    onfire:    !won && G.ultOn && p === "burn",
-    phasing:   !won && G.ultOn && p === "phase",
-    powered:   !won && G.ultOn && p === "storm" && G.powered > 0,
-    ordered:   !won && G.orderedT > 0,
     slippery:  !won && G.slipT > 0,
     launched:  !won && airborne()
   };
@@ -132,7 +118,6 @@ function syncEffects(){
     if(on[id]) logEffect(id);
     else dropEffect(id);
   }
-  if(G.cleanseT <= 0 && effEls.cleansed) dropEffect("cleansed");
   const imm = G.immune > 0 && !won;
   const tag = $("#immuneTag");
   const lbl = tag.firstElementChild;
@@ -504,30 +489,20 @@ function hudReadout(who, o){
    The page keeps one pill per state for the player. A rival carries the same
    states under its own field names, so the reading is the same reading. */
 function hudEffects(who, o){
-  const p = CARS[who === "me" ? G.car : who.car].power;
   const won = (who === "me" ? G.finished : who.finished) !== null;
   const boostT = who === "me" ? (G.launchT > 0 || G.canT > 0) : (o.launch > 0 || o.canT > 0);
-  const blindT = who === "me" ? (G.blind > 0 || G.bloomT > 0) : (o.blind > 0 || o.clutter > 0);
-  const slowT  = who === "me" ? (G.slowT > 0 || G.chronoT > 0) : (o.slow > 0 || o.chrono > 0);
-  const chronoT= who === "me" ? G.chronoT > 0 : o.chrono > 0;
-  const shockT = who === "me" ? G.shockT > 0 : o.shock > 0;
-  const ordT   = who === "me" ? G.orderedT > 0 : o.ordered > 0;
+  const blindT = who === "me" ? (G.blind > 0) : (o.blind > 0);
+  const slowT  = who === "me" ? (G.slowT > 0) : (o.slow > 0);
   const slipT  = who === "me" ? G.slipT > 0 : o.slip > 0;
   const air    = o.airT > 0;
   const faster = o.boosting || boostT || air ||
-                 (o.ultOn && ULT_EFFECTS[p].indexOf("boosted") >= 0);
+                 o.ultOn;
   const on = [];
   if(won) on.push("winner");
   else {
     if(slowT) on.push("slowed");
     if(blindT) on.push("cluttered");
     if(faster) on.push("boosted");
-    if(shockT) on.push("shocked");
-    if(chronoT) on.push("chrono");
-    if(o.ultOn && p === "burn") on.push("onfire");
-    if(o.ultOn && p === "phase") on.push("phasing");
-    if(o.ultOn && p === "storm" && (who === "me" ? G.powered > 0 : o.powered > 0)) on.push("powered");
-    if(ordT) on.push("ordered");
     if(slipT) on.push("slippery");
     if(air) on.push("launched");
   }
@@ -572,24 +547,6 @@ function hudEffects(who, o){
     ctx.lineWidth = 3;
     ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
     ctx.restore();
-  }
-  /* the cleanse flash, in the middle of your own column */
-  const cl = who === "me" ? G.cleanseT : o.cleanse;
-  if(cl > 0){
-    const k = clamp(1 - cl/CLEANSE_TIME, 0, 1);           /* runs once, then goes */
-    const a = k < 0.25 ? k/0.25 : (k > 0.75 ? Math.max(0, (1-k)/0.25) : 1);
-    if(a > 0.01){
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.translate(W/2, H*0.40);
-      if(!motionReduced()) ctx.scale(0.88 + Math.min(1, k/0.25)*0.12, 0.88 + Math.min(1, k/0.25)*0.12);
-      ctx.fillStyle = "#B96BFF";
-      ctx.font = "760 26px " + HUD_DISPLAY;
-      ctx.textBaseline = "middle";
-      ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowOffsetY = 2; ctx.shadowBlur = 20;
-      trackText(t(EFFECTS.cleansed.key).toUpperCase(), 0, 0, 2.1, "center");
-      ctx.restore();
-    }
   }
 }
 

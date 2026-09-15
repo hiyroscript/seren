@@ -45,7 +45,7 @@ function buildGarage(){
         name:t(c.key),
         body:t(id + "Ult"),
         meta:'<div class="tagrow">' +
-             ULT_EFFECTS[c.power].map(function(e){ return t(EFFECTS[e].key); }).join(" &middot; ") +
+             t(EFFECTS.boosted.key) +
              '</div>'
       });
     });

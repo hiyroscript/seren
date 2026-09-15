@@ -93,32 +93,18 @@ cooldown (inline in `rearEnd`) so one collision cannot fire every frame.
 | Constant | Value | Means |
 | --- | --- | --- |
 | `ULT_CHARGE` | `75` | seconds from empty to ready — the same clock for every car |
-| `ULT_TIME` | `5` | seconds an ultimate lasts |
+| `ULT_TIME` | `15` | seconds an ultimate lasts |
 | `ULT_SPEED` | `2.0` | pace multiplier while one is running |
 | `ULT_ON_WRECK` | `−0.10` | meter cost of being destroyed |
 | `ULT_ON_TRAP` | `−0.05` | meter cost of hitting a hazard |
 | `ULT_ON_KILL` | `+0.10` | meter reward for wrecking somebody |
 
-While an ultimate runs, the meter is its remaining duration, so those deltas wait
-until it is over rather than cutting it short (`ultDelta` enforces this).
+While an ultimate runs, the meter is its remaining duration, so those deltas are ignored
+until it is over rather than changing its duration (`ultDelta` enforces this).
 
-### Per car
-
-| Constant | Value | Car | Means |
-| --- | --- | --- | --- |
-| `ORB_COUNT` | `3` | Bolt | orbs per ultimate |
-| `ORB_GAP` | `0.55` | Bolt | seconds between orbs going out on their own |
-| `ORB_SPEED` | `1500` | Bolt | px/s, and they never slow down |
-| `ORB_R` | `7` | Bolt | hit radius |
-| `SHOCK_TIME` | `5` | Bolt | seconds a hit car is pinned. Does not stack — an orb arriving at an already-pinned car seeks the next one up the road |
-| `POWER_TIME` | `5` | Bolt | seconds added per orb that comes home. These *do* stack |
-| `CHRONO_TIME` | `5` | Timestamp | seconds the world drags |
-| `CHRONO_RATE` | `0.5` | Timestamp | and by how much |
-| `BLOOM_TIME` | `5` | Rose | seconds a screen stays fouled |
-| `CLUTTER_MAX` | `5` | Rose | stages the clutter can be driven to. Only contact deepens it |
-| `ORDER_TIME` | `5` | Siren | seconds the orders stand |
-| `SIREN_RANGE` | `260` | Siren | how far ahead the sweep reaches, in px |
-| `CLEANSE_TIME` | `1` | Siren | the wipe it opens with |
+All cars share this speed multiplier. It has no contact, status, targeting or
+world-clock effects, and its duration cannot be extended. A wreck or finish
+ends it. Ordinary negative speed modifiers still apply independently.
 
 ## Hazards
 
@@ -135,7 +121,7 @@ until it is over rather than cutting it short (`ultDelta` enforces this).
 
 The meteor's ring is a **position on the road**, and its remaining fall is measured
 in **seconds** — so braking, launching or boosting moves where it lands, not when.
-Only chronokinesis stretches the fall. `rockAlt()` is the single answer to "how
+The fall uses elapsed seconds, unaffected by ultimates. `rockAlt()` is the single answer to "how
 high is it", read by the fall, the roof test and the drawing alike.
 
 Spawn spacing is inline in `race.js`: a hazard every `rand(430, 900)` of road, and

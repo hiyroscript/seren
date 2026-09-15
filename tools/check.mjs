@@ -352,10 +352,6 @@ else {
     if (!ids.has("car" + id[0].toUpperCase() + id.slice(1))) fail(`car ${id} has no button in index.html`);
     if (!new RegExp(`data-car="${id}"`).test(html)) fail(`car ${id} has no select-screen canvas`);
   }
-  const ultEffects = objectLiteral(sources.data || "", "ULT_EFFECTS");
-  if (ultEffects) for (const id of carIds) {
-    if (!ultEffects[CARS[id].power]) fail(`car ${id} power "${CARS[id].power}" has no ULT_EFFECTS entry`);
-  }
   pass(`${carIds.length} cars: models, strings, buttons and ultimates all wired`);
 }
 
