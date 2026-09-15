@@ -1,780 +1,414 @@
-You are modifying the GitHub repository hiyroscript/seren.
+You are modifying the GitHub repository `hiyroscript/seren`.
 
-Goal
+Use `hiyroscript/ponu` only as a visual/reference repository. Do not modify Ponu. The actual implementation belongs entirely in Seren.
 
-Refactor SEREN so that every car’s ultimate has exactly one gameplay effect: the existing provided ultimate speed boost.
+This is a careful gameplay-system refactor, not a cosmetic text replacement. Before editing anything, inspect the current latest Seren source and trace every reference related to the airborne launch mechanic, gameplay status effects, temporary immunity, finish-line protection, HUD status presentation, rival rendering, local split-screen rendering, AI decisions, input mappings, localization, documentation, and tests. Do not assume line numbers remain unchanged. Preserve unrelated gameplay.
 
-Every ultimate must become mechanically identical:
+# Core objective
 
-* Charge normally using the existing ultimate meter.
-* Activate normally using the existing ultimate input.
-* Last exactly the existing ULT_TIME.
-* Multiply that car’s own driving pace by the existing ULT_SPEED.
-* Display the normal ultimate meter countdown.
-* It may retain a generic activation burst / generic boost flames so the player can tell the ultimate is active.
-* It must do absolutely nothing else.
+Completely remove Seren’s airborne **launch mechanic**: the mechanic where a racer brakes, winds up, leaves the road, rises into the air, gains speed/height based on charge, becomes separated from grounded contact, and later lands.
 
-The intended shared behavior is the existing:
+At the same time, replace the game’s current “effects” terminology and presentation with a proper **Conditions** system.
 
-* ULT_CHARGE = 75
-* ULT_TIME = 5
-* ULT_SPEED = 2.0
+The resulting active Conditions are exactly:
 
-Do not rebalance these values unless required to fix an implementation error.
+| ID             | Display name | Type   | Color                                                            | Icon concept                                          |
+| -------------- | ------------ | ------ | ---------------------------------------------------------------- | ----------------------------------------------------- |
+| `boosted`      | Boosted      | Buff   | `#FF9A4A`                                                        | forward double-chevron or lightning/acceleration mark |
+| `invulnerable` | Invulnerable | Buff   | `#FFD86B`                                                        | shield                                                |
+| `slowed`       | Slowed       | Debuff | `#8A9099`                                                        | downward speed arrow / reduced-speed mark             |
+| `obscured`     | Obscured     | Debuff | `#B07A4A`                                                        | crossed/covered eye or visibility-obscured mark       |
+| `skidded`      | Skidded      | Debuff | preserve the existing dark Slippery family, preferably `#0B0B0C` | curved skid/tire marks                                |
 
-The result should effectively be:
+There must be no `Launched` condition.
 
-Ultimate ready → activate → that car gets 5 seconds at 2× pace → ultimate ends.
+There must be no `Winner` condition.
 
-That is the complete ultimate mechanic for all six cars.
+A racer crossing the finish line must still become permanently out of play for the remainder of that race, with all existing result/placement/run-out behavior preserved. This finish protection is a race lifecycle state, not a Condition, and it must never be presented as `Winner`, `Invulnerable`, or any other condition.
 
-⸻
+# Critical distinction: do not remove the rear-contact speed shove
 
-Critical rule
-
-An active ultimate must provide:
+Seren currently uses confusing launch-related names for two different mechanics.
 
-SPEED ONLY.
+The airborne launch mechanic must be deleted.
 
-It must NOT provide:
+However, rear-ending another car currently gives the victim a short forward shove using identifiers such as `LAUNCH_TIME`, `LAUNCH_BOOST`, `G.launchT`, and the rival `launch` field. That shove is not the airborne mechanic. Preserve its exact gameplay behavior and tuning, but rename it so the source no longer conflates it with the removed launch system.
 
-* immunity
-* pseudo-immunity
-* hazard protection
-* trap protection
-* collision protection
-* phasing
-* ghosting
-* contact damage
-* contact advantage
-* automatic shoving
-* cleansing
-* status protection
-* crowd control
-* projectiles
-* orbs
-* world slowdown
-* enemy slowdown
-* screen clutter
-* petals
-* ordering
-* control disabling
-* target immunity
-* seeker protection
-* oil protection
-* extensions to ultimate duration
-* any other car-specific ability
-
-Do not simply hide the effects visually. Remove/disable their actual gameplay behavior.
-
-⸻
-
-Preserve unrelated game mechanics
+Use a clear term such as `SHUNT_TIME`, `SHUNT_BOOST`, `G.shuntT`, and `R.shuntT`. Preserve the existing numerical timing/multiplier unless another dependency genuinely requires adjustment. Boosted should continue to be active while this forward shove is active, just as the old HUD treated that short speed increase as part of Boosted.
 
-Do NOT remove genuine non-ultimate mechanics just because they use concepts such as immunity or effects.
+Do not accidentally remove rear-end collisions, lane barging, shunts, ordinary boost, boost cans, ultimates, items, traps, seekers, wrecking, respawning, or finish-line run-out.
 
-In particular, preserve:
+# Remove the airborne launch mechanic completely
 
-* Respawn immunity after a wreck.
-* Finished/winner protection.
-* Airborne/launch behavior.
-* Normal boost meter.
-* Boost cans.
-* Oil.
-* Seeker.
-* Puddles.
-* Meteors.
-* Tumbleweeds.
-* Normal collisions and barging.
-* Normal wrecking.
-* Ultimate charge rewards/penalties that are part of the meter economy.
-* Custom-play option for enabling/disabling ultimates.
-* Local multiplayer.
-* Bot ultimate usage.
-* Effect/status infrastructure still needed by non-ultimate mechanics.
+Delete the full brake/wind-up/airborne subsystem, rather than merely disabling its input.
 
-The requirement is no immunity or powers from an ultimate, not “delete immunity from the whole game.”
+This includes the player-side and rival-side launch lifecycle: brake engagement, launch arming threshold, wind-up, launch power calculation, launch cooldown, airborne timer, air height/power/max duration, jumping clear of grounded cars or hazards, airborne contact immunity, airborne movement/speed multipliers, landing attacks, landing collision logic, launch particles, launch shadows, launch squat animation, and any AI strategy for launching.
 
-⸻
+Remove obsolete launch constants such as the `AIR_*` family used by this mechanic. Remove launch-only state including player and rival fields equivalent to `brakeOn`, `brakeKey`, `brakePtr`, `brakeSpent`, `brakeHeld`, `airMeter`, `airWind`, `airT`, `airMax`, `airPow`, `launchCD`, `airAim`, `airHold`, and `airWhy`.
 
-Current special powers that must disappear
+Remove functions whose purpose is the airborne system, including the equivalents of `airPower`, `airborne`, `overhead`, `canBrake`, `airArmed`, `brakeHeld`, `brakeEngage`, `brakeOff`, `launchCar`, `landCar`, `killLaunch`, `updateLaunch`, `releaseBrake`, and all rival versions such as `rivalAirPower`, `rivalAirborne`, `canBrakeRival`, `rivalBrakeOff`, `launchRival`, `landRival`, `killLaunchRival`, and `updateRivalLaunch`.
 
-Remove every gameplay consequence of these six current character-specific ultimate abilities:
+After this work there should not be dormant air/launch state sitting at zero merely because the UI no longer reaches it. The mechanic itself must be gone.
 
-Redd / Burn
+Where functions such as `noContact`, `safeCar`, collision detection, hazard handling, or targeting currently contain an airborne exception, remove only the airborne part. Preserve the protection arising from respawn invulnerability, destruction/dead state, and being finished.
 
-Remove:
+Remove the launch meter from both the normal DOM HUD and the split-screen canvas HUD. The bottom meter area should contain only the ordinary boost meter after this change. Reflow it deliberately rather than leaving a blank track where the launch meter used to be.
 
-* Burning state caused by the ultimate.
-* Destroying cars merely by touching them while the ultimate is active.
-* Destroying traps/hazards by touching them.
-* Destroying oil/slicks through Burn.
-* Any special collision priority from Burn.
-* Any special protection granted because Redd is burning.
-* Any Burn-specific AI logic.
-* Any “On fire” effect generated by the ultimate.
-* Burn-specific active gameplay visuals.
+Remove the car lift, enlarged airborne rendering, launch shadow, wind-up squat, airborne flames, and any functions such as `airHop`, `rivalHop`, or launch-specific shadow rendering that become dead.
 
-Redd during an ultimate must collide with cars, hazards, traps, items, and oil exactly like Redd normally would, except Redd is travelling with the shared 2× ultimate speed boost.
+# Remove launch controls
 
-Phantom / Phase
+The down-arrow / `S` brake-and-launch control must disappear. Do not silently remap it to another action.
 
-Remove:
+Remove the corresponding keyboard down/up launch handling, touch swipe-down brake/launch handling, pointer brake state, controller down-stick/down-D-pad brake/launch handling, `humanBrake`, `padBrake`, and the launch-related `brake` snapshot in `newPadKeys` if it has no remaining purpose.
 
-* Phasing.
-* Ghosting.
-* Passing through cars.
-* Passing through traps/hazards.
-* Any protection from collision.
-* Any protection from effects.
-* Any Phantom-specific ultimate avoidance.
-* The special rematerialization collision that can wreck Phantom and another car.
-* Phase-specific AI behavior.
-* “Phasing” ultimate status.
-* Phase-specific active gameplay visuals/afterimages.
+Update all help text and control legends so launch is no longer advertised. The home-screen control guide must not contain a Launch action.
 
-Phantom must remain fully solid and interact with the road normally during its ultimate.
+Pointer/touch lane steering, swipe-up Boost, items, ultimates, pause, keyboard lane movement, ordinary Boost, and controller mappings unrelated to launch must continue to work.
 
-Bolt / Storm
+Controller-disconnect cleanup should no longer try to release a nonexistent brake.
 
-Remove:
+# Remove launch intelligence from the AI
 
-* Orb creation.
-* Orb targeting.
-* Orb firing.
-* Shock/pinning caused by orbs.
-* Returning orbs.
-* ultExtend() behavior from returning orbs.
-* Duration extensions.
-* Manual second-press orb release while Bolt’s ultimate is already running.
-* Orb-related target selection.
-* Orb-specific AI.
-* “Powered” status caused by returning orbs.
-* Storm/orb gameplay visuals.
+The AI must stop reasoning about an action that no longer exists.
 
-Bolt’s ultimate must always end after the same normal 5 seconds as every other car.
+Remove the launch-specific difficulty dimensions currently represented by things such as `air` and `wind` if they have no remaining use. Remove launch-specific temperament properties such as `flair` if repository-wide inspection confirms they were only used for airborne launch decisions.
 
-Timestamp / Freeze
+Delete launch decision functions such as `botAirWant` and all launch-related branches in `rivalThink`.
 
-Remove:
+Remove `air` from AI field/sense representations. Remove airborne-only lane planning. Remove launch/brake penalties such as references to `R.brakeOn` from unrelated scoring functions.
 
-* Chronokinesis.
-* World slowdown.
-* Slowing every other racer.
-* Slowing hazards/projectiles/world simulation.
-* chronoOwner / chronoWorld ultimate behavior.
-* Timestamp-specific status application.
-* Timestamp-specific AI.
-* Chrono/time-field gameplay visuals.
+Do not replace launch strategy with arbitrary compensating buffs. The AI should simply continue driving with its remaining lane choice, boost, item, collision, defensive, targeting, and ultimate systems.
 
-Timestamp receives only its own 2× pace boost.
+All difficulty settings must remain functional after these fields disappear.
 
-Nothing else in the world should change speed because Timestamp pressed ultimate.
+# Rename gameplay Effects to Conditions
 
-Rose / Bloom
+This rename must be semantic and structural for the gameplay status system, not a dangerous global replacement of the English word “effect.”
 
-Remove:
+Do not rename particle effects, `addFx`, VFX, audio effects, CSS animation effects, screen effects, visual effects, or other uses where “effect” has its normal graphics/audio/programming meaning.
 
-* Applying petals to other players.
-* Applying Bloom clutter.
-* Bloom screen obstruction.
-* Increasing clutter when affected racers hit things.
-* bloomOwner ultimate behavior.
-* Bloom-specific AI.
-* Bloom-specific gameplay visuals/trails.
+Rename the gameplay-status data model from `EFFECTS` to `CONDITIONS`.
 
-Do not break clutter from legitimate non-ultimate sources such as puddles.
+Rename gameplay-status functions, variables, comments, IDs, and UI concepts accordingly. For example, `effLog`, `effEls`, `effHost`, `logEffect`, `dropEffect`, `clearEffects`, `syncEffects`, `hudEffects`, `#effList`, `--eff`, and effect-specific CSS class names should become condition-oriented names or, where appropriate, be replaced entirely by the new derived icon system.
 
-Rose simply receives the 2× pace boost.
+Prefer a single canonical condition definition table instead of scattering names, colors, category information, and icons around multiple renderers.
 
-Siren / Siren
+Each condition definition should contain at least its localization key, color, `buff`/`debuff` classification, and icon identifier. Include icon foreground/ink metadata if necessary for contrast.
 
-Remove:
+The condition system should derive what is active from authoritative racer state. Do not create a second mutable condition truth that can drift out of sync with `slowT`, `blind`, `slipT`, Boost state, invulnerability timers, etc.
 
-* Cleanse on activation.
-* Protection from negative effects.
-* Siren sweep.
-* Ordering racers.
-* Forced lane movement.
-* Removing controls from other racers.
-* Siren-specific crowd control.
-* Siren-specific AI logic.
-* Siren ultimate wail/noise behavior if it represents the removed power.
-* Ultimate-triggered police-light behavior.
-* Siren wash gameplay visuals.
-* “Cleansed” status generated by the ultimate.
+A helper conceptually equivalent to `activeConditions(who)` should be the canonical way both world badges and HUD badges ask, “Which Conditions does this racer have right now?”
 
-Siren receives only the same 2× pace boost.
+The order returned by that helper must be deterministic so stacked icons do not randomly reorder between frames. A reasonable priority is Invulnerable, Boosted, Slowed, Obscured, Skidded.
 
-⸻
+Finished racers should return no active Conditions for presentation, because they are no longer participating in the race.
 
-js/data.js
+# Rename Immune to Invulnerable properly
 
-Simplify the ultimate data model.
+Change the user-facing condition `Immune` to `Invulnerable`.
 
-Currently CARS assigns each car a power such as burn, phase, storm, freeze, bloom, or siren.
+Also rename the underlying temporary gameplay terminology where practical so the code and UI agree. This should include the temporary racer timer/state currently called `immune`, `IMMUNE_TIME`, helpers like `immuneCar`, `immuneMe`, `immuneWho`, `immuneScrub`, dedicated DOM/CSS names such as `#immuneTag` or `.immune`, relevant comments, and localization keys.
 
-There should no longer be behavioral branching based on those values.
+Prefer names such as `invulnerable`, `INVULNERABLE_TIME`, and suitable `invulnerable...` helpers.
 
-Preferred end state:
+Do not conflate temporary Invulnerable with finish protection.
 
-* Remove power from the car definitions if nothing non-gameplay requires it.
-* Otherwise leave it only as inert metadata, but there must be zero gameplay decisions based on it.
+Architecturally, keep these concepts separate:
 
-ULT_EFFECTS should either:
+Temporary Invulnerable means an active positive Condition, normally coming from respawn protection or whatever existing gameplay grants that timer.
 
-1. be deleted and replaced by direct ultOn => boosted handling, or
-2. be reduced so every ultimate produces only "boosted".
+Finished means the racer has crossed the finish line and is permanently out of play for this race.
 
-Do not leave mappings such as:
+A shared internal helper may decide whether something is touchable/targetable, but `activeConditions()` must only return `invulnerable` when the actual temporary invulnerability state is active. It must not display Invulnerable simply because the racer has finished.
 
-* ["boosted", "onfire"]
-* ["boosted", "phasing"]
-* ["boosted", "cleansed"]
+Rename the cleanup terminology from vague “bad effects” language to Conditions language, such as clearing debuffs.
 
-The only ultimate status should be Boosted.
+Invulnerable must continue refusing/clearing negative Conditions exactly as the existing protection intends.
 
-After removing the power implementations, remove constants that become truly unused, such as the old orb/chrono/bloom/order/cleanse/power-extension constants. Verify usage first.
+# Rename Cluttered to Obscured
 
-Do not delete constants still required by non-ultimate mechanics.
+Replace the gameplay condition identifier `cluttered` with `obscured`.
 
-⸻
+Update its localization key, info text, Conditions-tab entry, HUD/world badge lookup, comments, and every gameplay-status reference.
 
-js/mechanics.js
+The underlying water/puddle visual behavior may continue to use an internal field such as `blind` if that field describes a rendering timer and changing it would create unnecessary risk, but no player-facing condition or gameplay status API should still call the condition Cluttered.
 
-This is the most important file.
+Update puddle descriptions so they say the racer becomes Obscured rather than Cluttered.
 
-Ultimate lifecycle
+# Rename Slippery to Skidded
 
-Make the lifecycle generic.
+Replace the gameplay condition identifier `slippery` with `skidded`.
 
-startUlt(who) should essentially:
+Update its localization key, description, Conditions tab, icon, state-to-condition mapping, comments, and all player-facing uses.
 
-* select the owner
-* set ultOn = true
-* set ultT = ULT_TIME
-* set ultMax = ULT_TIME
-* set the meter appropriately
-* optionally create the existing generic ultBurst(...)
-* do nothing car-specific
+The underlying steering timer may remain `slipT`/`slip` if renaming that physical mechanic introduces unnecessary unrelated churn, but the Condition presented by that state must be Skidded everywhere.
 
-There must be no switch/if chain based on the car’s power.
+The existing meaning remains unchanged: steering is reversed while this debuff is active.
 
-tickUlt(who, dt) should:
+# Completely remove Winner as a Condition while preserving finished-racer protection
 
-* decrement the ultimate timer
-* update the displayed fraction
-* call endUlt() when the timer expires
-* perform no per-car power update
+Delete `winner` from the condition definition table.
 
-endUlt(who) should:
+Delete `efWinner`, `winnerInfo`, Winner condition rendering, Winner condition logging, Winner condition cards, and any other presentation of Winner as a status/condition.
 
-* turn the ultimate off
-* reset the timer/meter state
-* perform no power-specific cleanup
-* cause no rematerialization collision
-* not need to inspect which car was using it
+Do not replace it with a condition called Finished.
 
-Delete or make unreachable the Bolt extension behavior.
+Do not add a finish icon.
 
-Second presses while an ultimate is already active should not trigger any special action.
+Keep `G.finished`, `R.finished`, finishing place assignment, `G.results`, parking/run-out, final placement, finish order, and results behavior.
 
-Contact rules
+Once a racer crosses the line, that racer must immediately become out of play and remain out of play. Nothing may select it as an offensive target. Nothing may track it. Nothing may collide with it. Nothing may apply damage, wreck it, slow it, obscure it, skid it, hit it with an item, hit it with a hazard, hit it with a seeker, or otherwise alter its finished result. Existing offensive target selection and collision systems must consistently exclude finished racers.
 
-Remove ultimate-specific contact rules.
+Audit seeker targeting in particular. A finished racer must never be selected. If a seeker or other tracking object was already locked to a racer at the exact moment that racer finishes, it must lose that target harmlessly, fade/despawn, or otherwise be guaranteed incapable of interacting with that racer.
 
-Functions/concepts to eliminate from ultimate behavior include:
+Audit AI targeting and threat evaluation as well. Finished racers should be out of the actionable field, not merely immune when the eventual hit occurs.
 
-* ultPower
-* ghosting
-* burning
-* bumping
-* ultShove
-* ultContact
-* Burn contact destruction
-* Phantom no-contact behavior
-* the “bumping ultimate” hierarchy
+Finished cars should not themselves continue firing items, using ultimates, barging, or otherwise participating after crossing. Preserve the current run-out/parking animation only.
 
-After the refactor:
+Remove comments that call this protection “Winner.” Use terms such as “finished racer,” “finisher,” “out of play,” or “finish protection.”
 
-* noContact() must care only about legitimate non-ultimate states such as real immunity, being finished, wreck state as currently intended, and being airborne/overhead.
-* An active ultimate alone must NEVER make a car noContact.
-* safeCar() and playerUntouchable() must not consider an active ultimate protective.
+# Replace in-race condition text with colored icon circles
 
-Two cars colliding while one or both have ultimates active should use the ordinary collision/barging/wreck rules.
+Use Ponu as the visual inspiration: compact colored circular markers with a strong, simple icon/device inside them. The icon should be recognizable from shape as well as color.
 
-Their increased speed may naturally affect the situation, but the ultimate must not change the collision rules.
+For Seren, these are condition badges, not copies of Ponu’s marble bodies.
 
-Status protection
+Each badge should be a small filled circle using that Condition’s canonical color, with a high-contrast icon centered inside. Use the same icon artwork everywhere the Condition appears. Do not use emoji, text letters, or externally loaded image files. Draw icons using Canvas paths for canvas rendering and equivalent inline SVG/CSS geometry for DOM rendering, or establish one compact reusable icon representation that both presentation paths can consume reliably.
 
-An ultimate must not ward against negative status effects.
+Bright backgrounds such as Invulnerable gold and Boosted orange may use dark icon ink. Dark backgrounds such as Skidded must use a white/light icon and a visible light outline so the badge does not vanish against Seren’s dark HUD or road.
 
-If warded() currently includes Siren cleansing or other ultimate-derived protection, remove the ultimate-derived part.
+The badge must remain legible at Seren’s smallest supported scene scale and in split-screen.
 
-Real respawn immunity should continue to ward effects.
+# Rival-car condition badges
 
-An active boost-only ultimate can still be:
+Every visible car that is not the owner of the current camera/view must show its active Conditions as small circular icon badges adjacent to the car.
 
-* slowed
-* made slippery
-* cluttered
-* hit by a seeker
-* hit by a meteor
-* affected by legitimate non-ultimate mechanics
+This applies equally to AI racers and human-controlled rival racers.
 
-Traps and hazards
+Do not special-case AI versus human. The source of input is irrelevant; the racer’s state determines its Conditions.
 
-Audit updateTraps() and equivalent rival code.
+In normal single-player play, the local/client car is the view owner and therefore receives no condition circles beside the physical car. Its Conditions appear in the bottom-left HUD instead.
 
-Remove patterns such as:
+In local split-screen, evaluate this independently for every viewport using the existing view owner concept such as `VOWN`. In Player 2’s viewport, Player 2 is the owner and therefore gets no beside-car condition badges there; Player 1, Player 3, Player 4, and bots may receive them if visible. In another player’s viewport, Player 2 is a rival and therefore does receive world-space badges.
 
-* shielded = G.ultOn ...
-* Burn destroying a trap.
-* Phantom ignoring the trap.
-* Any active-ultimate bypass.
+This distinction is essential.
 
-The rule should be:
+Anchor the rival badge stack just outside the car silhouette, preferably beside the upper/right side. If that would cross the current viewport boundary, flip it to the other side or clamp it so it remains visible. It must not be positioned in global full-canvas coordinates that cause one split-screen column’s badges to leak into another.
 
-If this exact hazard would affect the car without its ultimate active, it should still affect the car with its ultimate active.
+When the racer has several Conditions, stack the circular badges vertically above one another in a compact column. The stack must be stable and deterministic. Do not overlap the car’s player-number/seat marker unnecessarily; adjust the anchor sufficiently to keep both readable.
 
-The only difference is that the car has its 2× speed multiplier.
+Only show these beside-car badges for racers actually visible in the current viewport. Do not invent new condition badges on the existing off-screen racer arrows/markers unless necessary to prevent a regression.
 
-Oil
+Badges should follow the car’s rendered location during ordinary lane interpolation and camera movement.
 
-Remove Burn’s ability to destroy slicks.
+Finished racers get no badges.
 
-Remove Phantom’s ability to phase through slick interaction.
+# View-owner/player condition HUD
 
-Ultimates should not alter oil behavior.
+The view owner must not have condition icons floating beside their own car.
 
-Old power systems
+Instead, replace the current bottom-left text-based effect notifications with the same circular Condition badges.
 
-Delete or completely disconnect the old ultimate-only systems after verifying they have no legitimate non-ultimate callers:
+Remove the old text pills entirely.
 
-* Bolt orb creation/targeting/firing/returning/absorption/extension.
-* Timestamp chrono start/end/update logic.
-* Rose Bloom startup and Bloom-specific clutter propagation.
-* Siren cleanse/order/sweep/noise logic.
-* Phantom rematerialization behavior.
-* Burn-specific hazard/contact behavior.
+The bottom-left condition area should use the same canonical colors and icons as rival badges. Do not display the condition names during active racing.
 
-Do not leave dormant calls that could accidentally reactivate these systems.
+If several Conditions are active simultaneously, stack their icons vertically upward from the current bottom-left effect-notification position. Keep the order deterministic.
 
-⸻
+The Invulnerable condition must also use this bottom-left badge system. Remove the separate text `immuneTag`.
 
-js/race.js
+If Seren’s existing gold screen-edge feedback for temporary immunity is retained as secondary feedback, rename it to Invulnerable terminology and keep the condition icon as the canonical HUD indicator. There must be no Immune text left.
 
-The shared speed boost must remain.
+In local split-screen, each canvas HUD must render the Conditions of that viewport’s owner in its own bottom-left corner. The page-level DOM condition host should remain hidden in local mode just as the old page HUD was, because each split-screen view paints its own instruments.
 
-Both player and rival speed logic currently apply ULT_SPEED.
+# One canonical icon renderer
 
-Preserve that.
+Avoid implementing five icons separately in three different places.
 
-However, an ultimate must NOT suppress ordinary negative speed modifiers.
+Introduce an authoritative icon definition/renderer layer. A function such as `drawConditionIcon(ctx, id, cx, cy, radius)` can render canvas badges for rivals and split-screen HUDs.
 
-Pay special attention to logic shaped like:
+For the DOM garage/HUD, use the same icon identifiers and equivalent vector shapes. If a clean helper can generate inline SVG safely, use that. Do not duplicate condition classification, names, or colors in HTML-generation functions.
 
-if(G.ultOn) target *= ULT_SPEED;
-else if(G.slowT > 0) target *= 0.5;
+The icon artwork should remain intentionally simple: Shield for Invulnerable; forward chevrons/lightning for Boosted; reduced-speed/downward mark for Slowed; obscured/crossed-eye or water-blocked visibility symbol for Obscured; curved paired skid marks for Skidded.
 
-That effectively makes the ultimate immune to Slow.
+# Rename the Garage Effects tab to Conditions
 
-Change the logic so the boost and legitimate penalties are independent.
+Rename the main `Effects` tab to `Conditions`.
 
-Conceptually:
+Rename the DOM ID from `tabEffects` to `tabConditions`, the garage internal key from `"effects"` to `"conditions"`, tab keyboard-navigation arrays, event wiring in `main.js`, ARIA links, localization keys, and any associated comments.
 
-if(G.ultOn) target *= ULT_SPEED;
-if(G.slowT > 0) target *= 0.5;
+The main garage tab order should remain Cars, Tracks/traps, Mystery bubbles, Conditions unless there is a strong existing layout reason not to.
 
-Apply the same principle to rivals.
+Inside Conditions, add a secondary two-tab switcher:
 
-The exact ordering should remain consistent between player and bots.
+`Buff`
 
-An ultimate is a multiplier, not a cleanse and not a status override.
+`Debuff`
 
-Also remove rival hazard checks such as:
+The Conditions page should default to Buff whenever appropriate, while preserving a user’s current Buff/Debuff selection during simple rebuilds if that fits the existing garage architecture.
 
-* Burn smash
-* Phantom ghost
-* any car/power-based ultimate hazard handling
+Buff contains exactly Boosted and Invulnerable.
 
-Bots and human cars must use the same boost-only rule.
+Debuff contains exactly Slowed, Obscured, and Skidded.
 
-⸻
+Launched must not appear.
 
-Bot AI (js/ai.js)
+Winner/Finished must not appear.
 
-Bots must still understand when to spend their ultimate, but there is no longer a different ultimate for each car.
+Each Conditions reference card must show the same colored circular icon directly next to the condition name, followed by the existing style of explanatory text.
 
-Replace the car-specific botUltValue() branches with one generic valuation for a temporary speed boost.
+The Buff/Debuff split should be generated from `CONDITIONS[id].type` rather than maintaining a separate hard-coded list that can drift from the data model.
 
-Do not make the AI think an ultimate:
+Give the secondary tabs proper button/tab semantics, visible selected state, keyboard focus, and sensible arrow-key behavior consistent with the existing main garage tabs.
 
-* counters a seeker
-* makes it safe from traffic
-* phases through hazards
-* can attack another car
-* can pin cars
-* slows the field
-* blinds opponents
-* cleanses status effects
-* orders racers out of the way
+# Localization
 
-The generic ultimate decision should simply evaluate whether a 5-second 2× speed boost is useful.
+Update both English and French; do not leave one language with stale names.
 
-It is fine to use existing race information such as:
+Replace `tabEffects` with a Conditions localization key.
 
-* current place
-* whether the bot is behind
-* nearby competitors
-* whether it has a reasonable opportunity to gain distance
-* its existing patience/judgement/difficulty logic
+Add localization for Buff and Debuff.
 
-Retain the existing principle that difficulty affects when the bot spends the same ultimate, not its strength or charge rate.
+Replace the old `ef*` gameplay-status naming scheme with condition-oriented keys if practical, for example `condBoosted`, `condInvulnerable`, `condSlowed`, `condObscured`, and `condSkidded`.
 
-Also audit surrounding AI assumptions.
+Remove launched strings and launched help text.
 
-For example:
+Remove Winner condition strings and Winner condition description.
 
-* Do not consider an active ultimate inherently untouchable.
-* Do not heavily devalue attacking/contacting an ultimate user because “the ultimate wins the exchange.”
-* Remove power from field/sense data if it is no longer required.
-* Remove defensive ultimate logic specifically intended to counter missiles or hazards.
-* A car with an active ultimate can still be considered a speed threat, but not an invulnerable/powered combat threat.
+Rename Immune strings/descriptions to Invulnerable.
 
-Human-controlled rivals in local play and AI rivals must use the same mechanical ultimate implementation.
+Rename Cluttered strings/descriptions to Obscured.
 
-⸻
+Rename Slippery strings/descriptions to Skidded.
 
-HUD / effects (js/hud.js)
+Update any sentences in item, puddle, trap, settings, controls, help, or garage descriptions that use old terminology.
 
-While an ultimate is active:
+Change the custom rule label currently equivalent to `Boost and launch` to simply `Boost`, and rewrite its description so it describes only the Boost meter/mechanic.
 
-* Show Boosted.
-* Do not show any power-specific status.
+Remove the Launch control label.
 
-Replace any condition depending on ULT_EFFECTS[p] with the direct fact that an active ultimate is a speed boost.
+Preserve correct French grammar and terminology rather than simply leaving English words in the French table.
 
-For example, faster should include:
+# HUD and custom-race cleanup
 
-o.ultOn
+The existing custom rule key `boost` may remain the switch governing ordinary boost. It must no longer imply or reference airborne launch.
 
-without looking up the car’s power.
+The standard boost meter must continue functioning exactly as before.
 
-Remove ultimate-generated display states such as:
+Ordinary Boost, boost cans, ultimate speed, and the rear-contact shunt should all still map to the Boosted Condition when they make the racer faster, matching Seren’s existing “anything that makes you faster” concept.
 
-* onfire
-* phasing
-* powered
-* chrono when it only came from Timestamp
-* ordered when it only came from Siren
-* cleansed when it only came from Siren
+The removed airborne mechanic must not leave a second empty meter, a blank HUD slot, hidden keyboard action, unused controller state, dead custom-setting copy, or stale localized text.
 
-Do the same for the normal HUD and local/split-screen HUD.
+# Source files to inspect carefully
 
-Important:
+Do not limit edits to these files, but explicitly inspect `js/data.js`, `js/runtime.js`, `js/mechanics.js`, `js/race.js`, `js/ai.js`, `js/input.js`, `js/local.js`, `js/render.js`, `js/hud.js`, `js/ui.js`, `js/i18n.js`, `js/main.js`, `index.html`, and `css/app.css`.
 
-Keep the actual Immune presentation for genuine respawn immunity.
+Also inspect `README.md`, `docs/ARCHITECTURE.md`, `docs/TUNING.md`, other QA documentation, `upd` if it is maintained as release/update documentation, and the scripts under `tools/`.
 
-An ultimate must NEVER turn on the immune tag or immune shell treatment.
+Search the entire Seren repository before declaring the work complete.
 
-⸻
+Be especially careful because Seren uses classic shared-scope scripts. Do not introduce duplicate top-level declarations or change script dependency order casually.
 
-Rendering (js/render.js)
+# Architecture requirement
 
-Keep a readable generic indication that the ultimate boost is active.
+The final implementation should have one authoritative `CONDITIONS` table and one authoritative active-condition derivation path.
 
-The game already draws car boost flames when ultOn is true. That is appropriate and can remain.
+World rendering, normal HUD rendering, split-screen HUD rendering, and the Conditions reference page should all read from the same condition definitions rather than duplicating colors or categories.
 
-A generic ultBurst() on activation can also remain.
+Do not make the DOM notification system maintain timers merely to decide whether a Condition exists. The gameplay timer/state should remain authoritative. UI should reflect that state.
 
-Remove the activation of car-specific power visuals, including:
+Where transitions/fades are desirable, animation state may exist for presentation only, but it must never keep a Condition visible after the gameplay state has ended or hide a Condition that is active.
 
-* Burn aura/fire-power rendering
-* Phase transparency/afterimages
-* Storm/orb visuals
-* Timestamp time aura
-* Rose petal trail/Bloom visuals
-* Siren wash
-* Siren lightbar activation tied to the ultimate
-* orbiting Bolt orbs
+# Accessibility and visual quality
 
-If their rendering helper functions become unused, remove them.
+Conditions must never rely on color alone. The icon shape is mandatory.
 
-Do not remove each car’s normal body design or cosmetic identity.
+The Garage Conditions page supplies the text/name/description key for learning what the symbols mean.
 
-The six cars should still look like six different cars. Only their ultimate mechanics are being standardized.
+DOM condition badges should have useful accessible labels even though their visible in-race form is icon-only.
 
-⸻
+Honor the existing reduced-motion setting. Condition badges do not need constant pulsing/animation. If appearing/disappearing is animated, reduced-motion should make it effectively immediate/static.
 
-Localization and garage/reference UI (js/i18n.js, relevant UI code)
+Do not introduce dependencies, external icon libraries, image downloads, web fonts, or build tooling.
 
-Update every ultimate description in both English and French.
+Match Seren’s existing visual style rather than importing Ponu’s entire aesthetic. Ponu is the reference for the compact colored-circle-with-distinct-icon concept only.
 
-Do not advertise removed powers.
+# Regression requirements
 
-Each car’s description should communicate only the shared effect.
+Normal steering must still work.
 
-A safe English description is:
+Boost must still work.
 
-Five seconds at double pace.
+Boost depletion/recharge must still work.
 
-Use an accurate equivalent in French, for example:
+Ultimates must still work.
 
-Cinq secondes à double allure.
+Items must still work.
 
-You may retain the existing ultimate names such as Burn, Phase, Storm, Freeze, Bloom, and Siren as cosmetic/flavor names only if those names are still shown somewhere and do not imply mechanical behavior in explanatory text.
+Oil must still reverse steering and now display Skidded.
 
-The descriptions must make clear that mechanically they are simply speed boosts.
+Puddles must still impair visibility and now display Obscured.
 
-Update optUltsDesc so it no longer says each car has its own power. Describe the ultimate meter as providing the temporary double-pace boost.
+Slowdowns must still display Slowed.
 
-Audit other strings for obsolete references, especially:
+Respawn protection must still function and display Invulnerable while the actual temporary timer is active.
 
-* Bolt orbs
-* Phantom phasing
-* Redd burning
-* Timestamp chronokinesis
-* Rose petals
-* Siren ordering/cleanse
-* launch/help text mentioning Bolt’s orbs
-* effect descriptions for ultimate-only effects
+Rear-end shunts must still provide their existing short forward speed effect under their newly renamed shunt identifiers and display Boosted.
 
-Delete obsolete localization keys only after confirming they have no remaining references.
+Finished racers must remain permanently excluded from interactions with no visible Condition badge.
 
-⸻
+AI and human rivals must use identical Condition detection.
 
-README.md
+Single-player and every supported local split-screen player count must render condition icons correctly.
 
-Bring the README completely in line with the new game.
+# Repository cleanup and verification
 
-At minimum update:
+Perform a case-sensitive and case-insensitive repository search after implementation.
 
-“The cars and their ultimates”
+There should be no remaining gameplay condition named `launched`, no launch mechanic functions/fields/constants, no launch meter, no launch control instruction, and no launch AI.
 
-Explain that every car now has the same mechanical ultimate:
+There should be no gameplay condition named `winner`.
 
-* 75-second charge
-* 5 seconds
-* 2× pace
-* no additional powers
+There should be no gameplay-status identifier or user-facing label named `immune`, `cluttered`, or `slippery` where it refers to these renamed Conditions.
 
-Update the six-car table accordingly.
+There should be no main Garage tab named Effects.
 
-“The ultimate meter”
+There should be no old `EFFECTS` gameplay-status table.
 
-Remove the Bolt extension exception.
+Do not treat legitimate phrases such as particle effects, visual effects, sound effects, or a missile being “launched” in ordinary English as errors. The goal is removing the airborne launch mechanic and renaming the gameplay status/effect concept, not blindly banning English words from unrelated systems.
 
-All six ultimates always have the same fixed duration.
+After editing, run Seren’s existing validation tooling. At minimum run `node tools/check.mjs`. Also run the repository’s menu and gameplay/ultimate QA scripts using their normal invocation and fix regressions rather than weakening the tests.
 
-“How ultimates interact”
+Update/add regression coverage so the checks catch the new Conditions tab and its two sub-tabs, all five condition definitions, Buff/Debuff classification, the absence of Launched/Winner conditions, removal of obsolete launch DOM IDs, correct localization keys, finished-racer target exclusion, and the new condition icon rendering/state helpers where feasible.
 
-Delete the current power hierarchy involving:
+Do not delete a failing assertion merely because it describes old launch behavior; replace obsolete launch-specific tests with assertions proving the launch system is actually absent and the remaining mechanics still function.
 
-* phasing
-* bumping ultimates
-* burning
+# Completion standard
 
-Replace it with a simple rule:
+Do not consider this task complete merely because the UI looks right.
 
-Ultimates do not change contact rules. A racer with an active ultimate is simply moving at boosted pace and otherwise interacts normally.
+It is complete only when all of the following are true:
 
-Driving/contact rules
+1. The airborne brake/wind-up/jump/landing mechanic is genuinely removed from player gameplay, rival gameplay, AI, runtime state, input, rendering, HUD, configuration, documentation, localization, and tests.
+2. The unrelated rear-impact forward shove still works and has been renamed away from launch terminology so it cannot be confused with the deleted mechanic.
+3. `EFFECTS` has become an authoritative `CONDITIONS` model containing exactly Boosted, Invulnerable, Slowed, Obscured, and Skidded.
+4. Boosted and Invulnerable are Buffs; Slowed, Obscured, and Skidded are Debuffs.
+5. Launched no longer exists as a Condition.
+6. Winner no longer exists as a Condition.
+7. Crossing the finish line still immediately and permanently removes a racer from all targeting, tracking, collision, hazard, attack, debuff, and damage interactions while preserving placement/run-out/results.
+8. Finish protection is never shown as a Condition and is not called Winner.
+9. Temporary Immune has become Invulnerable throughout the appropriate gameplay/status code and UI without accidentally conflating it with finished-racer protection.
+10. Cluttered is now Obscured and Slippery is now Skidded throughout the gameplay-status presentation.
+11. The Garage tab is Conditions, with accessible Buff and Debuff secondary tabs and the correct entries under each.
+12. Every Condition has exactly one canonical color and one canonical recognizable icon.
+13. Every non-view-owner visible racer, AI or human, receives adjacent world-space condition circles, with multiple conditions stacked vertically.
+14. The current view-owner racer never receives those circles beside its own car; its conditions instead appear as icon-only circles in the bottom-left HUD where the old effect text lived.
+15. Local split-screen evaluates “view owner” separately per viewport, so another human is treated as a rival in views they do not own.
+16. No old text effect pills or separate Immune text tag remain.
+17. No blank launch meter, dead launch control, dormant launch state, or launch-specific AI tuning remains.
+18. All existing non-launch gameplay continues functioning and all repository checks pass.
+19. English and French remain complete and consistent.
+20. The implementation contains no duplicated condition metadata or brittle special cases that will immediately drift apart.
 
-Remove claims that burning or power ultimates make cars safe/untouchable.
-
-Hazards
-
-Remove the statement that Redd destroys hazards while alight.
-
-Timestamp must no longer affect meteor/world timing.
-
-Seeker/items
-
-Remove references to Phantom/Bolt-specific interactions if obsolete.
-
-Effects
-
-Remove descriptions for statuses that no longer exist after the refactor.
-
-Keep genuine effects still used elsewhere.
-
-The README must not describe any removed ultimate functionality.
-
-⸻
-
-Cleanup requirements
-
-After implementing the behavior, search the entire repository for stale ultimate-power logic.
-
-At minimum inspect references to:
-
-* CARS[...].power
-* .power
-* ULT_EFFECTS
-* ultPower
-* ghosting
-* burning
-* bumping
-* ultContact
-* ultShove
-* rematerialise
-* ultExtend
-* orbs
-* orbFireT
-* stormTick
-* startChrono
-* chronoOwner
-* chronoWorld
-* startBloom
-* bloomOwner
-* sirenSweep
-* sirenWail
-* cleanse
-* ultimate-specific shielded
-* power-specific smash
-* power-specific ghost
-* drawBurn
-* drawPhase
-* drawStorm
-* drawTimeAura
-* drawPetalTrail
-* drawSirenWash
-* drawOrbs
-
-Do not blindly delete unrelated mechanics that happen to use words such as “burn” or “siren.” Verify each reference.
-
-There should be no gameplay branch left of the form:
-
-“if the ultimate is active AND this is car X, do Y.”
-
-An ultimate’s behavior must no longer depend on car identity.
-
-⸻
-
-Acceptance tests
-
-Verify all six cars independently.
-
-For Redd, Phantom, Bolt, Timestamp, Rose, and Siren:
-
-1. Fill the ultimate meter.
-2. Activate it.
-3. Confirm that the car receives exactly the shared ultimate speed boost.
-4. Confirm the effect lasts the normal fixed 5 seconds.
-5. Confirm the meter counts down normally.
-6. Confirm only the normal Boosted status is produced by the ultimate.
-7. Confirm the ultimate ends without a secondary effect.
-
-Then explicitly verify the following:
-
-Contact
-
-* Ultimate user can collide with other cars normally.
-* Ultimate user can be barged normally.
-* Ultimate user can wreck or be wrecked according to ordinary contact rules.
-* Redd no longer destroys cars simply by touching them.
-* Phantom no longer passes through cars.
-* Bolt/Timestamp/Rose/Siren no longer receive special shove priority.
-
-Hazards
-
-While an ultimate is active:
-
-* puddles still work
-* tumbleweeds still work
-* meteors still work
-* oil still works
-* seekers still work
-
-provided no independent mechanic such as real respawn immunity or being airborne prevents the hit.
-
-Negative effects
-
-An ultimate must not cleanse or ignore a legitimate negative effect.
-
-If a racer is slowed and activates an ultimate, both multipliers should coexist according to the normal speed system.
-
-The racer should not silently lose the Slow simply because ultOn became true.
-
-Character-specific regression checks
-
-* Redd: no Burn damage or hazard destruction.
-* Phantom: no phase/ghosting/rematerialization special.
-* Bolt: zero orbs, zero Shock from ultimate, zero extension.
-* Timestamp: world/rivals remain at normal speed.
-* Rose: no petals/Bloom clutter.
-* Siren: no cleanse, no ordering, no forced lane movement.
-
-AI
-
-* Bots still charge on the same 75-second clock.
-* Bots still activate ultimates.
-* Difficulty still changes decision quality/timing.
-* Every bot receives exactly the same ultimate mechanic regardless of car.
-* Bots do not act as though an ultimate provides immunity or offensive powers.
-
-Local multiplayer
-
-Run the same checks with human-controlled rival cars.
-
-All seats must use the same shared implementation.
-
-Custom rules
-
-If ultimates are disabled in custom play, the existing rule must still disable them.
-
-UI
-
-* Ultimate button/meter still functions.
-* Active ultimate has a clear generic boost presentation.
-* No removed power status appears.
-* Respawn immunity still displays and behaves correctly.
-* Garage/reference text accurately describes the new system in EN and FR.
-
-⸻
-
-Code quality requirement
-
-Do not solve this by scattering checks like:
-
-if(false && power === "burn")
-
-or by merely hiding old powers.
-
-Actually simplify the architecture.
-
-The final implementation should make the game’s invariant obvious from the code:
-
-An ultimate is one shared timed speed multiplier.
-
-Prefer one generic path for player, bots, and local human rivals.
-
-Remove dead power-specific state/helpers/constants when it is safe to do so, rather than leaving a large inactive second ruleset behind.
-
-Do not refactor unrelated systems unnecessarily.
-
-⸻
-
-Final verification before finishing
-
-Perform a repository-wide search and make sure:
-
-1. No active ultimate changes collision rules.
-2. No active ultimate makes a car immune or untouchable.
-3. No active ultimate protects against hazards/items/statuses.
-4. No active ultimate applies an effect to another racer.
-5. No ultimate duration can exceed ULT_TIME.
-6. No gameplay logic branches on the active ultimate user’s car identity.
-7. ULT_SPEED is the only gameplay modifier created by activating an ultimate.
-8. Documentation, garage text, effect UI, AI assumptions, rendering, player logic, bot logic, and local multiplayer all agree with that rule.
-
-When done, provide a concise summary of:
-
-* files changed
-* old power systems removed
-* how the shared ultimate now works
-* manual/regression checks performed
-* any dead-code cleanup intentionally left in place and why
-
-IMPORTANT:you have to also raise the ultimate durations to 15 seconds
+Work carefully, inspect the entire dependency chain before deleting anything, and favor a coherent small refactor over patches that merely hide the old systems.
