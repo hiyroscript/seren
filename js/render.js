@@ -385,35 +385,10 @@ function drawCruiser(w, h, p, isPlayer, boosting){
   fillRR(-w*0.34,  h*0.18, w*0.68, h*0.18, w*0.05, p.dark);
   fillRR(-w*0.29,  h*0.21, w*0.58, h*0.11, w*0.03, p.glass);
 
-  /* The light bar. A real patrol car does not run one lamp at a time with the
-     other dead - both halves are lit and they alternate which one is at full
-     brightness, so the bar reads as on the whole time it is on. The old
-     version left one side unlit on every beat, which looked like a fault. */
-  const lit = G.state === "running" &&
-              ((G.ultOn && G.car === "siren") ||
-               G.rivals.some(function(R){ return R.car === "siren" && R.ultOn; }));
-  const beat = Math.floor(G.scroll*0.05) % 2 === 0;
-  fillRR(-w*0.40, -h*0.08, w*0.80, h*0.075, w*0.02, p.dark);  /* roof light bar */
-  fillRR(-w*0.37, -h*0.068, w*0.34, h*0.05, w*0.015,
-         lit ? (beat ? "#BBD8FF" : "#5E8FD8") : "#2B4E8C");
-  fillRR( w*0.03, -h*0.068, w*0.34, h*0.05, w*0.015,
-         lit ? (beat ? "#D8666B" : "#FFB9BC") : "#8C2B2F");
-  if(lit){
-    /* both lamps throw, the leading one harder, so the roof is never dark */
-    const blueA = beat ? 0.42 : 0.20, redA = beat ? 0.20 : 0.42;
-    ctx.globalAlpha = blueA;
-    ctx.beginPath(); ctx.arc(-w*0.20, -h*0.045, w*(beat ? 0.56 : 0.40), 0, 6.2832);
-    ctx.fillStyle = "#4D8BFF"; ctx.fill();
-    ctx.globalAlpha = redA;
-    ctx.beginPath(); ctx.arc( w*0.20, -h*0.045, w*(beat ? 0.40 : 0.56), 0, 6.2832);
-    ctx.fillStyle = "#FF4A50"; ctx.fill();
-    ctx.globalAlpha = 0.9;                                    /* hot centres */
-    ctx.beginPath(); ctx.arc(-w*0.20, -h*0.045, w*0.07, 0, 6.2832);
-    ctx.fillStyle = "#EAF2FF"; ctx.fill();
-    ctx.beginPath(); ctx.arc( w*0.20, -h*0.045, w*0.07, 0, 6.2832);
-    ctx.fillStyle = "#FFECED"; ctx.fill();
-    ctx.globalAlpha = 1;
-  }
+  /* Static roof lights are part of Siren's body design. */
+  fillRR(-w*0.40, -h*0.08, w*0.80, h*0.075, w*0.02, p.dark);
+  fillRR(-w*0.37, -h*0.068, w*0.34, h*0.05, w*0.015, "#2B4E8C");
+  fillRR( w*0.03, -h*0.068, w*0.34, h*0.05, w*0.015, "#8C2B2F");
 
   fillRR(-w*0.46, h*0.44, w*0.92, h*0.06, w*0.02, p.dark);
   fillRR(-w*0.36, h*0.452, w*0.20, h*0.034, w*0.015, "#FF4A50");
@@ -921,7 +896,6 @@ function renderView(dy){
     if(G.state === "idle" || RV.dead > 0) continue;
     const rc = CARS[RV.car];
     if(RV.immune > 0 && Math.floor(RV.immune*9) % 2 === 0) continue;
-    const sx = RV.shock > 0 ? rand(-3, 3) : 0, sy = RV.shock > 0 ? rand(-3, 3) : 0;
     /* The launch, seen. Every car in the field runs the same mechanic - the
        same meter, the same wind-up, the same landing that writes off whatever
        is underneath - but only player one was ever drawn doing it: rivalHop
@@ -936,25 +910,15 @@ function renderView(dy){
     const rk = 1 + rhop*lerp(0.20, 0.62, rpow) - rsquat*0.09;
     const rw = carW*rk, rh = carH*rk;
     if(rhop > 0.002) drawAirShadow(rhop, RV.x, RV.y, rpow);
-    if(RV.ultOn && rc.power === "burn") drawBurn(rc, RV.x, ry);
-    if(RV.ultOn && rc.power === "phase"){ drawPhase(rc, RV.x, ry); ctx.globalAlpha = 0.5; }
-    if(RV.ultOn && rc.power === "storm") drawStorm(rc, RV.x, ry);
-    if(RV.chrono > 0) drawChronoFog(RV.x, ry, RV.chrono);
-    if(RV.ultOn && rc.power === "siren") drawSirenWash(RV.x, ry);
-    if(RV.ultOn && rc.power === "freeze") drawTimeAura(rc, RV.x, ry);
-    if(RV.ultOn && rc.power === "bloom") drawPetalTrail(rc, RV.x, ry);
-    drawCar(RV.x + sx, ry + sy, rw, rh, rc, RV.tilt, true,
+    drawCar(RV.x, ry, rw, rh, rc, RV.tilt, true,
             RV.boosting || RV.ultOn || RV.airT > 0);
     ctx.globalAlpha = 1;
-    if(G.local && RV.human) drawSeatMark(RV, RV.x + sx, ry + sy);
-    if(RV.orbs > 0) drawOrbs(RV, RV.x, ry);
-    if(RV.shock > 0) drawShock(RV.x + sx, ry + sy);
+    if(G.local && RV.human) drawSeatMark(RV, RV.x, ry);
   }
 
   const blink = G.immune > 0 && Math.floor(G.immune*9) % 2 === 0;
   if(G.state !== "idle" && G.dead <= 0 && !blink && (!G.local || playerY >= CT - carH*2 && playerY <= CB + carH*2)){
     const car = CARS[G.car];
-    const kx = G.shockT > 0 ? rand(-3, 3) : 0, ky = G.shockT > 0 ? rand(-3, 3) : 0;
     /* Airborne, everything about the player's car moves together: it lifts off
        the road, grows because it is nearer the camera, and leaves a shadow
        behind on the tarmac. The shadow is what actually sells the height -
@@ -967,25 +931,9 @@ function renderView(dy){
     const kk = 1 + hop*lerp(0.20, 0.62, G.airPow) - squat*0.09;
     const cw = carW*kk, ch = carH*kk;
     if(hop > 0.002) drawAirShadow(hop, G.x, playerY, G.airPow);
-    if(G.ultOn && car.power === "storm") drawStorm(car, G.x, py);
-    if(G.ultOn && car.power === "siren") drawSirenWash(G.x, py);
-    if(G.ultOn && car.power === "freeze") drawTimeAura(car, G.x, py);
-    if(G.ultOn && car.power === "bloom") drawPetalTrail(car, G.x, py);
-    if(G.ultOn && car.power === "burn") drawBurn(car, G.x, py);
-    if(G.ultOn && car.power === "phase"){
-      for(let i=2;i>=1;i--){                       /* after-images trailing behind */
-        ctx.globalAlpha = 0.16/i;
-        drawCar(G.x, py + ch*0.28*i, cw, ch, car, G.tilt, true, true);
-      }
-      ctx.globalAlpha = 1;
-      drawPhase(car, G.x, py);
-      ctx.globalAlpha = 0.5;
-    }
-    drawCar(G.x + kx, py + ky, cw, ch, car, G.tilt, true, G.boosting || G.ultOn || airborne());
+    drawCar(G.x, py, cw, ch, car, G.tilt, true, G.boosting || G.ultOn || airborne());
     ctx.globalAlpha = 1;
-    if(G.local) drawSeatMark("me", G.x + kx, py + ky);
-    if(G.orbs > 0) drawOrbs("me", G.x, py);
-    if(G.shockT > 0) drawShock(G.x + kx, py + ky);
+    if(G.local) drawSeatMark("me", G.x, py);
   }
 
   for(let i=0;i<G.fx.length;i++){
@@ -1013,7 +961,6 @@ function renderView(dy){
 
   drawSlicks();
   drawBubbles();
-  drawBolts();
   drawMissiles();
   ctx.restore();                 /* back to the screen this view is drawn on */
 
@@ -1025,11 +972,6 @@ function renderView(dy){
   drawLadder();
   const blind = o.blind || 0;
   if(blind > 0) drawBlind(blind, o.blindPts);
-  const bloom = VOWN === "me" ? G.bloomT : (VOWN.clutter || 0);
-  if(bloom > 0) drawBloom(bloom, o.petals || [], o.clutterLv || 1);
-  if(G.chronoWorld > 0) drawChronoWash();
-  const chrono = VOWN === "me" ? G.chronoT : (VOWN.chrono || 0);
-  if(chrono > 0) drawChronoHeld(chrono);
   ctx.restore();
 }
 
@@ -1065,70 +1007,6 @@ function drawAirShadow(hop, cx, cy, pow){
   ctx.globalAlpha = 1;
 }
 
-/* Redd alight: a burning shell around the car */
-function drawBurn(car, cx, cy){
-  const t = G.scroll*0.035;
-  const gl = ctx.createRadialGradient(cx, cy, carW*0.2, cx, cy, carW*1.5);
-  gl.addColorStop(0, "rgba(255,150,60,0.45)");
-  gl.addColorStop(1, "rgba(255,90,20,0)");
-  ctx.fillStyle = gl;
-  ctx.fillRect(cx - carW*1.6, cy - carH*1.1, carW*3.2, carH*2.2);
-  for(let i=0;i<9;i++){
-    const side = i % 2 ? 1 : -1;
-    const f = (i/9);
-    const fy = cy - carH*0.42 + f*carH*0.95;
-    const wob = Math.sin(t + i*1.7)*carW*0.08;
-    const len = carH*(0.14 + Math.abs(Math.sin(t*1.3 + i))*0.13);
-    ctx.beginPath();
-    ctx.moveTo(cx + side*carW*0.42 + wob, fy);
-    ctx.quadraticCurveTo(cx + side*carW*0.72 + wob, fy - len*0.5,
-                         cx + side*carW*0.5 + wob, fy - len);
-    ctx.quadraticCurveTo(cx + side*carW*0.40 + wob, fy - len*0.4,
-                         cx + side*carW*0.42 + wob, fy);
-    ctx.fillStyle = i % 3 === 0 ? car.flame[1] : car.flame[0];
-    ctx.globalAlpha = 0.85; ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  if(Math.random() < 0.7)
-    addFx(cx + rand(-carW*0.5, carW*0.5), cy + rand(-carH*0.4, carH*0.4),
-          rand(-40, 40), rand(30, 150), rand(.3,.7), rand(2,4),
-          Math.random() < 0.5 ? car.flame[0] : car.flame[1]);
-}
-
-/* Phantom vapour: a cold halo and a drifting wake */
-function drawPhase(car, cx, cy){
-  const gl = ctx.createRadialGradient(cx, cy, carW*0.15, cx, cy, carW*1.35);
-  gl.addColorStop(0, "rgba(120,205,255,0.4)");
-  gl.addColorStop(1, "rgba(60,150,255,0)");
-  ctx.fillStyle = gl;
-  ctx.fillRect(cx - carW*1.5, cy - carH*1.0, carW*3.0, carH*2.0);
-  if(Math.random() < 0.6)
-    addFx(cx + rand(-carW*0.45, carW*0.45), cy + rand(-carH*0.3, carH*0.5),
-          rand(-30, 30), rand(40, 140), rand(.35,.8), rand(2,4),
-          Math.random() < 0.5 ? car.flame[0] : car.flame[1]);
-}
-
-/* three orbs circling whoever is holding them */
-function drawOrbs(who, cx, cy){
-  const n = who === "me" ? G.orbs : who.orbs;
-  if(n <= 0) return;
-  const t = G.scroll*0.012 + (who === "me" ? 0 : 1.7);
-  for(let i=0;i<n;i++){
-    const a = t + (i/ORB_COUNT)*6.2832;
-    const ox = cx + Math.cos(a)*carW*0.92, oy = cy + Math.sin(a)*carH*0.52;
-    ctx.beginPath(); ctx.arc(ox, oy, 9, 0, 6.2832);
-    ctx.fillStyle = "rgba(255,226,77,0.22)"; ctx.fill();
-    ctx.beginPath(); ctx.arc(ox, oy, 4.2, 0, 6.2832);
-    ctx.fillStyle = "#FFF6C0"; ctx.fill();
-    ctx.strokeStyle = "rgba(255,226,77,0.9)"; ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(ox - 3, oy - 5); ctx.lineTo(ox + 1, oy - 1);
-    ctx.lineTo(ox - 1, oy + 1); ctx.lineTo(ox + 3, oy + 5);
-    ctx.stroke();
-  }
-}
-
-/* the flash on the way out, quickening as the last of it runs down */
 function bubbleFlash(row){
   return row.blink > 0 && Math.sin(row.ph) <= -0.2 ? 0.14 : 1;
 }
@@ -1396,115 +1274,6 @@ function drawMissiles(){
   }
 }
 
-function drawBolts(){
-  for(let i=0;i<G.bolts.length;i++){
-    const b = G.bolts[i];
-    ctx.beginPath(); ctx.arc(b.x, b.y, 13, 0, 6.2832);
-    ctx.fillStyle = "rgba(255,226,77,0.24)"; ctx.fill();
-    ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 6.2832);
-    ctx.fillStyle = "#FFFBDA"; ctx.fill();
-    ctx.strokeStyle = "#FFE44D"; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(b.x - 5, b.y - 8); ctx.lineTo(b.x + 2, b.y - 1);
-    ctx.lineTo(b.x - 2, b.y + 1); ctx.lineTo(b.x + 5, b.y + 8);
-    ctx.stroke();
-  }
-}
-/* A pinned car, held in a cage of current.
-
-   The old version was five straight scribbles at random angles redrawn every
-   frame, which read as noise rather than as electricity. This builds it the
-   way an arc actually looks: a bright core glow the car sits in, then jagged
-   bolts that start on the bodywork and jump outward in several short segments
-   with the kink getting wider as they go, then a couple of rings snapping in
-   and out. Everything is driven off a per-frame phase rather than pure random
-   per segment, so the arcs hold their shape for a beat and then move - the eye
-   reads that as crackling, where per-frame randomness reads as static. */
-function boltPath(x0, y0, x1, y1, kink, seed){
-  const n = 4;
-  ctx.moveTo(x0, y0);
-  for(let i=1;i<=n;i++){
-    const f = i/n;
-    const bx = lerp(x0, x1, f), by = lerp(y0, y1, f);
-    const nx = -(y1 - y0), ny = (x1 - x0);
-    const nl = Math.max(1, Math.sqrt(nx*nx + ny*ny));
-    /* the wander grows along the bolt and dies back at the tip */
-    const w = i === n ? 0 : (Math.sin(seed*12.9 + i*4.7) * kink * f);
-    ctx.lineTo(bx + nx/nl*w, by + ny/nl*w);
-  }
-}
-function drawShock(cx, cy){
-  const t2 = G.scroll*0.06;
-  const beat = Math.floor(t2*3);                 /* the arcs hold, then jump */
-  ctx.save();
-
-  /* the charge the car is sitting in */
-  const g = ctx.createRadialGradient(cx, cy, carW*0.1, cx, cy, carW*1.15);
-  g.addColorStop(0, "rgba(255,251,218,0.34)");
-  g.addColorStop(0.5, "rgba(255,226,77,0.20)");
-  g.addColorStop(1, "rgba(255,200,0,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(cx - carW*1.3, cy - carH*0.95, carW*2.6, carH*1.9);
-
-  /* bolts jumping off the bodywork */
-  ctx.lineCap = "round"; ctx.lineJoin = "round";
-  for(let i=0;i<7;i++){
-    const seed = beat*0.618 + i;
-    const a = (i/7)*6.2832 + Math.sin(seed*2.1)*0.5;
-    const r1 = carW*0.34, r2 = carW*(0.72 + (Math.sin(seed*5.3)*0.5 + 0.5)*0.42);
-    const x0 = cx + Math.cos(a)*r1, y0 = cy + Math.sin(a)*r1*1.35;
-    const x1 = cx + Math.cos(a)*r2, y1 = cy + Math.sin(a)*r2*1.25;
-    const kink = carW*0.26;
-    ctx.globalAlpha = 0.55;                      /* the wide, soft underlayer */
-    ctx.strokeStyle = "#FFE44D"; ctx.lineWidth = Math.max(2, carW*0.075);
-    ctx.beginPath(); boltPath(x0, y0, x1, y1, kink, seed); ctx.stroke();
-    ctx.globalAlpha = 1;                         /* and the hot core on top */
-    ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = Math.max(1, carW*0.028);
-    ctx.beginPath(); boltPath(x0, y0, x1, y1, kink, seed); ctx.stroke();
-  }
-
-  /* two rings snapping outward, out of step with each other */
-  for(let i=0;i<2;i++){
-    const f = ((t2*0.9 + i*0.5) % 1);
-    ctx.globalAlpha = (1 - f)*0.5;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, carW*(0.5 + f*0.75), carW*(0.5 + f*0.75)*1.2, 0, 0, 6.2832);
-    ctx.strokeStyle = "#FFF6C0"; ctx.lineWidth = Math.max(1, carW*0.05*(1 - f));
-    ctx.stroke();
-  }
-
-  /* sparks shaken loose */
-  ctx.globalAlpha = 1;
-  if(Math.random() < 0.55){
-    const a = rand(0, 6.2832);
-    addFx(cx + Math.cos(a)*carW*0.5, cy + Math.sin(a)*carH*0.4,
-          Math.cos(a)*rand(50, 190), Math.sin(a)*rand(50, 190),
-          rand(.2,.45), rand(1.5,3.5), Math.random() < 0.5 ? "#FFE44D" : "#FFFFFF");
-  }
-  ctx.restore();
-}
-/* Bolt running on absorbed orbs: fast, crackling, but unprotected */
-function drawStorm(car, cx, cy){
-  const gl = ctx.createRadialGradient(cx, cy, carW*0.15, cx, cy, carW*1.3);
-  gl.addColorStop(0, "rgba(255,226,77,0.42)");
-  gl.addColorStop(1, "rgba(255,200,0,0)");
-  ctx.fillStyle = gl;
-  ctx.fillRect(cx - carW*1.4, cy - carH*1.0, carW*2.8, carH*2.0);
-  ctx.strokeStyle = "#FFF6C0"; ctx.lineWidth = 2;
-  for(let i=0;i<4;i++){
-    const a = rand(0, 6.2832);
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a)*carW*0.4, cy + Math.sin(a)*carH*0.3);
-    ctx.lineTo(cx + Math.cos(a + 0.5)*carW*0.75, cy + Math.sin(a + 0.5)*carH*0.5);
-    ctx.stroke();
-  }
-  if(Math.random() < 0.6)
-    addFx(cx + rand(-carW*0.5, carW*0.5), cy + rand(-carH*0.4, carH*0.4),
-          rand(-40, 40), rand(40, 160), rand(.3,.6), rand(2,4),
-          Math.random() < 0.5 ? "#FFE44D" : "#FFFBDA");
-}
-
-/* the flag at the end of the last track */
 function drawFinish(){
   if(!G.finishAt || !toFlag()) return;
   const y = playerY - (G.finishAt - G.meters)/0.075;
@@ -1519,168 +1288,7 @@ function drawFinish(){
   ctx.fillRect(roadX, y - 5, roadW, 5);
 }
 
-/* a ring of stopped time around Timestamp */
-function drawTimeAura(car, cx, cy){
-  const g2 = ctx.createRadialGradient(cx, cy, carW*0.2, cx, cy, carW*1.5);
-  g2.addColorStop(0, "rgba(63,217,138,0.36)");
-  g2.addColorStop(1, "rgba(63,217,138,0)");
-  ctx.fillStyle = g2;
-  ctx.fillRect(cx - carW*1.6, cy - carH*1.1, carW*3.2, carH*2.2);
-  ctx.save();
-  ctx.strokeStyle = "rgba(214,255,233,0.7)"; ctx.lineWidth = 2;
-  for(let i=1;i<=2;i++){
-    ctx.beginPath();
-    ctx.arc(cx, cy, carW*(0.55 + i*0.32), G.scroll*0.01*i, G.scroll*0.01*i + 4.4);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-/* petals streaming off Rose */
-function drawPetalTrail(car, cx, cy){
-  if(Math.random() < 0.7)
-    addFx(cx + rand(-carW*0.5, carW*0.5), cy + rand(-carH*0.3, carH*0.4),
-          rand(-60, 60), rand(60, 180), rand(.4,.9), rand(3,6),
-          Math.random() < 0.5 ? "#FF7ACF" : "#B45CFF");
-}
-
-/* Timestamp: the road under chronokinesis - a green drag over everything,
-   thin enough that the world is still perfectly readable. Nobody is stopped
-   any more, so this must not read like a wall. */
-function drawChronoWash(){
-  const a = Math.min(1, G.chronoWorld/0.5);
-  ctx.save();
-  ctx.globalAlpha = a*0.11;
-  ctx.fillStyle = "#3FD98A"; ctx.fillRect(0, 0, W, H);
-  /* slow horizontal bands crawling up the screen: the clock, made visible */
-  ctx.globalAlpha = a*0.10;
-  ctx.fillStyle = "#D6FFE9";
-  const gap = 74*SCENE, off = (G.scroll*0.06) % gap;
-  for(let y = -gap + off; y < H + gap; y += gap) ctx.fillRect(0, y, W, 2.5*SCENE);
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-/* And what it looks like from inside: the same green, heavier, with the edges
-   of the screen dragging. */
-function drawChronoHeld(left){
-  const a = Math.min(1, left/0.5);
-  ctx.save();
-  ctx.globalAlpha = a*0.16;
-  ctx.fillStyle = "#1F7A4C"; ctx.fillRect(0, 0, W, H);
-  const g = ctx.createRadialGradient(W*0.5, H*0.5, Math.min(W, H)*0.28,
-                                     W*0.5, H*0.5, Math.max(W, H)*0.72);
-  g.addColorStop(0, "rgba(63,217,138,0)");
-  g.addColorStop(1, "rgba(63,217,138,0.5)");
-  ctx.globalAlpha = a;
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-/* The fog a chronokinetically affected car sits inside. It is held off the
-   bodywork deliberately - a ring at arm's length, not a coat of paint - so the
-   car underneath stays legible and the fog reads as the air around it. */
-function drawChronoFog(cx, cy, left){
-  const a = Math.min(1, left/0.4);
-  const t2 = G.scroll*0.02;
-  ctx.save();
-  const g = ctx.createRadialGradient(cx, cy, carW*0.78, cx, cy, carW*1.85);
-  g.addColorStop(0, "rgba(63,217,138,0)");
-  g.addColorStop(0.45, "rgba(63,217,138," + (0.30*a).toFixed(3) + ")");
-  g.addColorStop(1, "rgba(31,122,76,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(cx - carW*2, cy - carH*1.4, carW*4, carH*2.8);
-  ctx.globalAlpha = a*0.5;
-  for(let i=0;i<7;i++){                          /* clots of it turning slowly */
-    const ang = t2*0.5 + (i/7)*6.2832;
-    const rr2 = carW*(1.06 + Math.sin(t2 + i*1.9)*0.16);
-    const px = cx + Math.cos(ang)*rr2;
-    const py = cy + Math.sin(ang)*rr2*0.82;
-    ctx.beginPath();
-    ctx.arc(px, py, carW*(0.20 + (i % 3)*0.06), 0, 6.2832);
-    ctx.fillStyle = i % 2 ? "#3FD98A" : "#D6FFE9";
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-
-function drawBloom(left, petals, lv){
-  const a = Math.min(1, left/0.6);
-  /* The stage decides how much of the stored petal set is actually on screen
-     and how heavy the wash behind it is. Stage one is what it always was;
-     stage five is the whole screen, which is why the top end goes opaque. */
-  const k = clutterK(lv);
-  const shown = Math.round(petals.length*lerp(0.42, 1, k));
-  ctx.save();
-  ctx.globalAlpha = a*lerp(0.42, 0.80, k);           /* a much heavier wash */
-  ctx.fillStyle = "#5B2A86"; ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = a*lerp(0.20, 0.46, k);
-  ctx.fillStyle = "#FF7ACF"; ctx.fillRect(0, 0, W, H);
-
-  for(let i=0;i<shown;i++){
-    const p = petals[i];
-    p.a += p.sp*0.024;
-    p.y += p.fall;
-    p.x += p.dx + Math.sin(p.a*0.5)*0.0009;          /* drifts sideways as it falls */
-    if(p.y > 1.2) p.y = -0.2;
-    if(p.x > 1.2) p.x = -0.2; else if(p.x < -0.2) p.x = 1.2;
-    const x = p.x*W, y = p.y*H;
-    const near = p.layer === 2;
-
-    if(near){                                        /* a soft halo on the close ones */
-      ctx.globalAlpha = a*0.30;
-      ctx.beginPath(); ctx.arc(x, y, p.r*1.25, 0, 6.2832);
-      ctx.fillStyle = "#FF9EDC"; ctx.fill();
-    }
-    ctx.globalAlpha = clamp(a*(p.layer === 0 ? 0.55 + p.s*0.3 : 0.82 + p.s*0.18)*lerp(1, 1.25, k), 0, 1);
-    for(let k=0;k<6;k++){
-      const ang = p.a + (k/6)*6.2832;
-      ctx.beginPath();
-      if(ctx.ellipse) ctx.ellipse(x + Math.cos(ang)*p.r*0.52, y + Math.sin(ang)*p.r*0.52,
-                                  p.r*0.58, p.r*0.32, ang, 0, 6.2832);
-      else ctx.arc(x + Math.cos(ang)*p.r*0.52, y + Math.sin(ang)*p.r*0.52, p.r*0.44, 0, 6.2832);
-      ctx.fillStyle = p.s > 0.66 ? "#FF7ACF" : (p.s > 0.33 ? "#B45CFF" : "#E85FB8");
-      ctx.fill();
-    }
-    ctx.globalAlpha = a;
-    ctx.beginPath(); ctx.arc(x, y, p.r*0.26, 0, 6.2832);
-    ctx.fillStyle = "#FFE4F5"; ctx.fill();
-    if(near){                                        /* petals smeared on the glass */
-      ctx.globalAlpha = a*0.5;
-      ctx.beginPath(); ctx.arc(x - p.r*0.3, y - p.r*0.3, p.r*0.3, 0, 6.2832);
-      ctx.fillStyle = "#FFFFFF"; ctx.fill();
-    }
-  }
-  /* The last stage is meant to be the whole screen, and a screen of petals
-     still has gaps between them. This closes them. */
-  if(lv >= CLUTTER_MAX){
-    ctx.globalAlpha = a*0.62;
-    ctx.fillStyle = "#7B3FA8"; ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = a*0.34;
-    ctx.fillStyle = "#FFB6E6"; ctx.fillRect(0, 0, W, H);
-  }
-  ctx.globalAlpha = 1;
-  ctx.restore();
-}
-
-/* Siren: the road washed in alternating blue and red */
-function drawSirenWash(cx, cy){
-  const beat = Math.floor(G.scroll*0.03) % 2 === 0;
-  /* blue thrown one side, red the other, swapping which one is stronger - so
-     the road carries both colours the way it does under a real light bar */
-  const pairs = [[-1, "77,139,255", beat ? 0.34 : 0.16],
-                 [ 1, "255,74,80",  beat ? 0.16 : 0.34]];
-  for(let i=0;i<2;i++){
-    const side = pairs[i][0], col = pairs[i][1], a = pairs[i][2];
-    const g2 = ctx.createRadialGradient(cx + side*carW*0.5, cy, carW*0.3,
-                                        cx + side*carW*0.5, cy, carW*3.0);
-    g2.addColorStop(0, "rgba(" + col + "," + a.toFixed(2) + ")");
-    g2.addColorStop(1, "rgba(" + col + ",0)");
-    ctx.fillStyle = g2;
-    ctx.fillRect(cx - carW*3.6, cy - carH*2.4, carW*7.2, carH*4.8);
-  }
-}
-
-/* water thrown over the view, running off as it clears */
+/* Water thrown over the view, running off as it clears. */
 function drawBlind(left, pts){
   const hold = BLIND_TIME - 0.55;
   const a = left > hold ? 1 : clamp(left/hold, 0, 1);

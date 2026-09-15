@@ -9,32 +9,32 @@ const CARS = {
   redd: {
     key:"redd", style:"gt", accent:"#FF4A50",
     body:"#E21B22", dark:"#101116", glass:"#3B404A",
-    flame:["#FF7A3A","#FFD9A0"], power:"burn"
+    flame:["#FF7A3A","#FFD9A0"]
   },
   phantom: {
     key:"phantom", style:"jet", accent:"#6FC8FF",
     body:"#EDF1F6", dark:"#16305A", glass:"#7FB3E8", trim:"#1E5FA8",
-    flame:["#2FA8F0","#CFEFFF"], power:"phase"
+    flame:["#2FA8F0","#CFEFFF"]
   },
   bolt: {
     key:"bolt", style:"buggy", accent:"#FFD21E",
     body:"#F5C400", dark:"#141414", glass:"#4A4636", trim:"#141414",
-    flame:["#FFE44D","#FFFBDA"], power:"storm"
+    flame:["#FFE44D","#FFFBDA"]
   },
   timestamp: {
     key:"timestamp", style:"wedge", accent:"#3FD98A",
     body:"#1F7A4C", dark:"#0E0E10", glass:"#7FE8B6", trim:"#3FD98A",
-    flame:["#3FD98A","#D6FFE9"], power:"freeze"
+    flame:["#3FD98A","#D6FFE9"]
   },
   rose: {
     key:"rose", style:"coupe", accent:"#FF7ACF",
     body:"#7B3FA8", dark:"#2A1038", glass:"#FFB6E6", trim:"#FF7ACF",
-    flame:["#FF7ACF","#FFD9F2"], power:"bloom"
+    flame:["#FF7ACF","#FFD9F2"]
   },
   siren: {
     key:"siren", style:"cruiser", accent:"#4D8BFF", pip:"#FFFFFF",
     body:"#F2F3F5", dark:"#101114", glass:"#5A6472", trim:"#101114",
-    flame:["#4D8BFF","#FFFFFF"], power:"siren"
+    flame:["#4D8BFF","#FFFFFF"]
   }
 };
 const CAR_IDS = ["redd","phantom","bolt","timestamp","rose","siren"];
@@ -113,53 +113,19 @@ function makeTemper(car){
   return { nerve:j(b.nerve), spite:j(b.spite), patience:j(b.patience),
            guard:j(b.guard), flair:j(b.flair) };
 }
-/* Every state a car can be in, and what it is called on screen.
-   `bad` marks the ones Cleansed wipes and blocks - beneficial states are never
-   touched, so cleansing while boosted keeps the boost. */
+/* Status labels and colors. Negative effects are cleared by real immunity. */
 const EFFECTS = {
   slowed:   { key:"efSlowed",    col:"#8A9099", bad:true  },
   immune:   { key:"efImmune",    col:"#FFD86B" },
   cluttered:{ key:"efCluttered", col:"#B07A4A", bad:true  },
   boosted:  { key:"efBoosted",   col:"#FF9A4A" },
-  shocked:  { key:"efShocked",   col:"#FFE44D", bad:true  },
-  chrono:   { key:"efChrono",    col:"#4FD97A", bad:true  },
-  onfire:   { key:"efOnFire",    col:"#FF5A2A" },
-  phasing:  { key:"efPhasing",   col:"#8FD0FF" },
-  powered:  { key:"efPowered",   col:"#FFE44D" },
-  ordered:  { key:"efOrdered",   col:"#4D8BFF", bad:true  },
-  cleansed: { key:"efCleansed",  col:"#B96BFF" },
   slippery: { key:"efSlippery",  col:"#0B0B0C", bad:true  },
   launched: { key:"efLaunched",  col:"#2FBF63" },
   winner:   { key:"efWinner",    col:"#FFD24A" }
 };
-/* what the driver of each ultimate gets while it runs */
-const ULT_EFFECTS = {
-  burn:   ["boosted","onfire"],
-  phase:  ["boosted","phasing"],
-  storm:  ["boosted"],
-  freeze: ["boosted"],
-  bloom:  ["boosted"],
-  siren:  ["boosted","cleansed"]
-};
-/* Every ultimate now runs the same five seconds at the same doubled pace; what
-   differs is what it does to everybody else. */
-/* The meter used to fill in forty-five seconds, which put an ultimate in your
-   hands roughly every second trap-free minute and, on the harder settings, put
-   two of them in the field's hands at once. It is a five-second doubling of
-   your pace plus a screenful of trouble for everybody else - that should be an
-   event, not a rhythm - so the clock is longer and, more to the point, it is
-   now the only clock: bots fill off this same number, with no multiplier. */
 const ULT_CHARGE = 75;                    /* seconds from empty to ready */
-const ULT_TIME = 5;                       /* seconds it lasts */
+const ULT_TIME = 15;                       /* seconds it lasts */
 const ULT_SPEED = 2.0;                    /* what every ultimate is worth in pace */
-const CHRONO_TIME = 5;                    /* Timestamp: how long the world drags */
-const CHRONO_RATE = 0.5;                  /* and by how much */
-const BLOOM_TIME = 5;                     /* Rose: how long a screen stays fouled */
-const CLUTTER_MAX = 5;                    /* and how far the clutter can be driven */
-const ORDER_TIME = 5;                     /* Siren: how long the orders stand */
-const SIREN_RANGE = 260;
-const CLEANSE_TIME = 1;                   /* the wipe Siren opens with */
-const POWER_TIME = 5;                     /* Bolt: what one returning orb is worth */
 /* gold, silver, bronze, then plain white for the rest of the field */
 const PLACE_COLS = ["#FFD24A", "#D9DEE6", "#D08A4A", "#FFFFFF"];
 /* ---------------- mystery bubbles ---------------- */
@@ -233,13 +199,6 @@ const PIP_FAR = 500;                      /* an off-screen racer only gets an ar
    larger is a far marker by definition, so it can be sized exactly. */
 const EDGE_W = 58, EDGE_ROW = 32;         /* badge width, and the drop to the next row */
 const FAR_W = 34;                         /* two chevrons and nothing else */
-/* Bolt: a hit pins a car for five seconds flat. It does not stack, because an
-   orb that arrives at a car already pinned never lands - it goes looking for
-   the next one up the road instead. */
-const SHOCK_TIME = 5;
-const ORB_SPEED = 1500;                   /* the orbs travel hard and never let up */
-const ORB_R = 7;
-const ORB_GAP = 0.55;                     /* seconds between orbs going out on their own */
 
 /* Player colours, in the order players join. Everything that has to say which
    player something belongs to says it with one of these four. */
@@ -272,8 +231,7 @@ const SLOW_TIME = 1.7;                    /* tumbleweed: how long it drags you d
    field drives past.
 
    Both fall out of the same change: the ring is a road position, and how long
-   the rock has left is seconds. Chronokinesis still drags it, because that is
-   the world's clock and it is meant to reach everything on the road. */
+   the rock has left is seconds, independent of every racer’s speed. */
 const METEOR_ALT = 300;                   /* how far up the rock comes in */
 const METEOR_MIN_T = 0.9;                 /* never less warning than this */
 const METEOR_MAX_T = 3.2;                 /* and never hanging longer than this */
@@ -336,7 +294,6 @@ const AIR_MIN_T = 0.85, AIR_MAX_T = 3.8;  /* air time, weakest to strongest */
 const AIR_MIN_K = 1.18, AIR_MAX_K = 2.80; /* road speed while up there */
 const AIR_HOP = 2.8;                      /* peak height at full strength, in car heights */
 
-const ORB_COUNT = 3;
 const RACE_MINUTES = 5;                   /* bots mode: then three tracks to the flag */
 const FINAL_TRACKS = 3;
 const FINISH_STRETCH = 900;               /* metres of the last track before the line */

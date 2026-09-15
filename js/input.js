@@ -16,8 +16,7 @@ const DOUBLE_TAP = 0.5;                  /* hold one finger this long for the ul
 function humanSteer(who, dir){
   if(who === "me"){ move(dir); return; }
   const R = who;
-  if(G.state !== "running" || R.dead > 0 || R.shock > 0 ||
-     R.ordered > 0 || R.finished !== null) return;
+  if(G.state !== "running" || R.dead > 0 || R.finished !== null) return;
   const d = R.slip > 0 ? -dir : dir;         /* no grip: the steering is reversed */
   const n = clamp(R.lane + d, 0, 2);
   if(n === R.lane) return;

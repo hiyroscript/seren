@@ -708,16 +708,6 @@ body.no-hints .keys{display:none}
 }
 @keyframes immuneEdge{0%,100%{border-color:#FFFFFF}50%{border-color:var(--gold)}}
 
-#cleanseTag{
-  position:absolute;left:0;right:0;top:40%;text-align:center;
-  font-family:var(--display);font-variation-settings:'wdth' 112,'wght' 760;
-  font-weight:760;text-transform:uppercase;letter-spacing:.08em;font-size:26px;
-  color:#B96BFF;text-shadow:0 2px 20px rgba(0,0,0,.85);
-  opacity:0;pointer-events:none;
-}
-#cleanseTag.on{animation:cleansePop 1s var(--ease) both}
-@keyframes cleansePop{0%{opacity:0;transform:scale(.88)}22%{opacity:1;transform:scale(1)}72%{opacity:1}100%{opacity:0}}
-
 /* the two things you spend, together, where the thumb already is */
 #hudActions{
   position:absolute;right:calc(var(--side) + var(--safe-r));bottom:calc(46px + var(--safe-b));
@@ -816,7 +806,7 @@ body.no-hints .keys{display:none}
 /* Four sets of instruments are painted on the canvas in local play, so the
    page's single set has to get out of the way completely. */
 body.local .hud .readout,body.local #hudActions,body.local #meterRail,
-body.local #effList,body.local #immuneTag,body.local #cleanseTag{display:none!important}
+body.local #effList,body.local #immuneTag{display:none!important}
 
 /* ============================================================
    12  COUNTDOWN

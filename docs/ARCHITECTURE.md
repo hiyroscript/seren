@@ -91,12 +91,12 @@ const o = who === "me" ? G : who;
 ```
 
 This is why the same function drives a bot, a second player on a controller, and
-you. `startUlt`, `useItem`, `tickUlt`, `shockCar`, `scrubBad` and the rest each
+you. `startUlt`, `useItem`, `tickUlt`, `scrubBad` and the rest each
 have exactly one implementation.
 
-Field names differ slightly between the two — `G.shockT` vs `R.shock`, `G.bloomT`
-vs `R.clutter`, `G.slowT` vs `R.slow` — a historical wart. Helpers like
-`immuneWho`, `noContact`, `ultPower` and `warded` exist to paper over it; prefer
+Field names differ slightly between the two — `G.slipT` vs `R.slip`,
+`G.slowT` vs `R.slow` — a historical wart. Helpers like
+`immuneWho`, `noContact` and `warded` exist to paper over it; prefer
 them to reaching into the fields.
 
 Player one is *also* listed in `G.humans[0]` as the string `"me"`, so local-play
@@ -113,11 +113,11 @@ Roughly grouped:
 | --- | --- |
 | Lifecycle | `state` (`idle` / `countdown` / `running` / `paused` / `over`), `mode`, `diff`, `timers` |
 | Your car | `lane`, `x`, `tilt`, `speed`, `meters`, `charge`, `boosting`, `dead`, `immune` |
-| Your ultimate | `ult`, `ultOn`, `ultT`, `ultMax`, `powered`, `orbs`, `orbFireT` |
+| Your ultimate | `ult`, `ultOn`, `ultT`, `ultMax` |
 | Your launch | `brakeOn`, `brakeKey`, `brakePtr`, `brakeSpent`, `airMeter`, `airWind`, `airT`, `airMax`, `airPow`, `launchCD` |
-| Statuses on you | `slowT`, `shockT`, `blind`, `chronoT`, `orderedT`, `slipT`, `bloomT`, `clutterLv`, `cleanseT`, `canT` |
+| Statuses on you | `slowT`, `blind`, `slipT`, `canT` |
 | The world | `biome`, `next`, `seam`, `build`, `props`, `walks`, `traps`, `fx`, `traffic` |
-| Objects in play | `boxes` (bubble rows), `slicks`, `missiles`, `bolts` (orbs) |
+| Objects in play | `boxes` (bubble rows), `slicks`, `missiles` |
 | The field | `rivals`, `humans`, `picks`, `results`, `finished`, `finishAt`, `tracksLeft` |
 | Local play | `local`, `players`, `padIds`, `seat`, `pk`, `custom`, `rules` |
 
@@ -207,7 +207,7 @@ question from `<html data-motion>`. Never read the media query anywhere else.
 Nothing here owns a game system. If a helper knows what a car is, it does not
 belong here.
 
-### `i18n.js` — 360 lines
+### `i18n.js`
 `STR` is a flat map of key → `{en, fr}`. `t(k)` returns the current language, and
 falls back to English and then to the key itself — a missing string shows as a
 visibly wrong key rather than taking down the screen that asked for it.
@@ -227,16 +227,16 @@ call it, so neither can save or repaint in a way the other does not.
 Adding a language means adding a third code to every entry, adding a
 `.lang-opt` button and a Settings segment, and nothing else.
 
-### `data.js` — 366 lines
+### `data.js`
 Every definition and every tuning number: `CARS`, `DIFFS`, `TEMPERS`, `EFFECTS`,
-`ULT_EFFECTS`, `RARITY`, `ITEMS`, `TRACKS`, and the constants. See
+`RARITY`, `ITEMS`, `TRACKS`, and the constants. See
 [TUNING.md](TUNING.md).
 
 Loaded before `runtime.js` because the `G` literal reads `ULT_TIME`. Nothing here
 has behaviour of its own — `makeTemper`, `bubbleR`, `rockLead` and `rockAlt` are
 accessors on the numbers beside them.
 
-### `audio.js` — 74 lines
+### `audio.js`
 Everything is generated; there are no audio files. `audio()` creates the context
 on first call and caches it, which keeps creation inside a user gesture so
 browsers do not refuse it. `tone()` and `noise()` no-op when sound is off or the
@@ -247,7 +247,7 @@ what it should be: `0` when sound is off, the player's level when it is on.
 `setSound()` and `setVolume()` are the two doors — nothing multiplies a volume
 into an individual effect, and a node already playing follows the change.
 
-### `runtime.js` — 176 lines
+### `runtime.js`
 The canvas, the two contexts (`roadCtx` and the swappable `ctx`), the road
 geometry, the split-view geometry, `G`, the rule readers (`defaultRules`,
 `botsWanted`, `ruleOn`, `diff`), `layout()`, `laneCX()`, `deskFit()` and
@@ -286,7 +286,7 @@ elsewhere.
 - `infoCard()` creates reference entries with shared data; the index uses proper
   tab semantics and arrow-key navigation.
 
-### `settings.js` — 156 lines
+### `settings.js`
 Player preferences and the dialog that edits them. One authoritative value per
 preference, held in `settings` and written straight to `store`; nothing reads a
 preference back off the DOM.
@@ -309,7 +309,7 @@ preference back off the DOM.
 - `restoreSettings()` resets the keys in `SETTINGS_KEYS` and nothing else: the
   personal best and the language in use are not this button's to throw away.
 
-### `local.js` — 161 lines
+### `local.js`
 Seats and player colours (`seatOf`, `seatCol`), the pad primitives (`padPoll`,
 `padOf`, `padBtn`, `padAxis`, `newPadKeys`) and the two menu loops that run only
 while the controller sheet or the car sheet is up.
@@ -318,7 +318,7 @@ A seat holds its pad's **slot number**, not its position in the list — the lis
 closes up when a pad drops out, and binding to "the third one connected" would
 hand player three somebody else's controller mid-corner.
 
-### `ai.js` — 621 lines
+### `ai.js`
 Sense → weigh → act, once per think-tick.
 
 - `botSense` builds one honest picture of the race from where a car sits.
@@ -331,25 +331,26 @@ it — the player is a row in the same list, scored by the same terms. And the m
 only ever *decides*: the doing is handed back to the same mechanics your inputs
 call.
 
-### `mechanics.js` — 1,868 lines
+### `mechanics.js`
 The rules of the road, shared by every car on it: contact and collisions, lane
 changes, boost, the brake and the launch, wrecking and respawning, effects,
 ultimates, items, hazards, particles.
 
-`ultContact` is the single authority on what happens when two cars meet, so
-barging into a lane and running into a back bumper cannot disagree.
+`noContact` defines legitimate protection. `rearEnd` and `bumpTarget` apply
+ordinary contact rules regardless of ultimate state. `startUlt`, `tickUlt` and
+`endUlt` manage one fixed 15-second speed multiplier for every driver.
 
 Player and rival versions of a mechanic (`launchCar` / `launchRival`,
 `landCar` / `landRival`) exist only because the two carry their state in
 different places — they run the same constants and the same rules.
 
-### `race.js` — 939 lines
+### `race.js`
 The race: world seeding and track handover, the grid (`spawnRivals`), the
 lifecycle (`startRace`, countdown, `pause`, `leave`, `crash`), the finish
 (`checkFinish`, `finishRace`, the parking staircase), `update()`, `updateRival()`
 and the frame loop.
 
-### `render.js` — 1,703 lines
+### `render.js`
 All Canvas 2D drawing. Six car models, three tracks' worth of scenery and road,
 hazards, particles, and the effects that sit over them.
 
@@ -359,7 +360,7 @@ translate per column.
 
 This file reads game state and never changes it.
 
-### `hud.js` — 1,088 lines
+### `hud.js`
 Two HUDs that must agree. The DOM one is painted over the canvas (`paintHUD`,
 `paintItemBox`, the effect pills); the canvas one is drawn per column in local
 play (`drawSeatHud` and friends), because four copies of the DOM HUD would be four
@@ -384,7 +385,7 @@ can produce an unbounded number of nodes. The pill's label is set in the
 interface's own white and the effect's colour is a swatch beside it, which is why
 Slippery — whose colour is very nearly black — needs no special case.
 
-### `input.js` — 251 lines
+### `input.js`
 Keyboard, pointer and controller, each translated into the same mechanics call.
 `humanSteer`, `humanBoost`, `humanUlt` and `humanBrake` are the four doors; every
 input path ends at one of them.
@@ -394,7 +395,7 @@ input path ends at one of them.
 autorepeat from re-arming a fresh meter without the player lifting a finger.
 Keeping them apart is what makes a cancelled hold behave.
 
-### `main.js` — 216 lines
+### `main.js`
 Boot, in order: splash image, desktop class, `deskFit`, `applyLang`, `paintBest`,
 `applySettings`, the splash timeout, every menu listener, the window resize and
 visibility listeners, and `settle()` — repeated once after layout and once after
@@ -402,7 +403,7 @@ fonts, in case the first read landed before the stylesheet applied.
 
 ## Invariants worth not breaking
 
-1. **One authority per question.** `ultContact` decides contact. `rockAlt` decides
+1. **One authority per question.** `noContact` decides contact protection. `rockAlt` decides
    where a meteor is. `airPower` decides launch strength. If two places compute
    the same thing they will disagree eventually.
 2. **Difficulty changes the driver, never the car.** No `DIFFS` value may multiply
@@ -434,23 +435,16 @@ code reaches for actually exists.
 ### A car
 
 1. `CARS` in `data.js` — an entry with `key`, `style`, `accent`, `body`, `dark`,
-   `glass`, optional `trim`/`pip`, `flame` and a `power` id.
-2. `CAR_IDS` — append the id.
-3. `TEMPERS` in `data.js` — a leaning for it.
-4. `ULT_EFFECTS` in `data.js` — which labels its driver wears.
-5. `render.js` — a `drawX(w, h, p, isPlayer, boosting)` function, plus a branch in
-   `drawCar`'s `style` dispatch.
-6. `mechanics.js` — handle the new `power` in `startUlt`, `endUlt` and `tickUlt`,
-   and in `bumping()` / `burning()` / `ghosting()` if it belongs to one of those
-   classes.
-7. `i18n.js` — `<id>` (its name) and `<id>Ult` (its description), in both
-   languages.
-8. `index.html` — a `.car-opt` button with `id="car<Id>"` containing
-   `<canvas class="car-cv" data-car="<id>">` and a `<span class="car-name">`.
-   Nothing else: the Cars & more entry is built from `CARS` and picks the art up
-   through the same `canvas.car-cv` hook.
-9. `main.js` — a click listener for the new button.
-10. `ai.js` — a branch in `botUltValue` so bots know what the ultimate is worth.
+   `glass`, optional `trim`/`pip` and `flame` colors.
+2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
+3. `render.js` — a body drawing function and a `drawCar` style branch.
+4. `i18n.js` — its name and `<id>Ult` describing the shared 15-second double-pace
+   boost in both languages.
+5. `index.html` — its selection button and preview canvas; wire selection in
+   `main.js`.
+
+Every car automatically uses the generic ultimate lifecycle, AI valuation,
+boost flames and Boosted status. Do not add car-specific ultimate behavior.
 
 Note `FIELD_SIZE` is 6 and local play hands every car in the game to the grid, so
 a seventh car changes the shape of a local race.
@@ -473,8 +467,8 @@ both read `RARITY`, so they cannot disagree.
 
 `EFFECTS` in `data.js`, an `<id>Info` string, and a line in `syncEffects` in
 `hud.js` — which is the only place the labels are derived, so an effect that has
-quietly lapsed cannot leave its label behind. Mark it `bad: true` if Cleansed
-should wipe it. `col` is the pill's swatch and the garage dot; it is never the
+quietly lapsed cannot leave its label behind. Mark negative effects `bad: true` and handle real immunity in `scrubBad`
+and `warded`. `col` is the pill's swatch and the garage dot; it is never the
 only thing carrying the meaning, so a dark one is fine.
 
 ### A setting

@@ -121,43 +121,36 @@ never inherit half a custom race by accident.
 
 ## The cars and their ultimates
 
-Every ultimate runs the same **five seconds at double pace**. What differs is what
-it does to everybody else. The meter fills on one clock for every car on the road —
-yours and theirs — so a difficulty changes how well a bot picks its moment, never
-how soon it gets one.
+Every car has the same mechanical ultimate: a **75-second charge**, then
+**15 seconds at 2× its own pace**, with no additional powers. Difficulty changes
+when a bot spends the boost, never its strength, duration or charge rate.
 
-| Car | Ultimate | What it does |
-| --- | --- | --- |
-| **Redd** | Burn | Five seconds alight. Everything it touches is blown apart — but it is not immune. |
-| **Phantom** | Phase | Five seconds as vapour, phasing through everything — except the seeker. |
-| **Bolt** | Storm | Three orbs away. Each pins a car ahead for five seconds; one that finds nobody left comes home and buys five seconds more. |
-| **Timestamp** | Freeze | The world and everyone in it is dragged to half speed. Timestamp is not. |
-| **Rose** | Bloom | Buries every other screen in petals — and every thing they hit while blind buries it deeper. |
-| **Siren** | Siren | Both bars lit, ordering everyone close ahead out of the way and out of control. |
+| Car | Ultimate effect |
+| --- | --- |
+| **Redd** | 15 seconds at 2× pace |
+| **Phantom** | 15 seconds at 2× pace |
+| **Bolt** | 15 seconds at 2× pace |
+| **Timestamp** | 15 seconds at 2× pace |
+| **Rose** | 15 seconds at 2× pace |
+| **Siren** | 15 seconds at 2× pace |
 
 ### The ultimate meter
 
 - **75 seconds** from empty to ready, for every car in the field.
 - Hitting a **trap** costs 5%; being **wrecked** costs 10%; **wrecking somebody
-  else** pays 10%.
-- While an ultimate is running the meter shows its remaining duration, so those
-  penalties and rewards wait until it has finished rather than cutting it short.
-- Bolt is the exception that can extend: each orb that comes home adds five
-  seconds to the clock, and they stack.
+  else** pays 10% of the charge meter.
+- During activation the meter counts down the fixed **15-second** duration.
+  Charge rewards and penalties do not alter this countdown, and another press
+  does nothing. A wreck or finishing the race ends an active ultimate.
+- Custom play can disable ultimates for every driver.
 
 ### How ultimates interact
 
-When two cars meet, one function decides the outcome, so barging into a lane and
-running into a back bumper always agree. The order is the whole ruleset:
-
-1. **Phasing and immunity are absolute** — they meet nothing at all.
-2. **A bumping ultimate clears the road** (Bolt, Timestamp, Rose, Siren). It
-   shoulders the other car into the next lane rather than destroying it, and it
-   beats a burning one — which is why Redd cannot destroy those three while their
-   ultimates are running.
-3. **Burning destroys whatever is left** (Redd).
-
-Phantom coming back solid on top of somebody takes both cars out.
+Ultimates do not change contact rules. An active racer simply moves at boosted
+pace and otherwise interacts normally: collisions, barges, wrecks, hazards,
+oil and seekers still apply. Slow and other legitimate penalties coexist with
+the speed multiplier. Only **Boosted** is added to the effect display, with
+ordinary boost flames and a generic activation burst.
 
 ## Driving
 
@@ -167,8 +160,7 @@ against a barrier, the hit wrecks it. Either way the lane is yours.
 
 **Boost.** A full bar lasts about 2.5 seconds at 1.5× pace and takes about 7
 seconds to refill. Run it completely dry and it locks out until it is full again.
-It will not run while the brake is down, or while you are pinned, ordered or
-wrecked.
+It will not run while the brake is down, or while you are wrecked.
 
 **Wrecks.** Being destroyed parks you for 3 seconds, then respawns you immune for
 2 more. Immunity is total — every effect, hazard, trap and attack — and it phases,
@@ -190,14 +182,14 @@ The one mechanic worth practising.
    speed, up to 2.8 car heights high.
 
 In the air, grounded traps and cars pass harmlessly underneath and you **wreck
-whatever you come down on** — but the seeker and Bolt's orbs still reach you up
+whatever you come down on** — but the seeker still reaches you up
 there. Ten seconds of cooldown before you can launch again, and the red bar
 refilling *is* that cooldown.
 
 Braking is roughly free — a light launch comes out a couple of metres down on
 driving straight through, so it is an escape. Winding up is anything but: every
 second stopped hands thirty-odd metres to five cars that are not stopped, in
-traffic where anything can barge, pin or order you and take the whole charge with
+traffic where anything can barge into or wreck you and take the whole charge with
 it. That curve is the point of the mechanic.
 
 Bots run this exact mechanic — the same meter, the same notch, the same cooldown,
@@ -205,10 +197,9 @@ the same landing rule. All the AI supplies is the hold and the release.
 
 ### Contact rules
 
-A car is **untouchable** — meets nothing and nothing meets it — when it has
-finished, is wrecked, is immune, is phasing, or is in the air. A car is **safe
-from being barged or wrecked** when it is untouchable, burning, or running a
-bumping ultimate.
+A car does not make road contact when it has finished, is wrecked, has genuine
+respawn immunity, or is airborne. An ultimate grants none of these protections.
+Airborne cars still follow the normal landing and seeker rules.
 
 ## The road
 
@@ -235,11 +226,10 @@ minutes in.
 
 The meteor's ring is a spot on the *road*, not on your screen, and how long the
 rock has left is measured in seconds — so it lands where it was always going to
-land no matter what you do to your own speed. Only Timestamp's chronokinesis
-stretches the fall, because that is the world's clock.
+land no matter what you do to your own speed. Every ultimate leaves the
+world clock and other racers’ speed unchanged.
 
-Redd, alight, blows any hazard apart on contact. The seeker clears everything it
-passes through. In the air, hazards simply go by underneath.
+The seeker clears hazards it passes through. In the air, hazards simply go by underneath.
 
 ### Mystery bubbles and items
 
@@ -255,8 +245,7 @@ still reads.
 | **Seeker** | Legendary | 5.6% | — | A missile that hunts the leader, destroying whatever it passes through |
 
 The seeker never drops for whoever is leading; out in front, its share goes to the
-other two. Nothing survives a seeker hit — immunity and the flag stop it, but
-phasing does not.
+other two. Immunity and the finish flag stop a seeker hit; an ultimate does not.
 
 A row does not sit there forever. It flashes and goes on whichever comes first:
 the last stretch before it drops off the bottom, or a 30-second clock that only
@@ -264,25 +253,17 @@ runs when the road has all but stopped.
 
 ## Effects
 
-Every state a car can be in, shown as a label beside the HUD. **Cleansed** wipes
-and blocks the ones marked *negative*; beneficial ones are never touched, so
-cleansing while boosted keeps the boost.
+These states appear beside the HUD. Genuine respawn immunity clears and blocks
+negative effects. Activating an ultimate leaves existing effects in place.
 
 | Effect | | Meaning |
 | --- | --- | --- |
 | **Slowed** | negative | Anything making you go slower, whatever put it there |
 | **Boosted** | | Anything making you go faster, whatever put it there |
-| **Cluttered** | negative | Anything fouling your screen. Rose drives it in five stages, and only contact deepens it |
-| **Shocked** | negative | Bolt's orb. Pinned for five seconds. An orb arriving at an already-pinned car goes looking for the next one up the road |
-| **Chronokinetically affected** | negative | Timestamp has slowed the world. Half pace for five seconds — except Timestamp |
-| **Ordered** | negative | Siren has ordered you aside. No controls at all, and you are moved out of Siren's lane whenever Siren takes yours |
+| **Cluttered** | negative | Water from puddles obscuring your screen |
 | **Slippery** | negative | No grip: left goes right and right goes left |
-| **On fire** | | Redd alight. Destroys anything it touches, but is not immune |
-| **Phasing** | | Phantom as vapour. Passes through anything — but not the seeker |
-| **Powered** | | An orb with nobody left to pin came home to Bolt. Five more seconds, and they stack |
-| **Cleansed** | | Clears every negative effect and blocks new ones while it lasts |
 | **Launched** | | You are in the air |
-| **Immune** | | Total immunity, and you phase through everything |
+| **Immune** | | Respawn protection: pass through road contact and reject negative effects |
 | **Winner** | | Over the line. Off every target list, invincible, out of the race you finished |
 
 At most six labels are on screen at once; the oldest makes room.
@@ -534,6 +515,8 @@ uses them, and the third kills the page on load. One script finds all of it:
 
 ```sh
 node tools/check.mjs
+node tools/menu-check.mjs
+node tools/ultimate-check.mjs
 ```
 
 It is plain Node with no dependencies — there is no `package.json` and nothing to
@@ -550,7 +533,7 @@ job unchanged. It verifies:
 - every string has all its languages, and every `data-i18n` attribute and literal
   `t("…")` call resolves to a string that exists
 - every car has a draw branch, a name, an ultimate description, a button, a
-  select-screen canvas and an `ULT_EFFECTS` entry; every effect has a label;
+  select-screen canvas; every effect has a label;
   every item has artwork and a valid rarity
 
 Run it before you commit. It takes well under a second.

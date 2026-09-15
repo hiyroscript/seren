@@ -6,61 +6,35 @@
    Player and bot run the same functions here; nothing is duplicated for one
    or the other. */
 
-/* Which ultimate, if any, this car is currently driving. One place to ask,
-   so every contact rule reads the same answer. */
-function ultPower(who){
-  if(who === "me") return G.ultOn ? CARS[G.car].power : null;
-  return who && who.ultOn ? CARS[who.car].power : null;
-}
-function ghosting(who){ return ultPower(who) === "phase"; }
-function burning(who){ return ultPower(who) === "burn"; }
-/* Bolt, Timestamp, Rose and Siren all clear the road the same way: whatever
-   they touch is shouldered aside rather than driven through or written off. */
-function bumping(who){
-  const p = ultPower(who);
-  return p === "storm" || p === "freeze" || p === "bloom" || p === "siren";
-}
-
 /* Winner: granted the instant a car crosses the line and never taken away.
    A winner is out of play outright - no targeting system may pick it, nothing
    can reach it, and it takes no further part in the race it has finished. */
 function finishedCar(R){ return !!R && R.finished !== null; }
 function finishedMe(){ return G.finished !== null; }
 
-/* Immune means immune to everything, ultimates included, and it also phases:
-   an immune car passes through anything that would otherwise meet it. */
+/* Respawn immunity and the finish flag protect against contact and effects. */
 function immuneCar(R){ return !!R && (finishedCar(R) || R.dead > 0 || R.immune > 0); }
 function immuneMe(){ return finishedMe() || G.dead > 0 || G.immune > 0; }
 function immuneWho(who){ return who === "me" ? immuneMe() : immuneCar(who); }
 
-/* Nothing on the road can make contact with this car: it has finished, it is
-   wrecked, it is immune, it is phasing, or it is over everyone's heads. */
+/* Finished, wrecked, immune and airborne cars do not make road contact. */
 function noContact(who){
-  return immuneWho(who) || ghosting(who) || overhead(who);
+  return immuneWho(who) || overhead(who);
 }
-/* Safe from being barged or wrecked by another car. Immunity, phasing and the
-   flag are absolute; a burning or bumping ultimate wins the exchange instead
-   of losing it, which the contact rules handle, so it counts here too. */
-function safeCar(R){ return !R || noContact(R) || burning(R) || bumping(R); }
-function playerUntouchable(){ return noContact("me") || burning("me") || bumping("me"); }
+/* Protection is independent of the ultimate speed multiplier. */
+function safeCar(R){ return !R || noContact(R); }
+function playerUntouchable(){ return noContact("me"); }
 
-/* ---- negative effects: who may be given one, and clearing the ones that
-   somehow landed anyway ----
-   Cleansed and Immune both refuse them. Immune goes further and re-clears
-   every frame, so anything applied in the same frame it arrived is gone
-   before it can do anything. Beneficial states are never touched by either. */
+/* Real immunity refuses negative effects and clears any already applied. */
 function warded(who){
-  if(who === "me") return immuneMe() || G.cleanseT > 0;
-  return !who || immuneCar(who) || who.cleanse > 0;
+  if(who === "me") return immuneMe();
+  return !who || immuneCar(who);
 }
 function scrubBad(who){
   if(who === "me"){
-    G.slowT = 0; G.shockT = 0; G.blind = 0; G.chronoT = 0; G.slipT = 0;
-    G.orderedT = 0; G.orderBy = null;
-    if(G.bloomT > 0){ G.bloomT = 0; G.petals = []; G.clutterLv = 0; }
+    G.slowT = 0; G.blind = 0; G.slipT = 0;
   } else if(who){
-    who.slow = 0; who.shock = 0; who.blind = 0; who.chrono = 0; who.slip = 0;
-    who.clutter = 0; who.clutterLv = 0; who.petals = []; who.ordered = 0; who.orderBy = null;
+    who.slow = 0; who.blind = 0; who.slip = 0;
   }
 }
 function immuneScrub(){
@@ -83,7 +57,7 @@ function racers(){
   return list;
 }
 function carAt(lane, y, skip){
-  if(noContact(skip)) return null;             /* phasing, immune or in the air: meets nobody */
+  if(noContact(skip)) return null;             /* immune or in the air: meets nobody */
   const all = racers();
   for(let i=0;i<all.length;i++){
     const a = all[i];
@@ -94,61 +68,16 @@ function carAt(lane, y, skip){
   return null;
 }
 
-/* Which way a car should be shoved so it always has somewhere to go: away from
-   whichever barrier it is already against, and either way from the middle. */
-function shoveDir(lane){
-  return lane === 0 ? 1 : (lane === 2 ? -1 : (Math.random() < 0.5 ? -1 : 1));
-}
-/* An ultimate clearing the road. The victim is put in the next lane along
-   rather than written off - a bump, not a kill - and the driver of the
-   ultimate loses nothing for it. */
-function ultShove(by, victim){
-  const obj = victim.me ? null : victim.obj;
-  if(victim.me ? noContact("me") : noContact(obj)) return;
-  bumpTarget(victim, shoveDir(victim.lane), by, true);
-}
-
-/* Two cars in the same piece of road. One place decides what happens, so
-   barging into a lane and running into a back bumper always agree.
-
-   The order is the whole ruleset: phasing and immunity are absolute and meet
-   nothing at all; a bumping ultimate clears the road and beats a burning one,
-   which is why Redd cannot destroy Timestamp, Rose or Siren while they are
-   running theirs; and burning destroys whatever is left. Returns true if the
-   contact was resolved by one of those, so the caller can stop. */
-function ultContact(aWho, bVictim){
-  if(noContact(aWho) || (bVictim.me ? noContact("me") : noContact(bVictim.obj))) return true;
-  if(bumping(aWho)){ ultShove(aWho, bVictim); return true; }
-  const bWho = bVictim.me ? "me" : bVictim.obj;
-  if(bumping(bWho)){                                  /* the one being hit clears the road */
-    ultShove(bWho, { me:aWho === "me", obj:aWho === "me" ? null : aWho,
-                     lane:aWho === "me" ? G.lane : aWho.lane });
-    return true;
-  }
-  if(burning(aWho)){
-    if(bVictim.me) destroyCar(aWho); else wreckRival(bVictim.obj, aWho);
-    return true;
-  }
-  if(burning(bWho)){                                  /* drove into the fire */
-    if(aWho === "me") destroyCar(bWho); else wreckRival(aWho, bWho);
-    return true;
-  }
-  return false;
-}
-
-/* Running into the back of the car in front: they get shunted forward,
-   you lose time. What either ultimate is doing changes the outcome. */
+/* Rear contact shunts the front car and slows the following car. */
 function rearEnd(who, victim){
   const meB = who === "me";
   if(meB ? finishedMe() : finishedCar(who)) return;      /* out of play: no contact */
   if(victim.me ? finishedMe() : finishedCar(victim.obj)) return;
   if((meB ? G.bumpCD : who.bumpCD) > 0) return;
 
+  if(noContact(who) || noContact(victim.me ? "me" : victim.obj)) return;
   const vy = victim.y;
   if(meB) G.bumpCD = 0.5; else { who.bumpCD = 0.5; who.y = vy + carH*0.98; }
-
-  if(ultContact(who, victim)) return;
-  clutterOnContact(who, victim.me ? "me" : victim.obj);
 
   if(meB) G.slowT = Math.max(G.slowT, BUMP_SLOW*0.7);
   else who.slow = Math.max(who.slow, BUMP_SLOW*0.7);
@@ -163,33 +92,13 @@ function rearEnd(who, victim){
   noise(.14, .22);
 }
 
-/* Phantom coming back solid on top of someone takes both of them out. */
-function rematerialise(){
-  const all = racers();
-  for(let i=0;i<all.length;i++){
-    const a = all[i];
-    if(a.me || a.out) continue;
-    if(a.lane === G.lane && Math.abs(a.y - playerY) < carH*0.95){
-      wreckRival(a.obj);
-      destroyCar();
-      return;
-    }
-  }
-}
-
-/* One car shouldering another out of a lane. `raw` is the shove itself, with
-   no ultimate rules applied - ultShove calls in on this door so an ultimate
-   clearing the road cannot bounce back off its own victim's rules. */
-function bumpTarget(victim, dir, by, raw){
-  if(!raw && ultContact(by, victim)) return;
-  clutterOnContact(by, victim.me ? "me" : victim.obj);
+function bumpTarget(victim, dir, by){
+  if(noContact(by) || noContact(victim.me ? "me" : victim.obj)) return;
   const to = victim.lane + dir;
   if(victim.me){
-    if(noContact("me")) return;
     if(to < 0 || to > 2) destroyCar(by);
     else { G.lane = to; G.slowT = Math.max(G.slowT, BUMP_SLOW); }
   } else {
-    if(noContact(victim.obj)) return;
     if(to < 0 || to > 2) wreckRival(victim.obj, by);
     else {
       victim.obj.lane = to;
@@ -203,8 +112,7 @@ function bumpTarget(victim, dir, by, raw){
 }
 
 function move(dir){
-  if(G.state !== "running" || G.dead > 0 || G.shockT > 0 ||
-     G.orderedT > 0 || G.finished !== null) return;
+  if(G.state !== "running" || G.dead > 0 || G.finished !== null) return;
   if(G.slipT > 0) dir = -dir;                    /* no grip: the steering is reversed */
   const n = clamp(G.lane + dir, 0, 2);
   if(n === G.lane) return;
@@ -242,16 +150,7 @@ function sideSwipe(R){
   G.shake = Math.max(G.shake, 8);
   noise(.16, .25);
 }
-/* Trading paint counts as contact for Rose's clutter, on both cars. */
-function clutterOnContact(a, b){ clutterUp(a); clutterUp(b); }
-/* ================================================================
-   ULTIMATES  -  five seconds, double pace, and one signature each
-   ================================================================
-   Every ultimate is granted through startUlt and taken away through endUlt,
-   whoever is driving it, so a bot and the player run exactly the same code.
-   The duration is a clock in seconds rather than a fraction of the meter,
-   because Bolt's returning orbs push that clock out and a fraction cannot be
-   extended without lying about what it is a fraction of. */
+/* One fixed-duration speed multiplier for every driver and every car. */
 function ultOwnerCar(who){ return who === "me" ? G.car : who.car; }
 function ultPos(who){
   return who === "me" ? { x:G.x, y:playerY } : { x:who.x, y:who.y };
@@ -261,193 +160,28 @@ function ultFrac(who){
   const o = who === "me" ? G : who;
   return o.ultMax > 0 ? clamp(o.ultT/o.ultMax, 0, 1) : 0;
 }
-function ultExtend(who, secs){
-  const o = who === "me" ? G : who;
-  if(!o.ultOn) return;
-  o.ultT += secs; o.ultMax += secs; o.powered = (o.powered || 0) + 1;
-  o.ult = ultFrac(who);
-}
 
 function startUlt(who){
   const o = who === "me" ? G : who;
-  const p = CARS[ultOwnerCar(who)].power;
+  if(o.ultOn || !ruleOn("ults")) return;
   o.ultOn = true;
-  o.ultT = ULT_TIME; o.ultMax = ULT_TIME; o.powered = 0;
+  o.ultT = ULT_TIME; o.ultMax = ULT_TIME;
   o.ult = 1;
-  if(p === "storm"){ o.orbs = ORB_COUNT; o.orbFireT = ORB_GAP*0.5; }
-  else if(p === "freeze") startChrono(who);
-  else if(p === "bloom") startBloom(who);
-  else if(p === "siren"){ cleanse(who); sirenWail(); sirenSweep(who); }
   const at = ultPos(who);
   ultBurst(ultOwnerCar(who), at.x, at.y);
 }
 function endUlt(who){
   const o = who === "me" ? G : who;
-  const p = CARS[ultOwnerCar(who)].power;
-  o.ultOn = false; o.ultT = 0; o.ultMax = ULT_TIME; o.powered = 0;
-  o.ult = 0; o.orbs = 0; o.orbFireT = 0;
-  if(p === "freeze" && G.chronoOwner === who) endChrono();
-  if(p === "bloom" && G.bloomOwner === who) G.bloomOwner = null;
-  /* Phantom coming back solid on top of somebody takes both of them out. */
-  if(p === "phase" && who === "me") rematerialise();
+  o.ultOn = false; o.ultT = 0; o.ultMax = ULT_TIME;
+  o.ult = 0;
 }
 /* Run the clock down for whoever is holding one. */
 function tickUlt(who, dt){
   const o = who === "me" ? G : who;
   if(!o.ultOn) return;
-  o.ultT -= dt;
-  if(o.ultT <= 0){ endUlt(who); return; }
+  o.ultT = Math.max(0, o.ultT - dt);
+  if(o.ultT === 0){ endUlt(who); return; }
   o.ult = ultFrac(who);
-  const p = CARS[ultOwnerCar(who)].power;
-  if(p === "storm") stormTick(who, dt);
-  else if(p === "siren"){ sirenSweep(who); sirenNoise(who, dt); }
-}
-
-/* ---- Timestamp: chronokinesis ----------------------------------
-   The driver keeps its doubled pace and everything else on the road - every
-   other car, and the world's own motion - is dragged down to half. It is a
-   field-wide state rather than a per-car one, because "the world" has to slow
-   as well: rolling tumbleweeds, falling rock, orbs and seekers in flight. */
-function startChrono(owner){
-  G.chronoOwner = owner;
-  G.chronoWorld = CHRONO_TIME;
-  for(let i=0;i<G.rivals.length;i++){
-    const R = G.rivals[i];
-    if(R !== owner && !warded(R)) R.chrono = CHRONO_TIME;
-  }
-  if(owner !== "me" && !warded("me")) G.chronoT = CHRONO_TIME;
-  tone(140, .7, "sine", .1);
-  later(function(){ tone(90, .5, "sine", .07); }, 200);
-}
-function endChrono(){
-  G.chronoWorld = 0; G.chronoOwner = null;
-  for(let i=0;i<G.rivals.length;i++) G.rivals[i].chrono = 0;
-  G.chronoT = 0;
-}
-/* How fast the world's own moving parts are allowed to run this frame. The
-   driver of the chronokinesis is exempt from nothing here - the world is slow
-   for everybody; what makes it an advantage is that the driver is not. */
-function worldRate(){ return G.chronoWorld > 0 ? CHRONO_RATE : 1; }
-
-/* ---- Rose: clutter, in stages ----------------------------------
-   Stage one is the screenful of petals it always was. It does not deepen on
-   its own - only contact does that, a trap or another car - so a driver who
-   keeps it clean rides out the same five seconds on stage one, and one who
-   starts hitting things while blind cannot see well enough to stop hitting
-   things. Five is the whole screen. */
-function bloomPetals(){
-  const out = [];
-  for(let i=0;i<64;i++)
-    out.push({ x:rand(-0.08,1.08), y:rand(-0.08,1.08), r:rand(10,22),
-               a:rand(0,6.28), sp:rand(-1.6,1.6), s:Math.random(), layer:0,
-               dx:rand(-0.0006,0.0006), fall:rand(0.0012,0.0022) });
-  for(let i=0;i<44;i++)
-    out.push({ x:rand(-0.10,1.10), y:rand(-0.10,1.10), r:rand(24,46),
-               a:rand(0,6.28), sp:rand(-2.0,2.0), s:Math.random(), layer:1,
-               dx:rand(-0.0011,0.0011), fall:rand(0.0022,0.0038) });
-  for(let i=0;i<18;i++)
-    out.push({ x:rand(-0.15,1.15), y:rand(-0.20,1.10), r:rand(64,110),
-               a:rand(0,6.28), sp:rand(-1.2,1.2), s:Math.random(), layer:2,
-               dx:rand(-0.0016,0.0016), fall:rand(0.0040,0.0062) });
-  return out;
-}
-function startBloom(owner){
-  G.bloomOwner = owner;
-  for(let i=0;i<G.rivals.length;i++){
-    const R = G.rivals[i];
-    if(R !== owner && !warded(R)){ R.clutter = BLOOM_TIME; R.clutterLv = 1; R.petals = bloomPetals(); }
-  }
-  if(owner !== "me" && !warded("me")){
-    G.bloomT = BLOOM_TIME;
-    G.clutterLv = 1;
-    G.petals = bloomPetals();
-  }
-  tone(520, .3, "sine", .08);
-}
-function clearBloom(){
-  G.bloomT = 0; G.petals = []; G.bloomOwner = null; G.clutterLv = 0;
-  for(let i=0;i<G.rivals.length;i++){ G.rivals[i].clutter = 0; G.rivals[i].clutterLv = 0; G.rivals[i].petals = []; }
-}
-/* One more layer of it, for whoever just hit something. */
-function clutterUp(who){
-  if(who === "me"){
-    if(G.bloomT <= 0 || G.clutterLv >= CLUTTER_MAX) return;
-    G.clutterLv++;
-    G.shake = Math.max(G.shake, 5);
-    tone(320 + G.clutterLv*90, .16, "sine", .06);
-  } else if(who){
-    if(who.clutter <= 0 || who.clutterLv >= CLUTTER_MAX) return;
-    who.clutterLv++;
-  }
-}
-/* Nought to one across the five stages, which is what the wash, the petal
-   count and the bot's blindness are all scaled off. */
-function clutterK(lv){ return clamp((lv - 1)/(CLUTTER_MAX - 1), 0, 1); }
-
-/* ---- Siren: being ordered --------------------------------------
-   Only cars near and ahead of Siren are ordered, because the point of it is to
-   clear the road in front. Being ordered takes the controls away outright for
-   its whole five seconds; the lane change itself only happens when Siren is
-   actually in your lane, and it happens again every time Siren moves back into
-   it. An order given from another lane is not wasted - it is a standing one. */
-function orderLaneOf(who){ return who === "me" ? G.lane : who.lane; }
-function sirenSweep(owner){
-  const oy = owner === "me" ? playerY : owner.y;
-  const all = racers();
-  for(let i=0;i<all.length;i++){
-    const a = all[i];
-    if(a.out || (owner === "me" ? a.me : a.obj === owner)) continue;
-    const gap = oy - a.y;                        /* positive: up the road from Siren */
-    if(gap < -carH*0.4 || gap > SIREN_RANGE) continue;
-    const who = a.me ? "me" : a.obj;
-    if(warded(who) || noContact(who)) continue;
-    if(a.me){ G.orderedT = ORDER_TIME; G.orderBy = owner; }
-    else { a.obj.ordered = ORDER_TIME; a.obj.orderBy = owner; }
-  }
-}
-/* Standing orders, made good. Anyone ordered who is sitting in Siren's lane is
-   moved out of it; anyone ordered who is not simply stays ordered. */
-function serveOrders(){
-  for(let i=0;i<G.rivals.length;i++){
-    const R = G.rivals[i];
-    if(R.ordered <= 0 || !R.orderBy) continue;
-    if(noContact(R)) continue;
-    const by = R.orderBy;
-    const gone = by !== "me" && (finishedCar(by) || by.dead > 0 || !by.ultOn);
-    if(by === "me" && !G.ultOn){ R.ordered = 0; R.orderBy = null; continue; }
-    if(gone){ R.ordered = 0; R.orderBy = null; continue; }
-    if(orderLaneOf(by) !== R.lane) continue;
-    const to = clamp(R.lane + shoveDir(R.lane), 0, 2);
-    if(to !== R.lane) rivalLaneTo(R, to);
-  }
-  if(G.orderedT > 0 && G.orderBy){
-    const by = G.orderBy;
-    const gone = by !== "me" && (finishedCar(by) || by.dead > 0 || !by.ultOn);
-    if(gone || noContact("me")){ G.orderedT = 0; G.orderBy = null; return; }
-    if(orderLaneOf(by) === G.lane) forceLane(G.lane + shoveDir(G.lane));
-  }
-}
-function forceLane(n){
-  const t2 = clamp(n, 0, 2);
-  if(t2 === G.lane) return;
-  const victim = carAt(t2, playerY, "me");
-  if(victim) bumpTarget(victim, t2 > G.lane ? 1 : -1, "me");
-  G.lane = t2;
-}
-
-/* ---- Cleansed --------------------------------------------------
-   Wipes every negative state and refuses new ones for as long as it lasts.
-   Beneficial states are not touched: cleansing while boosted keeps the boost. */
-function cleanse(who){
-  if(who === "me"){
-    scrubBad("me");
-    G.cleanseT = CLEANSE_TIME;
-    logEffect("cleansed");
-  } else {
-    scrubBad(who);
-    who.cleanse = CLEANSE_TIME;
-  }
-  tone(1100, .18, "sine", .07);
 }
 
 function ultBurst(carId, x, y){
@@ -459,28 +193,18 @@ function ultBurst(carId, x, y){
           i % 2 ? car.flame[0] : car.flame[1]);
   }
   G.shake = Math.max(G.shake, 9);
-  tone(car.power === "burn" ? 180 : 520, .5, car.power === "burn" ? "sawtooth" : "sine", .1);
-  later(function(){ tone(car.power === "burn" ? 260 : 780, .45, "sine", .08); }, 120);
+  tone(520, .5, "sine", .1);
+  later(function(){ tone(780, .45, "sine", .08); }, 120);
 }
 
 /* Anything that has taken the controls away has taken the ultimate with it. */
 function canFireUlt(){
   return ruleOn("ults") &&
-         G.state === "running" && G.dead <= 0 && G.shockT <= 0 &&
-         G.orderedT <= 0 && G.finished === null;
+         G.state === "running" && G.dead <= 0 && G.finished === null;
 }
 function fireUlt(){
   if(!canFireUlt()) return;
-  /* Bolt: pressing again while it runs looses one of the orbs early. They go
-     out on their own clock regardless, so this is impatience, not a rotation. */
-  if(G.ultOn){
-    if(CARS[G.car].power === "storm" && G.orbs > 0){
-      if(fireOrb("me")){ G.orbs--; G.orbFireT = ORB_GAP; }
-      G.ultArmed = false;
-    }
-    return;
-  }
-  if(G.ult < 1) return;
+  if(G.ultOn || G.ult < 1) return;
   G.ultArmed = false;
   startUlt("me");
 }
@@ -488,229 +212,16 @@ function fireUlt(){
 /* The rival side of fireUlt, gate for gate. */
 function fireUltRival(R){
   if(!ruleOn("ults")) return;
-  if(G.state !== "running" || R.dead > 0 || R.shock > 0 ||
-     R.ordered > 0 || R.finished !== null) return;
-  if(R.ultOn){
-    if(CARS[R.car].power === "storm" && R.orbs > 0){
-      if(fireOrb(R)){ R.orbs--; R.orbFireT = ORB_GAP; }
-    }
-    return;
-  }
-  if(R.ult < 1) return;
+  if(G.state !== "running" || R.dead > 0 || R.finished !== null) return;
+  if(R.ultOn || R.ult < 1) return;
   startUlt(R);
-}
-
-/* the two-tone wail while Siren has the road */
-function sirenWail(){
-  tone(760, .35, "square", .07);
-  later(function(){ tone(560, .35, "square", .07); }, 360);
-}
-/* kept going for as long as the lights are on, whoever is driving */
-function sirenNoise(who, dt){
-  const o = who === "me" ? G : who;
-  o.sirenT = (o.sirenT || 0) - dt;
-  if(o.sirenT <= 0){ o.sirenT = 0.72; sirenWail(); }
 }
 
 function setBoost(){
   G.boosting = ruleOn("boost")
                && (G.keyBoost || G.ptrBoost || G.padBoost) && !G.boostLock && G.charge > 0
                && !G.brakeOn
-               && G.state === "running" && G.dead <= 0 && G.finished === null
-               && G.shockT <= 0 && G.orderedT <= 0;
-}
-
-/* ================================================================
-   BOLT  -  three orbs that keep looking until they find work
-   ================================================================
-   An orb goes out at the nearest car up the road. If that car is already
-   pinned - or is phasing, or immune, or over the line, all of which amount to
-   the same thing, there is nothing here to pin - the orb does not go to waste:
-   it climbs to the next car above and tries again. Only when there is nobody
-   left above it does it turn round and come home, and a returning orb is worth
-   another five seconds of the ultimate. Three orbs, three possible extensions,
-   and they stack. */
-function orbHolder(owner){
-  return owner === "me"
-    ? { x:G.x, y:playerY, orbs:G.orbs }
-    : { x:owner.x, y:owner.y, orbs:owner.orbs };
-}
-/* the nearest car up the road from this one */
-function targetAhead(fromY, skip, also){
-  const all = racers();
-  let best = null;
-  for(let i=0;i<all.length;i++){
-    const a = all[i];
-    if(a.out || a.obj === skip || (skip === "me" && a.me)) continue;
-    if(also !== undefined && (a.obj === also || (also === "me" && a.me))) continue;
-    if(a.y >= fromY - carH*0.4) continue;
-    if(!best || a.y > best.y) best = a;
-  }
-  return best;
-}
-/* Is there anything for an orb to do to this car? */
-function orbCatches(who){
-  if(who === "me") return !(immuneMe() || ghosting("me")) && G.shockT <= 0;
-  return !(immuneCar(who) || ghosting(who)) && who.shock <= 0;
-}
-function fireOrb(owner){
-  const h = orbHolder(owner);
-  const mark = targetAhead(h.y, owner);
-  /* Out in front with nobody to pin, the orb is not held back and it is not
-     wasted: it goes up the road, finds the road empty, and turns for home.
-     Coming home is worth another five seconds, so leading is what Bolt's
-     ultimate rewards when there is nothing left to shoot at. */
-  G.bolts.push({
-    x:h.x, y:h.y - carH*0.4, vx:0, vy:-ORB_SPEED,
-    owner:owner, car:owner === "me" ? G.car : owner.car, life:6,
-    mark:mark ? (mark.me ? "me" : mark.obj) : owner,
-    home:!mark,
-    /* a homing orb still arcs out first, so it reads as a throw and a catch */
-    arc:mark ? 0 : 0.42
-  });
-  tone(880, .12, "square", .07);
-  later(function(){ tone(1240, .1, "square", .06); }, 70);
-  return true;
-}
-/* Send it up the road to the next one, or home if there is no next one. */
-function orbSeekOn(b, fromY){
-  const owner = b.owner;
-  b.arc = 0;
-  const next = targetAhead(fromY, owner, b.mark);
-  if(next){
-    b.mark = next.me ? "me" : next.obj;
-    b.life = Math.max(b.life, 3);
-    for(let k=0;k<8;k++)
-      addFx(b.x, b.y, rand(-70,70), rand(-70,70), rand(.2,.45), rand(2,4), "#FFF6C0");
-    tone(1480, .07, "square", .05);
-    return;
-  }
-  b.home = true;                                 /* nobody left above: come back */
-  b.mark = owner;
-  b.life = Math.max(b.life, 4);
-  const h = orbHolder(owner);
-  const hx = h.x - b.x, hy = h.y - b.y;
-  const hl = Math.max(1, Math.sqrt(hx*hx + hy*hy));
-  b.vx = hx/hl*ORB_SPEED; b.vy = hy/hl*ORB_SPEED;   /* about turn, at once */
-  for(let q=0;q<10;q++)
-    addFx(b.x, b.y, rand(-90,90), rand(-90,90), rand(.2,.45), rand(2,4), "#FFFBDA");
-  tone(520, .1, "sine", .06);
-}
-/* An orb arriving back on Bolt. Five more seconds, and it can happen again. */
-function orbAbsorb(b){
-  const owner = b.owner;
-  const o = owner === "me" ? G : owner;
-  if(!o.ultOn) return;
-  ultExtend(owner, POWER_TIME);
-  const h = orbHolder(owner);
-  for(let i=0;i<22;i++){
-    const a = (i/22)*6.2832;
-    addFx(h.x + Math.cos(a)*carW*0.85, h.y + Math.sin(a)*carH*0.55,
-          -Math.cos(a)*300, -Math.sin(a)*300, rand(.25,.55), rand(2,5),
-          i % 2 ? "#FFE44D" : "#FFFBDA");
-  }
-  G.shake = Math.max(G.shake, 8);
-  tone(300, .3, "sawtooth", .09);
-  later(function(){ tone(880, .26, "square", .08); }, 80);
-}
-/* Being in the air is no defence against an orb - Launched is explicitly still
-   catchable by the seeker and by these - so this asks about immunity, a
-   cleanse and phasing only, and never about being overhead. */
-function shockCar(who){
-  if(warded(who) || ghosting(who)) return;
-  if(who === "me"){
-    G.shockT = SHOCK_TIME;
-    G.slowT = 0; G.boosting = false; G.keyBoost = false; G.ptrBoost = false;
-    killLaunch();                                /* pinned mid-flight: put it down */
-  } else {
-    who.shock = SHOCK_TIME;
-    who.boosting = false;
-    killLaunchRival(who);                        /* pinned mid-flight: put it down */
-  }
-  const p = who === "me" ? { x:G.x, y:playerY } : { x:who.x, y:who.y };
-  for(let i=0;i<20;i++){
-    const a = rand(0, 6.2832), sp = rand(60, 240);
-    addFx(p.x, p.y, Math.cos(a)*sp, Math.sin(a)*sp, rand(.3,.7), rand(2,5),
-          i % 2 ? "#FFE44D" : "#FFFFFF");
-  }
-  G.shake = Math.max(G.shake, 10);
-  noise(.3, .3); tone(150, .3, "square", .1);
-}
-function updateBolts(dt){
-  const k = worldRate();                         /* chronokinesis drags these too */
-  for(let i=G.bolts.length-1;i>=0;i--){
-    const b = G.bolts[i];
-    b.life -= dt;
-    const owner = b.owner;
-    const ownerGone = owner === "me"
-      ? (G.dead > 0 || !G.ultOn)
-      : (owner.dead > 0 || !owner.ultOn);
-    if(b.home && ownerGone){ G.bolts.splice(i,1); continue; }
-    const m = b.mark === "me"
-      ? { x:G.x, y:playerY, gone:G.dead > 0 || finishedMe() }
-      : { x:b.mark.x, y:b.mark.y, gone:b.mark.dead > 0 || finishedCar(b.mark) };
-    /* The cull used to be "off the top of the screen", which is only ever
-       right for an orb the player fired. Rivals live in world space and run to
-       thirty thousand pixels either side of the camera, so a bot up the road
-       fired orbs that were already past that line on the frame they spawned
-       and were binned before they had moved - which is why a Bolt bot never
-       pinned anybody. An orb chases a live mark and has its own clock; that
-       clock is the cull, and the bound below is only a backstop against a
-       runaway. */
-    if(b.life <= 0 || b.y < -90000 || b.y > 90000){ G.bolts.splice(i,1); continue; }
-    if(m.gone){                                  /* the mark left the road */
-      if(b.home){ G.bolts.splice(i,1); continue; }
-      orbSeekOn(b, b.y);
-      continue;
-    }
-    if(b.arc > 0){                               /* still climbing away */
-      b.arc -= dt;
-      b.x += b.vx*dt*k; b.y += b.vy*dt*k;
-      addFx(b.x, b.y, rand(-30,30), rand(-30,30), .25, rand(1.5,3), "#FFE44D");
-      continue;
-    }
-    const dx = m.x - b.x, dy = m.y - b.y;
-    const d = Math.max(1, Math.sqrt(dx*dx + dy*dy));
-    const turn = b.home ? 1 : (1 - Math.pow(0.0004, dt));   /* it knows the way back */
-    b.vx = lerp(b.vx, dx/d*ORB_SPEED, turn);
-    b.vy = lerp(b.vy, dy/d*ORB_SPEED, turn);
-    const sp2 = Math.sqrt(b.vx*b.vx + b.vy*b.vy) || 1;
-    b.vx = b.vx/sp2*ORB_SPEED; b.vy = b.vy/sp2*ORB_SPEED;   /* never slows down */
-    b.x += b.vx*dt*k; b.y += b.vy*dt*k;
-    addFx(b.x, b.y, rand(-30,30), rand(-30,30), .25, rand(1.5,3), "#FFE44D");
-    const hitBox = { x:m.x, y:m.y, hw:carW*0.40, hh:carH*0.42 };
-    const cp = nearestOnCar(hitBox, b.x, b.y);
-    const hx = cp.x - b.x, hy = cp.y - b.y;
-    if(hx*hx + hy*hy > ORB_R*ORB_R) continue;                /* not there yet */
-
-    if(b.home){ orbAbsorb(b); G.bolts.splice(i,1); continue; }
-    if(burning(b.mark)){                         /* Redd: it goes off on contact */
-      for(let q=0;q<18;q++){
-        const a = rand(0, 6.2832), sp = rand(60, 260);
-        addFx(b.x, b.y, Math.cos(a)*sp, Math.sin(a)*sp, rand(.3,.7), rand(2,5),
-              q % 2 ? "#FF7A3A" : "#FFD9A0");
-      }
-      G.shake = Math.max(G.shake, 8);
-      noise(.25, .3);
-      G.bolts.splice(i,1); continue;
-    }
-    if(!orbCatches(b.mark)){                     /* pinned, phasing or untouchable */
-      orbSeekOn(b, m.y);
-      continue;
-    }
-    shockCar(b.mark);
-    G.bolts.splice(i,1);
-  }
-}
-/* Orbs going out on their own clock, so the five seconds are always used.
-   The player may still tap to send one early. */
-function stormTick(who, dt){
-  const o = who === "me" ? G : who;
-  if(o.orbs <= 0) return;
-  o.orbFireT -= dt;
-  if(o.orbFireT > 0) return;
-  o.orbFireT = ORB_GAP;
-  if(fireOrb(who)) o.orbs--;
+               && G.state === "running" && G.dead <= 0 && G.finished === null;
 }
 
 function puffFx(x, y){
@@ -728,14 +239,13 @@ function wreckRival(R, by, force){
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
   R.dead = DEAD_TIME;
   killLaunchRival(R);                          /* and anything it had in the air */
-  if(CARS[R.car].power === "bloom" && G.bloomOwner === R) clearBloom();
   if(R.ultOn) endUlt(R);                       /* a running ultimate is lost outright */
   /* The meter itself survives, exactly as the player's does: destroyCar takes
      ULT_ON_WRECK off the top and no more. Wiping it here contradicted the
      ultDelta two lines above and quietly taxed the violent difficulties
      hardest - a brutal field wrecks four times as often, so it was losing
      four times as many charged ultimates to a rule the player never met. */
-  R.boosting = false; R.orbs = 0;
+  R.boosting = false;
   scrubBad(R);
   for(let i=0;i<30;i++){
     const a = rand(0, 6.2832), sp = rand(70, 340);
@@ -758,16 +268,13 @@ function airPower(){
 }
 
 function airborne(){ return G.airT > 0; }
-/* Airborne cars are not on the road: nothing meets them and they meet nothing.
-   This is the same door ghosting uses, which is why one test covers barging,
-   rear-ending, bot lane reads and Siren's shove all at once. */
+/* Airborne cars do not contact the road or other grounded cars. */
 function overhead(who){ return who === "me" ? airborne() : (!!who && who.airT > 0); }
 
 /* Anything that takes the controls away also takes the brake away. */
 function canBrake(){
   return ruleOn("boost") &&
          G.state === "running" && G.dead <= 0 && G.finished === null &&
-         G.shockT <= 0 && G.orderedT <= 0 &&
          G.launchCD <= 0 && !airborne();
 }
 /* Under the notch: far enough to go up. */
@@ -856,7 +363,7 @@ function landCar(){
   }
 }
 
-/* Wrecked, pinned or ordered mid-flight: put the car down where it is and let
+/* Wrecked mid-flight: put the car down where it is and let
    the state that interrupted it take over. */
 function killLaunch(){
   if(airborne()) dropEffect("launched");
@@ -921,7 +428,7 @@ function releaseBrake(){
    constants, same meter, same arming notch, same cooldown, same landing rule.
    All the AI supplies is the hold and the release: when to put the brake on,
    how much of the wind-up it is willing to stand still for, and when to let
-   go. A bot that gets pinned, ordered or wrecked halfway through loses the
+   go. A bot that gets wrecked halfway through loses the
    charge exactly the way you do. */
 function rivalAirPower(R){
   const drained = clamp((AIR_ARM - R.airMeter)/AIR_ARM, 0, 1);
@@ -931,7 +438,7 @@ function rivalAirborne(R){ return !!R && R.airT > 0; }
 function canBrakeRival(R){
   return ruleOn("boost") &&
          G.state === "running" && R.dead <= 0 && R.finished === null &&
-         R.shock <= 0 && R.ordered <= 0 && R.launchCD <= 0 && R.airT <= 0;
+         R.launchCD <= 0 && R.airT <= 0;
 }
 function rivalBrakeOff(R){
   R.brakeOn = false;
@@ -980,7 +487,7 @@ function landRival(R){
     }
   }
 }
-/* Pinned, ordered or written off mid-flight: put it down where it is and let
+/* Written off mid-flight: put it down where it is and let
    whatever interrupted it take over. */
 function killLaunchRival(R){
   if(!R) return;
@@ -1217,7 +724,7 @@ function updateBubbles(dt, d, st){
         if(row.blink <= 0){ G.boxes.splice(i,1); continue; }
       } else {
         /* The clock is a stall-breaker now, nothing more: it only runs when the
-           road has all but stopped - pinned, ordered, wrecked - so a row cannot
+           road has all but stopped - braking or wrecked - so a row cannot
            hang about forever with nothing moving. While the race is actually
            running a row lives until the back of the field is through it, however
            far the field is strung out. Ageing it in transit was flashing rows
@@ -1311,9 +818,8 @@ function useItem(who){
   const holder = me ? G : who;
   const id = holder.item;
   if(!id) return false;
-  if(me && (G.state !== "running" || G.dead > 0 || G.shockT > 0 ||
-            G.orderedT > 0 || G.finished !== null)) return false;
-  if(!me && (who.dead > 0 || who.shock > 0 || who.ordered > 0 || who.finished !== null)) return false;
+  if(me && (G.state !== "running" || G.dead > 0 || G.finished !== null)) return false;
+  if(!me && (who.dead > 0 || who.finished !== null)) return false;
   holder.item = null;
   const x = me ? G.x : who.x, y = me ? playerY : who.y;
 
@@ -1409,7 +915,7 @@ function updateMissiles(dt, d){
   for(let i=G.missiles.length-1;i>=0;i--){
     const m = G.missiles[i];
     m.life -= dt;
-    if(m.fade > 0){                                   /* slipped past a ghost */
+    if(m.fade > 0){                                   /* fading out */
       m.fade -= dt;
       m.x += m.vx*dt; m.y += m.vy*dt + d;
       addFx(m.x, m.y, rand(-40,40), rand(-40,40), .3, 3, "rgba(255,180,120,0.8)");
@@ -1419,8 +925,7 @@ function updateMissiles(dt, d){
     const p = markPos(m.mark);
     if(p.gone || m.life <= 0){ G.missiles.splice(i,1); continue; }
 
-    /* Phasing does not save you from this. Vapour goes through cars, traps and
-       orbs; the seeker is the one thing that still finds it. */
+    /* Seekers wait out real immunity. */
     if(markImmune(m.mark)){                           /* wait it out */
       m.x = lerp(m.x, p.x, 1 - Math.pow(0.2, dt));
       m.y = lerp(m.y, p.y + carH*2.2, 1 - Math.pow(0.2, dt));
@@ -1431,8 +936,8 @@ function updateMissiles(dt, d){
     const len = Math.max(1, Math.sqrt(dx*dx + dy*dy));
     m.vx = lerp(m.vx, dx/len*MISSILE_SPEED, 1 - Math.pow(0.0005, dt));
     m.vy = lerp(m.vy, dy/len*MISSILE_SPEED, 1 - Math.pow(0.0005, dt));
-    const wk = worldRate();                           /* the clock reaches it too */
-    m.x += m.vx*dt*wk; m.y += m.vy*dt*wk;
+
+    m.x += m.vx*dt; m.y += m.vy*dt;
     const D = missileDims(), spine = missileSpine(m);
     const back = spine[3];
     for(let f=0;f<2;f++)
@@ -1461,8 +966,7 @@ function updateMissiles(dt, d){
       const a = all[k];
       if(a.out) continue;
       if(m.owner === "me" ? a.me : a.obj === m.owner) continue;
-      /* Immunity and the flag stop it. Phasing does not - vapour is the one
-         thing the seeker still finds - and neither does a running ultimate. */
+      /* Immunity and the finish flag stop the seeker; speed boosts do not. */
       if(a.me ? immuneMe() : immuneCar(a.obj)) continue;
       const box = { x:a.me ? G.x : a.obj.x, y:a.y, hw:carW*0.40, hh:carH*0.42 };
       let px = 0, py = 0, touch = false;
@@ -1507,13 +1011,11 @@ function updateSlicks(dt, d, st){
     o.life -= dt;
     if(o.life <= 0){ o.fade = OIL_FADE; continue; }
 
-    /* vapour goes straight over it - the same rule the traps use, and the one
-       the garage promises: Phantom passes through everything */
+    /* Oil uses the ordinary road-contact rules. */
     if(st === "running" && !noContact("me") && !airborne() && G.finished === null){
       if(slickHits(o, c)){
-        if(burning("me")) smashFx(o.x, o.y, o.r*1.1, "#7A5AA0", G.car);
-        else { if(!warded("me")) G.slipT = SLIP_TIME; slickSplash(o); noise(.2, .2); }
-        clutterUp("me");                        /* contact deepens Rose's clutter */
+        if(!warded("me")) G.slipT = SLIP_TIME;
+        slickSplash(o); noise(.2, .2);
         G.slicks.splice(i,1); continue;
       }
     }
@@ -1522,9 +1024,8 @@ function updateSlicks(dt, d, st){
       if(noContact(R)) continue;
       const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
       if(slickHits(o, rc)){
-          if(burning(R)) smashFx(o.x, o.y, o.r*1.1, "#7A5AA0", R.car);
-        else { if(!warded(R)){ R.slip = SLIP_TIME; botBlame(R, o.owner); } slickSplash(o); }
-        clutterUp(R);
+        if(!warded(R)){ R.slip = SLIP_TIME; botBlame(R, o.owner); }
+        slickSplash(o);
         G.slicks.splice(i,1);
         break;
       }
@@ -1647,7 +1148,7 @@ function sweptY(o, moved, cy){
    short or extending it. */
 function ultDelta(who, amount){
   if(who === "me"){
-    if(G.ultOn || G.orbs > 0) return;
+    if(G.ultOn) return;
     G.ult = clamp(G.ult + amount, 0, 1);
   } else if(who){
     if(who.ultOn) return;
@@ -1657,9 +1158,7 @@ function ultDelta(who, amount){
 /* did this hazard slip past close enough to count as a dodge? */
 /* Credit for getting out of the way at the last moment: either you squeezed
    past it, or you swerved out of the lane it was about to take you in. */
-/* A trap that has gone past without touching anybody. Dodging pays nothing
-   any more, but the mark still has to be set: the rival clutter roll reads
-   this bitmask to decide which traps a cluttered driver fails to see. */
+/* Record that a hazard has passed this car. */
 function markPassed(o, box, bit){
   if(o.nm & bit) return;
   if(o.y < box.y) return;                        /* not past us yet */
@@ -1672,46 +1171,37 @@ function nearestOnCar(c, px, py){
 
 function updateTraps(dt, d, st){
   const racing = st === "running" && G.dead <= 0;
-  const power = G.ultOn ? CARS[G.car].power : null;
-  const shielded = G.ultOn && CARS[G.car].power !== "storm";
   /* Up in the air the road is simply not where you are: the trap neither
      catches you nor gets smashed, it goes by underneath and is still there
      when you come down. */
-  const live = racing && G.immune <= 0 && !shielded && G.shockT <= 0 && !finishedMe() && !airborne();
-  const smash = racing && power === "burn" && !airborne();   /* Redd wrecks what it touches */
+  const live = racing && G.immune <= 0 && !finishedMe() && !airborne();
   const c = carHit();
   for(let i=G.traps.length-1;i>=0;i--){
     const o = G.traps[i];
     if(o.kind === "weed"){
       o.age += dt;
-      const wk = worldRate();                    /* chronokinesis drags it too */
-      o.x += o.vx*dt*wk;
-      o.y += d*lerp(1, o.fall, wk);
-      o.rot += o.vx*dt*wk/o.r;
+
+      o.x += o.vx*dt;
+      o.y += d*o.fall;
+      o.rot += o.vx*dt/o.r;
       if(o.x < roadX-100 || o.x > roadX+roadW+100 || o.y > VW_BOT+100){ G.traps.splice(i,1); continue; }
-      if((live || smash) && !(o.hit & 1)){
+      if(live && !(o.hit & 1)){
         const wy = sweptY(o, d*o.fall, c.y);
         const p = nearestOnCar(c, o.x, wy);
         const dx = p.x - o.x, dy = p.y - wy;
         if(dx*dx + dy*dy <= o.r*o.r*0.86){
-          if(smash) smashFx(o.x, o.y, o.r*1.2, "#D8C49A");
-          else hitWeed(o);
+          hitWeed(o);
           G.traps.splice(i,1); continue;
         }
       }
       continue;
     }
     if(o.kind === "meteor"){
-      /* The ring is a spot on the road, so it rides the scroll like every
-         other hazard. How far the rock still has to fall is seconds, and the
-         only thing allowed to stretch them is chronokinesis - that is the
-         world's clock, and it is meant to reach a falling rock. Nothing a
-         driver does to their own road speed touches the drop: it lands when
-         it was always going to land, wherever the ring has got to by then. */
-      const wk = worldRate();
-      o.y += d; o.t += dt*wk;
+      /* The ring scrolls with the road; the falling rock uses elapsed seconds. */
+
+      o.y += d; o.t += dt;
       if(o.phase === 0){
-        o.fall = Math.max(0, o.fall - dt*wk);
+        o.fall = Math.max(0, o.fall - dt);
         if(o.fall <= 0) detonate(o, live);
         else if(racing && o.fall < rockLead(o)){
           const alt = rockAlt(o);
@@ -1731,10 +1221,9 @@ function updateTraps(dt, d, st){
 
     o.y += d;                                  /* world-fixed: always scrolls with the road */
     if(o.y > VW_BOT + 260){ G.traps.splice(i,1); continue; }
-    if((!live && !smash) || (o.hit & 1)) continue;
+    if(!live || (o.hit & 1)) continue;
     if(puddleHits(o, c, sweptY(o, d, c.y))){
       o.hit |= 1;
-      if(smash){ smashFx(o.x, o.y, o.rx*1.1, "#7FC2EC", G.car); G.traps.splice(i,1); continue; }
       hitPuddle();
     }
     markPassed(o, c, 1);
@@ -1761,7 +1250,7 @@ function detonate(o, live){
   }
   for(let n=0;n<G.rivals.length;n++){
     const R = G.rivals[n];
-    if(safeCar(R) || R.ultOn) continue;
+    if(safeCar(R)) continue;
     const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
     const p4 = nearestOnCar(rc, o.x, o.y);
     const rx = p4.x - o.x, ry = p4.y - o.y;
@@ -1779,7 +1268,6 @@ function blindSpray(){
 }
 function hitPuddle(){
   ultDelta("me", ULT_ON_TRAP);
-  clutterUp("me");                              /* contact deepens Rose's clutter */
   if(warded("me")) return;
   G.blind = BLIND_TIME;
   G.blindPts = blindSpray();
@@ -1794,9 +1282,8 @@ function hitPuddle(){
 
 /* the destroy effect: wreck the car, then respawn it untouchable */
 function clearMyUlt(){
-  if(CARS[G.car].power === "bloom" && G.bloomOwner === "me") clearBloom();
   if(G.ultOn) endUlt("me");
-  G.ult = 0; G.orbs = 0;
+  G.ult = 0;
 }
 function destroyCar(by){
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
@@ -1818,7 +1305,6 @@ function destroyCar(by){
 
 function hitWeed(o){
   ultDelta("me", ULT_ON_TRAP);
-  clutterUp("me");                              /* contact deepens Rose's clutter */
   if(warded("me")) return;
   G.slowT = SLOW_TIME;
   G.shake = 8;
@@ -1830,7 +1316,7 @@ function hitWeed(o){
   noise(.24, .24); tone(170, .13, "square", .07);
 }
 
-/* Redd blowing a hazard apart on contact */
+/* Hazard debris, also used when a seeker clears the road. */
 function smashFx(x, y, r, tint, whose){
   const car = CARS[whose || G.car];
   for(let i=0;i<20;i++){

@@ -11,10 +11,7 @@
    hazard arriving rather than a hazard arrived. */
 function laneRisk(R, far, at){
   const D = diff();
-  /* Petals blind a person; for a bot we take the same information away, so it
-     misjudges the road exactly as you would with a cluttered screen. */
-  const blind = R.clutter > 0 ? lerp(0.30, 0.06, clutterK(R.clutterLv)) : 1;
-  const look = (far ? 360 + D.look : 360)*blind;
+  const look = far ? 360 + D.look : 360;
   /* Where the road will have carried everything by then. The car's own drift
      goes in too - a bot sliding backwards through the field meets a hazard
      sooner than one pulling away from it. */
@@ -24,7 +21,6 @@ function laneRisk(R, far, at){
   for(let i=0;i<G.traps.length;i++){
     const o = G.traps[i];
     if(o.kind === "meteor" && o.phase !== 0) continue;
-    if(R.clutter > 0 && ((o.nm >> 3) % 2) === 0) continue;   /* misses half of them */
     const ahead = (R.y + roll) - (o.y + (t > 0 ? G.speed*t : 0));
     if(ahead < -40 || ahead > look) continue;
     risk[clamp(Math.floor((o.x - roadX)/laneW), 0, 2)] = 1;
@@ -89,13 +85,9 @@ function fieldView(self){
       touch:!(me ? noContact("me") : noContact(obj)),
       air:me ? airborne() : obj.airT > 0,
       ultOn:!!o.ultOn, ult:o.ultOn ? 1 : (o.ult || 0),
-      power:CARS[me ? G.car : obj.car].power,
       slow:me ? G.slowT : obj.slow,
-      shock:me ? G.shockT : obj.shock,
-      ordered:me ? G.orderedT : obj.ordered,
       slip:me ? G.slipT : obj.slip,
       blind:me ? G.blind : obj.blind,
-      clutter:me ? G.bloomT : obj.clutter,
       item:o.item || null
     });
   };
@@ -112,14 +104,10 @@ function fieldView(self){
 function softness(a){
   if(!a || a.out || a.safe || !a.touch) return 0;
   let v = 0;
-  if(a.shock > 0)   v += 1.05;                 /* stopped dead */
-  if(a.ordered > 0) v += 0.85;                 /* no controls at all */
   if(a.slip > 0)    v += 0.50;                 /* its steering is backwards */
   if(a.slow > 0)    v += 0.40;
-  if(a.clutter > 0) v += 0.35;                 /* it cannot see the road */
   if(a.blind > 0)   v += 0.30;
   if(a.lane === 0 || a.lane === 2) v += 0.55;  /* a barrier to be put into */
-  if(!a.ultOn && a.ult < 0.5) v += 0.18;       /* nothing to answer with */
   return clamp(v/2.3, 0, 1);
 }
 
@@ -191,7 +179,7 @@ function botSense(R){
   s.opts = opts;
   s.clean = opts.filter(function(l){
     if(s.now[l] || carAt(l, R.y, R)) return false;
-    return !(R.clutter > 0 && Math.random() < lerp(0.35, 0.80, clutterK(R.clutterLv)));
+    return true;
   });
   s.taken = opts.filter(function(l){ return !s.now[l] && carAt(l, R.y, R); });
   s.boxed = s.clean.length === 0;
@@ -218,8 +206,6 @@ function botTarget(R, s){
     if(gap > 0) v *= 1.35;                           /* it is costing you a place now */
     else v *= 0.85 + 0.55*threatOf(R, a, s.mine);    /* it is about to take one */
     v *= 0.40 + softness(a)*1.15;                    /* hit what can actually be hit */
-    if(a.ultOn) v *= 0.18;                           /* an ultimate wins that exchange */
-    else if(a.ult >= 1) v *= 1.35;                   /* take it off them first */
     if(R.hurtBy === a.who && R.hurtT > 0) v *= 1.3 + M.spite*0.5;
     v *= 0.55 + M.spite*0.9;
     v *= 0.25 + D.hunt;
@@ -246,8 +232,8 @@ function laneScore(R, l, s){
   v += clamp(clear, 0, 900)/900*(10 + D.skill*26);
   /* A bubble in that lane is a reason to be in it. Read the same way a person
      reads it - only the ones close enough to still be reachable, and only by
-     drivers whose screen is not full of petals. */
-  if(R.clutter <= 0){
+     drivers whose screen is not obscured by water. */
+  if(R.blind <= 0){
     for(let i=0;i<G.boxes.length;i++){
       const row = G.boxes[i];
       if(row.gone & (1 << l)) continue;
@@ -264,81 +250,24 @@ function laneScore(R, l, s){
   return v;
 }
 
-/* ---- what an ultimate is worth right now ----
-   Every car's ultimate does a different job, so every car reads a different
-   road. None of this changes what the ultimate does or how fast the meter
-   fills - it is the judgement of when to spend it, which is the only thing a
-   difficulty is allowed to buy. */
+/* Value the opportunity to gain distance with the shared speed boost. */
 function botUltValue(R, s){
-  const p = CARS[R.car].power;
-  const D = s.D, M = s.M;
-  let v = 0, ahead = 0, near = 0, behind = 0, reach = 0, wreck = 0;
-  for(let i=0;i<s.all.length;i++){
-    const a = s.all[i];
-    if(a.out) continue;
-    const gy = R.y - a.y;
-    if(Math.abs(gy) < 640) near++;
-    if(gy > 0 && gy < 640) ahead++;
-    if(gy < 0 && gy > -420) behind++;
-    if(gy > 0 && gy < SIREN_RANGE && !a.safe && a.touch) reach++;
-    if(!a.safe && a.touch && Math.abs(a.lane - R.lane) <= 1 && gy > -carH && gy < 340) wreck++;
-  }
-  if(p === "burn"){
-    /* Redd: it writes off whatever it touches, traps included. Worth pressing
-       when there is something in front of it to touch. */
-    v += clamp(wreck, 0, 3)*0.42;
-    if(s.now[R.lane] || s.soon[R.lane]) v += 0.22;
-  } else if(p === "phase"){
-    /* Phantom: nothing on the road reaches it. Worth pressing when something
-       is about to - a seeker locked on, a lane with no way out, a wall of
-       cars to drive straight through. */
-    if(s.seeker) v += 1.1;
-    if(s.now[R.lane] && s.boxed) v += 0.85;
-    else if(s.boxed) v += 0.4;
-    v += clamp(ahead, 0, 3)*0.16;
-    if(s.threatClose) v += 0.3;
-  } else if(p === "storm"){
-    /* Bolt: three orbs and they only ever go up the road, so it is worth
-       exactly as much as there is company in front of it. */
-    let n = 0;
-    for(let i=0;i<s.all.length;i++){
-      const a = s.all[i];
-      if(a.out || a.safe || !a.touch) continue;
-      if(R.y - a.y > 0) n++;
-    }
-    v += clamp(n, 0, 3)*0.36;
-    if(n >= 2) v += 0.22;
-  } else if(p === "freeze"){
-    /* Timestamp: the world halves and it does not, so it gains on everybody
-       at once - and on nobody at all if it is already clear out in front. */
-    v += clamp(near, 0, 5)*0.16;
-    if(s.place > 1) v += 0.3;
-    if(s.tight) v += 0.2;
-  } else if(p === "bloom"){
-    /* Rose: everyone else loses the screen, which is worth what the company
-       is worth. */
-    v += clamp(near, 0, 5)*0.15;
-    if(behind) v += 0.2;
-    if(s.tight) v += 0.25;
-  } else if(p === "siren"){
-    /* Siren: clears the road in front of it and wipes whatever is stuck to
-       it, so it answers a bad state as readily as it answers traffic. */
-    v += clamp(reach, 0, 3)*0.4;
-    if(R.slow > 0 || R.slip > 0 || R.chrono > 0 || R.clutter > 0) v += 0.5;
-    if(R.ordered > 0 || R.shock > 0) v += 0.35;
-    if(s.seeker) v += 0.2;
-  }
-  /* and every one of them is also five seconds of doubled pace */
-  if(s.losing) v += 0.3;
-  if(s.now[R.lane]) v += 0.12;
-  return v;
+  let value = 0.3;
+  if(s.losing || s.place > 1) value += 0.3;
+  if(s.tight) value += 0.15;
+  if(!s.now[R.lane] && !s.soon[R.lane]) value += 0.4;
+  if(s.frontGap > carH*4) value += 0.25;
+  else if(s.frontGap < carH*2) value -= 0.4;
+  if(s.now[R.lane] || s.boxed) value -= 0.35;
+  if(R.slow > 0 || R.brakeOn) value -= 0.3;
+  return value;
 }
 
 /* Press it, hold it, or leave it. Judgement only: the meter fills off the
    same clock the player's fills off at every setting. */
 function botUltNow(R, s, dt){
   if(R.ultOn || R.ult < 1) return false;
-  if(R.shock > 0 || R.ordered > 0 || R.dead > 0 || finishedCar(R)) return false;
+  if(R.dead > 0 || finishedCar(R)) return false;
   const D = s.D, M = s.M;
   R.ultHeld += dt;
   if(D.judge < 0.2){
@@ -373,7 +302,7 @@ function botItemWorth(R, s){
     if(s.frontGap > carH*4) v += 0.3;
     if(s.losing) v += 0.25;
     if(R.canT > 0 || R.ultOn) v -= 0.9;              /* never stack it on itself */
-    if(R.slow > 0 || R.shock > 0) v -= 0.3;
+    if(R.slow > 0) v -= 0.3;
     if(s.front && s.frontGap < carH*2) v -= 0.35;    /* nowhere to put it */
     return v;
   }
@@ -408,7 +337,7 @@ function botItemWorth(R, s){
 }
 function botItemNow(R, s, dt){
   if(!R.item) return false;
-  if(R.shock > 0 || R.ordered > 0 || R.dead > 0 || finishedCar(R)) return false;
+  if(R.dead > 0 || finishedCar(R)) return false;
   const D = s.D, M = s.M;
   R.itemHold += dt;
   if(D.judge < 0.2){
