@@ -175,7 +175,7 @@ function startRace(){
   curTrackKey = TRACKS.city.key;
   $("#trackName").textContent = t(curTrackKey);
   G.charge = 1; G.boosting = false; G.keyBoost = false; G.ptrBoost = false;
-  G.traffic = []; G.shake = 0; G.relGap = 0; G.nextGap = 430;
+  G.shake = 0;
   G.traps = []; G.fx = []; G.trapGap = 0; G.nextTrap = 620;
   G.tier = 0; G.speedT = SPEED_SECONDS; G.blind = 0; G.blindPts = [];
   G.dead = 0; G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
@@ -194,7 +194,6 @@ function startRace(){
   G.raceDone = false;
   G.tracksLeft = -1;
   $("#ovTitle").textContent = t("over");
-  $("#ovLead").textContent = t("overLead");
   spawnRivals();
   seedWorld();
   paintHUD(true);
@@ -267,27 +266,6 @@ function leave(){
   $("#count").classList.remove("on");
   gateFocus();
   show("home");
-}
-
-function crash(){
-  if(G.state !== "running") return;
-  G.state = "over";
-  G.shake = 16;
-  engineStop();
-  noise(.5, .5);
-  tone(120, .4, "sawtooth", .16);
-  flash(.85, 260);
-  const m = Math.floor(G.meters);
-  const isBest = m > best;
-  if(isBest){ best = m; store.set("seren.best", best); }
-  paintBest();
-  later(function(){
-    $("#ovDist").textContent = m;
-    $("#ovBest").textContent = best;
-    $("#newBest").classList.toggle("on", isBest);
-    $("#overPanel").classList.add("on");
-    gateFocus();
-  }, 620);
 }
 
 function flash(a, ms){
@@ -486,9 +464,8 @@ function update(dt){
        can only ever slow you, so finishing never hands speed back - and the
        last few pixels are dropped so the car settles instead of creeping.
 
-       This is checked before the "over" branch because the run-out is the
-       point: "over" is also how a wreck ends, and that one does stop where it
-       stands. */
+       Check finish run-out before the terminal-state braking branch so
+       every finisher still reaches its parking mark. */
     const remPx = Math.max(0, parkMeters(G.finished) - G.meters)/0.075;
     if(remPx*PARK_EASE < 8){
       /* An eased approach never quite arrives, and the last of it is below the
@@ -629,7 +606,7 @@ function update(dt){
   updateMissiles(dt, d);
   updateTraps(dt, d, st);
   if(st === "running" && G.dead <= 0){
-    const inFront = carAt(G.lane, playerY, "me");
+    const inFront = rearContact("me");
     if(inFront && inFront.y < playerY) rearEnd("me", inFront);
   }
   updateRivals(dt, st);
@@ -642,34 +619,6 @@ function update(dt){
       G.traps = G.traps.filter(function(o){ return o.b === G.biome; });
       curTrackKey = TRACKS[G.biome].key;
       $("#trackName").textContent = t(curTrackKey);
-    }
-  }
-
-  /* traffic */
-  for(let i=G.traffic.length-1;i>=0;i--){
-    const t = G.traffic[i];
-    t.y += (G.speed - t.spd)*dt;
-    t.x = lerp(t.x, laneCX(t.lane), 1 - Math.pow(0.0002, dt));
-    if(t.y > VW_BOT+180){ G.traffic.splice(i,1); continue; }
-    if(!t.passed && t.y > playerY + carH*0.5){
-      t.passed = true;
-      if(st === "running" && Math.abs(t.x - G.x) < laneW*1.25){ G.meters += 4; tone(1180, .04, "sine", .05); }
-    }
-    if(st === "running" &&
-       Math.abs(t.x - G.x) < (carW + t.w)*0.42 &&
-       Math.abs(t.y - playerY) < (carH + t.h)*0.44) crash();
-  }
-
-  if(st === "running" && TRAFFIC_ENABLED){
-    breakWalls();
-    /* pace spawns by how fast we are closing on traffic, so the gap the
-       player actually sees stays readable at every speed */
-    G.relGap += Math.max(70, G.speed - 215)*dt;
-    if(G.relGap >= G.nextGap){
-      G.relGap = 0;
-      spawnWave();
-      const ramp = clamp(G.tier/MAX_TIER, 0, 1);
-      G.nextGap = lerp(372, 268, ramp) * rand(0.92, 1.34);
     }
   }
 
@@ -793,7 +742,7 @@ function updateRival(R, dt, st){
   R.abs = lerp(R.abs, want, 1 - Math.pow(0.001, dt));     /* same throttle response as you */
   if(Math.abs(R.abs - want) < 1.5) R.abs = want;
 
-  const ahead = carAt(R.lane, R.y, R);
+  const ahead = rearContact(R);
   if(ahead && ahead.y < R.y) rearEnd(R, ahead);        /* it runs into their back */
   R.y += (G.speed - R.abs)*dt;
   R.y = clamp(R.y, -30000, H + 30000);
@@ -819,7 +768,7 @@ function updateRival(R, dt, st){
 
   /* hazards, on exactly the terms the player gets them */
   if(!invulnerableCar(R) && !finishedCar(R)){
-    const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
+    const rc = carHit(R);
     const bit = 2 << G.rivals.indexOf(R);
     for(let i=G.traps.length-1;i>=0;i--){
       const o = G.traps[i];

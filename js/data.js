@@ -6,9 +6,16 @@
    some of these. Nothing here has behaviour of its own. */
 
 const CARS = {
-  redd: {
-    key:"redd", style:"gt", accent:"#FF4A50",
-    body:"#E21B22", dark:"#101116", glass:"#3B404A",
+  flann: {
+    key:"flann", style:"sprite", sprite:"v_flann.PNG", accent:"#FF4A50",
+    /* Normalized source pixels: visible body bounds (173,72)-(851,1409).
+       Each anchor sits just inside one paired rear exhaust cluster. Keep
+       the full PNG when drawing; bounds only control its scale and centre. */
+    spriteBounds:[173/1024, 72/1536, 678/1024, 1337/1536],
+    exhaust:[[355/1024, 1377/1536], [669/1024, 1377/1536]],
+    /* Inset body in logical car units: excludes padding, tires and exhaust. */
+    hitShape:[[-0.22,-0.42],[0.22,-0.42],[0.36,-0.30],[0.38,0.30],
+              [0.26,0.42],[-0.26,0.42],[-0.38,0.30],[-0.36,-0.30]],
     flame:["#FF7A3A","#FFD9A0"]
   },
   phantom: {
@@ -37,7 +44,8 @@ const CARS = {
     flame:["#4D8BFF","#FFFFFF"]
   }
 };
-const CAR_IDS = ["redd","phantom","bolt","timestamp","rose","siren"];
+const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
+const CAR_IDS = ["flann","phantom","bolt","timestamp","rose","siren"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -87,16 +95,16 @@ const DIFF_IDS = ["easy","medium","hard","brutal"];
 /* ---------------- temperament ------------------------------------
    Difficulty says how well a driver thinks. Temperament says what it thinks
    about first, and it is what stops five bots on the same setting from being
-   the same bot five times. Each car has a leaning that suits it - Redd is a
+   the same bot five times. Each car has a leaning that suits it - Flann is a
    brawler, Timestamp sits on its ultimate waiting for the moment - and every
-   race jitters it, so the Redd you raced last time is not quite this one.
+   race jitters it, so the Flann you raced last time is not quite this one.
 
-   - nerve     what it will risk: tight gaps, traffic, a lane somebody else wants
+   - nerve     what it will risk: tight gaps, hazards, a lane somebody else wants
    - spite     how much it would rather hurt somebody than simply drive faster
    - patience  how long it will sit on an item or an ultimate for a better use
    - guard     how hard it defends the place it is holding */
 const TEMPERS = {
-  redd:      { nerve:0.74, spite:0.86, patience:0.22, guard:0.42 },
+  flann:      { nerve:0.74, spite:0.86, patience:0.22, guard:0.42 },
   phantom:   { nerve:0.88, spite:0.46, patience:0.44, guard:0.30 },
   bolt:      { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
   timestamp: { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
@@ -104,7 +112,7 @@ const TEMPERS = {
   siren:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
 };
 function makeTemper(car){
-  const b = TEMPERS[car] || TEMPERS.redd;
+  const b = TEMPERS[car] || TEMPERS.flann;
   const j = function(v){ return clamp(v + rand(-0.17, 0.17), 0.04, 0.98); };
   return { nerve:j(b.nerve), spite:j(b.spite), patience:j(b.patience),
            guard:j(b.guard) };
@@ -302,12 +310,3 @@ const FINISH_STRETCH = 900;               /* metres of the last track before the
 const PARK_BASE = 0.60;                   /* car heights past the line for the last car in */
 const PARK_STEP = 0.44;                   /* car heights between one place and the next */
 const PARK_EASE = 3.9;                    /* how hard the roll-out closes on the mark */
-
-const TRAFFIC_PAINT = [
-  {body:"#E9EAEE", dark:"#191B1F", glass:"#3E434B"},
-  {body:"#8A9099", dark:"#15171A", glass:"#333840"},
-  {body:"#3D444D", dark:"#101215", glass:"#5A626C"},
-  {body:"#D8A03A", dark:"#191B1F", glass:"#3E434B"},
-  {body:"#4F7F72", dark:"#101215", glass:"#39434A"},
-  {body:"#B9BEC6", dark:"#15171A", glass:"#39404A"}
-];

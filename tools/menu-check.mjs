@@ -108,8 +108,8 @@ for(const count of [2,3,4]){
   for(const rule of ['traps','bubbles','boost','ults']){
     $('[data-rule="'+rule+'"]').click();assert.equal(run('G.rules.'+rule),false);assert.equal($('[data-rule="'+rule+'"]').getAttribute('aria-checked'),'false');
   }
-  click('btnCustomGo');click('carRedd');
-  test(count+' turn-taking, taken cars, and Back undo',()=>{assert.ok($('#carRedd').disabled);assert.equal(run('pickTurn'),1);click('btnCloseCars');assert.equal(run('pickTurn'),0);assert.equal($('#carRedd').disabled,false);});
+  click('btnCustomGo');click('carFlann');
+  test(count+' turn-taking, taken cars, and Back undo',()=>{assert.ok($('#carFlann').disabled);assert.equal(run('pickTurn'),1);click('btnCloseCars');assert.equal(run('pickTurn'),0);assert.equal($('#carFlann').disabled,false);});
   click('btnCloseCars');click('btnCloseCustom');click('styleStandard');
   test(count+' Standard clears custom rules',()=>{assert.equal(run('G.custom'),false);assert.ok(run('G.rules.traps && G.rules.bubbles && G.rules.boost && G.rules.ults'));});
   click('diffMedium');
@@ -127,7 +127,7 @@ for(const count of [2,3,4]){
 click('btnStart');click('modeEndless');click('carRandom');
 test('Endless random pick starts race',()=>{assert.equal(run('G.mode'),'endless');assert.equal(run('G.state'),'countdown');});
 run('pause(true)');click('btnQuit');
-click('btnStart');click('modeBots');click('diffHard');click('carRedd');
+click('btnStart');click('modeBots');click('diffHard');click('carFlann');
 run('G.finished = 1; finishRace()');f.timers.at(-1)();
 test('results isolate focus and replay returns to race',()=>{assert.equal(run('G.state'),'over');assert.ok($('.hud').inert);assert.equal(f.document.activeElement.id,'btnAgain');click('btnAgain');assert.equal(run('G.state'),'countdown');assert.equal($('.hud').inert,false);});
 run('pause(true)');click('btnQuit');click('btnStart');

@@ -115,7 +115,7 @@ Roughly grouped:
 | Your car | `lane`, `x`, `tilt`, `speed`, `meters`, `charge`, `boosting`, `dead`, `invuln` |
 | Your ultimate | `ult`, `ultOn`, `ultT`, `ultMax` |
 | Conditions on you | `slowT`, `blind`, `slipT`, `canT`, `shuntT`, `invuln` |
-| The world | `biome`, `next`, `seam`, `build`, `props`, `walks`, `traps`, `fx`, `traffic` |
+| The world | `biome`, `next`, `seam`, `build`, `props`, `walks`, `traps`, `fx` |
 | Objects in play | `boxes` (bubble rows), `slicks`, `missiles` |
 | The field | `rivals`, `humans`, `picks`, `results`, `finished`, `finishAt`, `tracksLeft` |
 | Local play | `local`, `players`, `padIds`, `seat`, `pk`, `custom`, `rules` |
@@ -195,7 +195,7 @@ a periodic road pattern at or above the top of the current view.
 `store` (localStorage with a memory fallback), `$`, `clamp`, `lerp`, `rand`,
 `randi`, `withA` (hex → rgba), and the capability flags: `DESKTOP`, `LANDSCAPE`,
 and `motionReduced()` over `MOTION_QUERY` and `motionPref`. Plus `SPLASH_IMAGE`,
-`SPLASH_MS` and `TRAFFIC_ENABLED`.
+`SPLASH_MS`.
 
 `motionReduced()` is the single answer to "should this move?" — it resolves the
 player's `system` / `reduced` / `full` choice (written here by `settings.js`)
@@ -357,9 +357,21 @@ state; the short forward shove a rear-end hands its victim is `SHUNT_TIME` /
 `SHUNT_BOOST` and shows as Boosted. `startUlt`, `tickUlt` and `endUlt` manage one
 fixed 15-second speed multiplier for every driver.
 
+Body contact is centralized in `carHit(who)`. Flann uses an inset eight-point
+`hitShape` in logical car units; other cars retain their existing inset body
+rectangle. Both rotate with the rendered tilt. Hitboxes never read image alpha,
+image readiness, camera offsets or DPR. `nearestOnCar()` tests the polygon for
+round hazards, pickups and seekers. `rearContact()` requires actual body overlap;
+`carAt()` deliberately projects into a target lane for the barge mechanic.
+
+Puddles share their quadratic control points with the renderer; contact flattens
+the curves with at most 0.15 logical pixels of chord error. Oil contact uses the
+same 30-segment rotated outline as the drawing, without expanding it to a box.
+Protection gates and the consequences of contact are unchanged.
+
 ### `race.js`
 The race: world seeding and track handover, the grid (`spawnRivals`), the
-lifecycle (`startRace`, countdown, `pause`, `leave`, `crash`), the finish
+lifecycle (`startRace`, countdown, `pause`, `leave`), the finish
 (`checkFinish`, `finishRace`, the parking staircase), `update()`, `updateRival()`
 and the frame loop.
 
@@ -370,6 +382,23 @@ hazards, particles, and the Conditions that sit over them.
 **Draw order here is behaviour** — it decides what covers what. `renderView(dy)`
 is the order for one view; `render()` is the loop over views, with the clip and
 translate per column.
+
+Flann uses the exact `v_flann.PNG` through the `sprite` branch of `drawCar()`;
+its image is loaded once into `CAR_SPRITES`. On load, the shared menu canvases
+repaint. The other five racers retain their procedural Canvas models. Showroom,
+garage, player, bot and local columns all use this same dispatch.
+
+`CARS.flann.spriteBounds` describes the visible body within the padded PNG.
+`drawSpriteCar()` uses the image's natural dimensions and one uniform scale,
+centres the visible bounds on the logical car position, and draws the full PNG.
+The logical `carW`/`carH` dimensions are unchanged. The local draw order is shadow, exhaust,
+image; race markers and Conditions remain outside the model.
+
+`CARS.flann.exhaust` contains two normalized anchors measured at source pixels
+(355, 1377) and (669, 1377), the centres of the paired rear tailpipes. They share
+the image's transform, including tilt. Smooth sine pulses change plume dimensions
+without moving the roots; reduced motion uses a static plume. Only the existing
+boost/ultimate visual flag enables them, so previews never have exhaust.
 
 This file reads game state and never changes it.
 
@@ -461,7 +490,9 @@ code reaches for actually exists.
 ### A car
 
 1. `CARS` in `data.js` — an entry with `key`, `style`, `accent`, `body`, `dark`,
-   `glass`, optional `trim`/`pip` and `flame` colors.
+   `glass`, optional `trim`/`pip` and `flame` colors for a procedural model.
+   An image model instead uses `style:"sprite"`, `sprite`, normalized
+   `spriteBounds` and `exhaust`; keep `accent` and `flame` for shared effects.
 2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
 3. `render.js` — a body drawing function and a `drawCar` style branch.
 4. `i18n.js` — its name and `<id>Ult` describing the shared 15-second double-pace

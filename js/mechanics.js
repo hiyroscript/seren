@@ -103,14 +103,29 @@ function racers(){
 }
 function carAt(lane, y, skip){
   if(noContact(skip)) return null;             /* out of reach: meets nobody */
+  const box = carHit(skip, laneCX(lane), y, 0);
   const all = racers();
   for(let i=0;i<all.length;i++){
     const a = all[i];
     if(a.out || a.obj === skip || (skip === "me" && a.me)) continue;
     if(noContact(a.me ? "me" : a.obj)) continue;                /* and nobody meets it */
-    if(a.lane === lane && Math.abs(a.y - y) < carH*0.95) return a;
+    if(a.lane === lane && hitPolygonsOverlap(box.points, carHit(a.me ? "me" : a.obj).points)) return a;
   }
   return null;
+}
+
+/* Rear contact uses the actual moving bodies, never the target lane labels.
+   Lane-barging above deliberately projects into the requested lane. */
+function rearContact(who){
+  if(noContact(who)) return null;
+  const box=carHit(who), all=racers();
+  let front=null;
+  for(let i=0;i<all.length;i++){
+    const a=all[i], other=a.me ? "me" : a.obj;
+    if(other === who || noContact(other) || a.y >= box.y) continue;
+    if(hitPolygonsOverlap(box.points,carHit(other).points) && (!front || a.y>front.y)) front=a;
+  }
+  return front;
 }
 
 /* Rear contact shunts the front car and slows the following car. */
@@ -302,65 +317,6 @@ function wreckRival(R, by, force){
 }
 function destroyRival(){ wreckRival(G.rivals[0]); }
 
-/* Only worth shaking the screen and making a noise for something the player
-   can actually see happen. */
-function onScreen(y){ return y > VW_TOP - carH*2 && y < VW_BOT + carH*2; }
-
-function spawnWave(){
-  const free = [];
-  for(let l=0;l<3;l++){
-    let ok = true;
-    for(let i=0;i<G.traffic.length;i++){
-      const t = G.traffic[i];
-      if(t.lane === l && t.y < carH*2.6){ ok = false; break; }
-    }
-    if(ok) free.push(l);
-  }
-  if(free.length < 2) return;                       /* never seal the road */
-  const ramp = clamp(G.tier/MAX_TIER, 0, 1);
-  let count = (free.length === 3 && Math.random() < 0.35 + ramp*0.35) ? 2 : 1;
-  count = Math.min(count, free.length - 1);
-  for(let n=0;n<count;n++){
-    const l = free.splice(randi(0, free.length-1), 1)[0];
-    const p = TRAFFIC_PAINT[randi(0, TRAFFIC_PAINT.length-1)];
-    const w = carW*rand(0.94, 1.06);
-    G.traffic.push({
-      lane:l, x:laneCX(l), y:-carH*rand(1.2, 2.2),
-      w:w, h:w*rand(1.8, 2.35),
-      spd:rand(155, 285), paint:p, passed:false
-    });
-  }
-}
-
-/* Traffic drifts at different speeds, so cars spawned apart can still line
-   up into an unpassable row. This finds those rows and opens them. */
-function breakWalls(){
-  const n = G.traffic.length;
-  if(n < 3) return;
-  const margin = carH*0.55;
-  for(let i=0;i<n;i++){
-    const a = G.traffic[i];
-    if(a.y > playerY - carH*0.6) continue;
-    const row = {}; row[a.lane] = a;
-    for(let j=0;j<n;j++){
-      if(j === i) continue;
-      const b = G.traffic[j];
-      if(Math.abs(b.y - a.y) < (a.h + b.h)/2 + margin) row[b.lane] = b;
-    }
-    const keys = Object.keys(row);
-    if(keys.length < 3) continue;
-    let off = null;
-    for(let k=0;k<keys.length;k++){
-      const c = row[keys[k]];
-      if(c.y < -c.h*0.6 && (!off || c.y < off.y)) off = c;
-    }
-    if(off){ G.traffic.splice(G.traffic.indexOf(off), 1); return; }
-    const mid = row[1] || row[keys[0]];
-    mid.spd = Math.min(G.speed*0.94, mid.spd + 320);
-    return;
-  }
-}
-
 /* ================================================================
    TRAPS  -  one hazard per track, placed at random
    ================================================================ */
@@ -501,7 +457,7 @@ function updateBubbles(dt, d, st){
       for(let n=0;n<G.rivals.length;n++){
         const R = G.rivals[n];
         if(R.dead > 0 || R.finished !== null) continue;
-        const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
+        const rc = carHit(R);
         const p2 = nearestOnCar(rc, bx, by);
         const ex = p2.x - bx, ey = p2.y - by;
         if(ex*ex + ey*ey <= br2){
@@ -575,7 +531,7 @@ function useItem(who){
        is clear. Rotation, the ragged edge and the shape all push the real reach
        past ry, so ask the predicate rather than guess a margin - this stays
        right even if the families are retuned later. */
-    const own = { x:x, y:y, hw:carW*0.40, hh:carH*0.42 };
+    const own = carHit(who);
     for(let g=0; g<16 && slickHits(o, own); g++) o.y += 5;
     G.slicks.push(o);
     tone(150, .25, "sawtooth", .07);
@@ -707,7 +663,7 @@ function updateMissiles(dt, d){
       /* Invulnerability, a wreck and the finish flag all stop the seeker;
          speed boosts do not. */
       if(noContact(a.me ? "me" : a.obj)) continue;
-      const box = { x:a.me ? G.x : a.obj.x, y:a.y, hw:carW*0.40, hh:carH*0.42 };
+      const box = carHit(a.me ? "me" : a.obj);
       let px = 0, py = 0, touch = false;
       for(let s=0;s<spine.length && !touch;s++){
         const q2 = nearestOnCar(box, spine[s].x, spine[s].y);
@@ -761,7 +717,7 @@ function updateSlicks(dt, d, st){
     for(let n=0;n<G.rivals.length;n++){
       const R = G.rivals[n];
       if(noContact(R)) continue;
-      const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
+      const rc = carHit(R);
       if(slickHits(o, rc)){
         if(!refusesDebuffs(R)){ R.slip = SLIP_TIME; botBlame(R, o.owner); }
         slickSplash(o);
@@ -782,24 +738,18 @@ function slickFactor(o, ang){
   return lerp(j0, j1, tt)*0.95;
 }
 
-/* Turn the car into the slick's frame, then squash that frame until the slick
-   is a unit circle - then the nearest-point test is exact against the ragged
-   outline rather than against a circle that never matched it. The rotated car
-   is taken as its bounding box, which is a shade generous at these angles. */
-function slickHits(o, box){
-  const ca = Math.cos(-o.rot), sa = Math.sin(-o.rot);
-  const dx = box.x - o.x, dy = box.y - o.y;
-  const lx = dx*ca - dy*sa, ly = dx*sa + dy*ca;
-  const hw = Math.abs(box.hw*ca) + Math.abs(box.hh*sa);
-  const hh = Math.abs(box.hw*sa) + Math.abs(box.hh*ca);
-  const sx = 1/o.rx, sy = 1/o.ry;
-  const cx = lx*sx, cy = ly*sy, bw = hw*sx, bh = hh*sy;
-  const nx = clamp(0, cx - bw, cx + bw);
-  const ny = clamp(0, cy - bh, cy + bh);
-  const d = Math.sqrt(nx*nx + ny*ny);
-  if(d === 0) return true;                       /* centre inside the car */
-  return d <= slickFactor(o, Math.atan2(ny, nx));
+/* The exact same 30-segment outline the renderer fills, including rotation.
+   No expanded axis-aligned box that can catch empty corners. */
+function slickOutline(o,k){
+  const pts=[],ca=Math.cos(o.rot),sa=Math.sin(o.rot);
+  for(let i=0;i<=30;i++){
+    const a=i/30*6.2832,f=slickFactor(o,a)*k;
+    const x=Math.cos(a)*o.rx*f,y=Math.sin(a)*o.ry*f;
+    pts.push({x:o.x+x*ca-y*sa,y:o.y+x*sa+y*ca});
+  }
+  return pts;
 }
+function slickHits(o,box){ return hitPolygonsOverlap(box.points,slickOutline(o,1)); }
 
 /* it leaves with whoever drove into it, so throw the oil up as it goes -
    otherwise a slick vanishing in one frame just reads as a glitch */
@@ -847,34 +797,82 @@ function spawnTrap(){
   }
 }
 
-/* --- collision. Tight shapes, tested against the car body only, so the
-       wheels and the spoiler overhang never trigger a false hit. --- */
-function carHit(){
-  return { x:G.x, y:playerY, hw:carW*0.40, hh:carH*0.42 };
+/* --- Body hitboxes: world coordinates, independent of camera/DPR and PNG
+       loading. Flann's inset hull follows its tapered body; the other cars
+       keep their existing body dimensions. All hulls rotate with the car. */
+function carHit(who, xAt, yAt, tiltAt){
+  const me = who === undefined || who === "me", o = me ? G : who;
+  const x = xAt === undefined ? o.x : xAt;
+  const y = yAt === undefined ? (me ? playerY : o.y) : yAt;
+  const tilt = tiltAt === undefined ? (o.tilt || 0) : tiltAt;
+  const shape = CARS[o.car].hitShape || CAR_HIT_RECT;
+  const ca = Math.cos(tilt), sa = Math.sin(tilt);
+  const points = shape.map(function(p){
+    const px = p[0]*carW, py = p[1]*carH;
+    return { x:x + px*ca - py*sa, y:y + px*sa + py*ca };
+  });
+  return { x:x, y:y, points:points };
 }
-/* The drawn puddle is a jittered blob, not an ellipse. This reads the same
-   jitter back so the edge you can see is the edge that catches you. */
-function puddleFactor(p, ang){
-  const n = 11;
-  const a = ((ang % 6.2832) + 6.2832) % 6.2832;
-  const f = a/6.2832*n, i0 = Math.floor(f) % n, i1 = (i0 + 1) % n, tt = f - Math.floor(f);
-  const j0 = 0.68 + ((p.s*131.7 + i0*47.31) % 1)*0.56;
-  const j1 = 0.68 + ((p.s*131.7 + i1*47.31) % 1)*0.56;
-  return lerp(j0, j1, tt)*0.95;
+function nearestHitSegment(a, b, x, y){
+  const dx = b.x - a.x, dy = b.y - a.y, len2 = dx*dx + dy*dy;
+  const t = len2 ? clamp(((x-a.x)*dx + (y-a.y)*dy)/len2, 0, 1) : 0;
+  return { x:a.x + dx*t, y:a.y + dy*t };
 }
-/* The nearest point on the car to the puddle centre is NOT the nearest point
-   in ellipse space, so testing it there missed glancing hits. Squash both
-   shapes so the puddle becomes a unit circle, then the test is exact. */
+function insideHitPolygon(points, x, y){
+  let inside = false;
+  for(let i=0,j=points.length-1;i<points.length;j=i++){
+    const a = points[j], b = points[i];
+    const p = nearestHitSegment(a, b, x, y);
+    if((p.x-x)*(p.x-x) + (p.y-y)*(p.y-y) < 1e-12) return true;
+    if((a.y > y) !== (b.y > y) && x < (b.x-a.x)*(y-a.y)/(b.y-a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+function hitEdgesCross(a, b, c, d){
+  const cross = function(p,q,r){ return (q.x-p.x)*(r.y-p.y) - (q.y-p.y)*(r.x-p.x); };
+  const abC = cross(a,b,c), abD = cross(a,b,d), cdA = cross(c,d,a), cdB = cross(c,d,b);
+  if(Math.max(a.x,b.x) < Math.min(c.x,d.x) || Math.max(c.x,d.x) < Math.min(a.x,b.x) ||
+     Math.max(a.y,b.y) < Math.min(c.y,d.y) || Math.max(c.y,d.y) < Math.min(a.y,b.y)) return false;
+  return abC*abD <= 0 && cdA*cdB <= 0;
+}
+function hitPolygonsOverlap(a, b){
+  const bounds = function(pts){
+    return pts.reduce(function(r,p){
+      r[0]=Math.min(r[0],p.x);r[1]=Math.max(r[1],p.x);
+      r[2]=Math.min(r[2],p.y);r[3]=Math.max(r[3],p.y);return r;
+    },[Infinity,-Infinity,Infinity,-Infinity]);
+  };
+  const aa=bounds(a),bb=bounds(b);
+  if(aa[1]<bb[0] || bb[1]<aa[0] || aa[3]<bb[2] || bb[3]<aa[2]) return false;
+  if(insideHitPolygon(a,b[0].x,b[0].y) || insideHitPolygon(b,a[0].x,a[0].y)) return true;
+  for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){
+    if(hitEdgesCross(a[i],a[(i+1)%a.length],b[j],b[(j+1)%b.length])) return true;
+  }
+  return false;
+}
+/* Control points are shared with the drawn quadratic puddle, not an ellipse.
+   Subdivide each curve to a maximum chord error of 0.15 logical pixels. */
+function puddlePoints(o, k, yAt){
+  const pts=[], y = yAt === undefined ? o.y : yAt;
+  for(let i=0;i<11;i++){
+    const a=i/11*6.2832, j=0.68 + ((o.s*131.7 + i*47.31)%1)*0.56;
+    pts.push({x:o.x+Math.cos(a)*o.rx*j*k,y:y+Math.sin(a)*o.ry*j*k});
+  }
+  return pts;
+}
 function puddleHits(o, box, yAt){
-  const oy = yAt === undefined ? o.y : yAt;
-  const sx = 1/o.rx, sy = 1/o.ry;
-  const cx = (box.x - o.x)*sx, cy = (box.y - oy)*sy;   /* car relative to the puddle */
-  const hw = box.hw*sx, hh = box.hh*sy;
-  const nx = clamp(0, cx - hw, cx + hw);
-  const ny = clamp(0, cy - hh, cy + hh);
-  const d = Math.sqrt(nx*nx + ny*ny);
-  if(d === 0) return true;                       /* centre inside the car */
-  return d <= puddleFactor(o, Math.atan2(ny, nx));
+  const controls=puddlePoints(o,1,yAt), points=[], n=controls.length;
+  for(let i=0;i<n;i++){
+    const p=controls[(i+n-1)%n],q=controls[i],r=controls[(i+1)%n];
+    const a={x:(p.x+q.x)/2,y:(p.y+q.y)/2}, b={x:(q.x+r.x)/2,y:(q.y+r.y)/2};
+    const bend=Math.hypot(a.x-2*q.x+b.x,a.y-2*q.y+b.y);
+    const steps=Math.max(1,Math.ceil(Math.sqrt(bend/(4*0.15))));
+    for(let j=0;j<steps;j++){
+      const t=j/steps,u=1-t;
+      points.push({x:u*u*a.x+2*u*t*q.x+t*t*b.x,y:u*u*a.y+2*u*t*q.y+t*t*b.y});
+    }
+  }
+  return hitPolygonsOverlap(box.points,points);
 }
 /* the closest the hazard got to this car during the frame, not just where it ended */
 function sweptY(o, moved, cy){
@@ -905,7 +903,14 @@ function markPassed(o, box, bit){
 }
 
 function nearestOnCar(c, px, py){
-  return { x:clamp(px, c.x - c.hw, c.x + c.hw), y:clamp(py, c.y - c.hh, c.y + c.hh) };
+  if(insideHitPolygon(c.points,px,py)) return {x:px,y:py};
+  let nearest=null, best=Infinity;
+  for(let i=0;i<c.points.length;i++){
+    const p=nearestHitSegment(c.points[i],c.points[(i+1)%c.points.length],px,py);
+    const d=(p.x-px)*(p.x-px)+(p.y-py)*(p.y-py);
+    if(d<best){best=d;nearest=p;}
+  }
+  return nearest;
 }
 
 function updateTraps(dt, d, st){
@@ -987,7 +992,7 @@ function detonate(o, live){
   for(let n=0;n<G.rivals.length;n++){
     const R = G.rivals[n];
     if(safeCar(R)) continue;
-    const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
+    const rc = carHit(R);
     const p4 = nearestOnCar(rc, o.x, o.y);
     const rx = p4.x - o.x, ry = p4.y - o.y;
     if(rx*rx + ry*ry <= o.r*o.r) wreckRival(R);

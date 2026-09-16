@@ -236,17 +236,23 @@ In `js/local.js`:
 | --- | --- | --- | --- |
 | `SPLASH_MS` | `2600` | `core.js` | how long the splash stays up |
 | `SPLASH_IMAGE` | `""` | `core.js` | a data URI or a path to replace the built-in mark; empty keeps the mark |
-| `TRAFFIC_ENABLED` | `false` | `core.js` | civilian traffic. Currently off — see the note below |
 | `RAINBOW` | | `data.js` | the seven bands of the space track |
-| `TRAFFIC_PAINT` | | `data.js` | six paint schemes for civilian cars |
 
-### Traffic
+### Flann artwork
 
-`TRAFFIC_ENABLED` is `false`, which switches off `spawnWave` and `breakWalls` and
-leaves `G.traffic` empty. Two visible consequences: endless mode's description
-still mentions dense traffic, and `crash()` — the "You clipped traffic" race-over
-path — is unreachable, so an endless run only ends when you leave it. Flipping the
-flag to `true` brings the whole system back; nothing else needs to change.
+`CARS.flann.spriteBounds` fits the visible vehicle to the existing car box while
+preserving the PNG aspect ratio and padding. `exhaust` stores its two normalized
+source-image anchors. These are visual calibration only: never change `carW`,
+`carH`, collision rules or speed to tune artwork. Plumes pulse by about 7% in
+length and 5% in width; reduced motion disables that pulse.
+
+### Body hitboxes
+
+`CAR_HIT_RECT` retains the default body half-width 0.40 and half-height 0.42
+in logical car units. `CARS.flann.hitShape` tapers its inset body to exclude empty
+corners in the sprite. `carHit()` rotates both with the vehicle. Neither includes
+shadows, flames or PNG padding. These are gameplay shapes, independent of asset
+loading and display scaling; change them only when intentionally tuning contact.
 
 ### Unused constants
 

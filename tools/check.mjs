@@ -343,7 +343,6 @@ if (!CARS) warn("could not read CARS out of js/data.js");
 else {
   const carIds = Object.keys(CARS);
   const drawn = new Set([...(sources.render || "").matchAll(/p\.style === "(\w+)"/g)].map((m) => m[1]));
-  drawn.add("gt");                                   /* the else branch in drawCar */
   for (const id of carIds) {
     const c = CARS[id];
     if (!drawn.has(c.style)) fail(`car ${id} uses style "${c.style}" with no branch in drawCar`);
