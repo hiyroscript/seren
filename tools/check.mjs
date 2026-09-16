@@ -355,14 +355,78 @@ else {
   pass(`${carIds.length} cars: models, strings, buttons and ultimates all wired`);
 }
 
-const EFFECTS = objectLiteral(sources.data || "", "EFFECTS");
-if (EFFECTS && STR) {
-  for (const [id, e] of Object.entries(EFFECTS)) {
-    if (!STR[e.key]) fail(`effect ${id} has no label string`);
-    if (!STR[id + "Info"]) warn(`effect ${id} has no garage description (${id}Info)`);
+/* One CONDITIONS table, five entries, and every renderer reading it. The
+   order of the keys is the order badges stack in, so it is pinned here too. */
+const CONDITIONS = objectLiteral(sources.data || "", "CONDITIONS");
+const COND_PATHS = objectLiteral(sources.hud || "", "COND_PATHS");
+if (!CONDITIONS) fail("could not read CONDITIONS out of js/data.js");
+else {
+  const ids = Object.keys(CONDITIONS);
+  const want = ["invulnerable", "boosted", "slowed", "obscured", "skidded"];
+  ids.join() === want.join()
+    ? pass(`conditions are exactly ${want.join(", ")}, in priority order`)
+    : fail(`conditions are ${ids.join(", ")}, expected ${want.join(", ")}`);
+  for (const gone of ["launched", "winner", "immune", "cluttered", "slippery"]) {
+    if (CONDITIONS[gone]) fail(`condition "${gone}" still exists in CONDITIONS`);
   }
-  pass(`${Object.keys(EFFECTS).length} effects have labels`);
+  const buffs = ids.filter((id) => CONDITIONS[id].type === "buff");
+  const debuffs = ids.filter((id) => CONDITIONS[id].type === "debuff");
+  buffs.join() === "invulnerable,boosted"
+    ? pass("Buff holds Invulnerable and Boosted")
+    : fail(`Buff holds ${buffs.join(", ")}`);
+  debuffs.join() === "slowed,obscured,skidded"
+    ? pass("Debuff holds Slowed, Obscured and Skidded")
+    : fail(`Debuff holds ${debuffs.join(", ")}`);
+  const cols = new Set();
+  for (const [id, c] of Object.entries(CONDITIONS)) {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(c.col || "")) fail(`condition ${id} has no colour`);
+    if (cols.has(c.col)) fail(`condition ${id} shares its colour with another`);
+    cols.add(c.col);
+    if (!/^#[0-9A-Fa-f]{6}$/.test(c.ink || "")) fail(`condition ${id} has no icon ink`);
+    if (COND_PATHS && !COND_PATHS[c.icon]) fail(`condition ${id} has no icon artwork ("${c.icon}")`);
+    if (STR && !STR[c.key]) fail(`condition ${id} has no name string`);
+    if (STR && !STR[id + "Info"]) fail(`condition ${id} has no garage description (${id}Info)`);
+  }
+  for (const k of ["condBuff", "condDebuff", "tabConditions"]) {
+    if (STR && !STR[k]) fail(`the Conditions page has no ${k} string`);
+  }
+  if (COND_PATHS) pass(`${Object.keys(COND_PATHS).length} condition icons, all drawn from one path table`);
 }
+
+/* The airborne launch is gone, so nothing may quietly keep a piece of it -
+   not a constant, not a field, not a meter, not a control legend. */
+head("The launch is gone");
+const LAUNCH_BANNED = [
+  /\bAIR_[A-Z]/, /\bairborne\b/, /\bairMeter\b/, /\bairWind\b/, /\bairPow\b/,
+  /\bairT\b/, /\bairMax\b/, /\blaunchCD\b/, /\bbrakeOn\b/, /\bbrakeKey\b/,
+  /\bbrakePtr\b/, /\bbrakeSpent\b/, /\bbrakeHeld\b/, /\bpadBrake\b/,
+  /\bhumanBrake\b/, /\blaunchCar\b/, /\blaunchRival\b/, /\bbotAirWant\b/,
+  /\bkillLaunch\b/, /\bupdateLaunch\b/, /\bairHop\b/, /\brivalHop\b/,
+  /\bEFFECTS\b/, /\bscrubBad\b/, /\bimmuneScrub\b/, /\bIMMUNE_TIME\b/,
+  /\bLAUNCH_TIME\b/, /\bLAUNCH_BOOST\b/
+];
+let launchHits = 0;
+for (const n of ORDER) {
+  if (!sources[n]) continue;
+  const clean = strip(sources[n]);
+  for (const re of LAUNCH_BANNED) {
+    if (re.test(clean)) { fail(`js/${n}.js still references ${re.source}`); launchHits++; }
+  }
+}
+if (!launchHits) pass(`no launch state, constants or helpers in ${ORDER.length} source files`);
+
+const css = read("css/app.css");
+const DEAD_IDS = ["airWrap", "airFill", "airZone", "airMark", "airWind", "effList", "immuneTag"];
+const stillThere = DEAD_IDS.filter((id) => ids.has(id) || new RegExp("#" + id + "\\b").test(css));
+stillThere.length
+  ? stillThere.forEach((id) => fail(`#${id} is still in index.html or css/app.css`))
+  : pass("the launch meter, the effect pills and the immune tag are gone from the page");
+["condList", "boostWrap", "meterRail", "tabConditions"].forEach(function (id) {
+  ids.has(id) ? pass(`#${id} is in index.html`) : fail(`#${id} is missing from index.html`);
+});
+if (/data-i18n="k6"/.test(html) || /tabEffects/.test(html))
+  fail("index.html still advertises the launch control or the Effects tab");
+else pass("no launch control legend and no Effects tab");
 
 const ITEMS = objectLiteral(sources.data || "", "ITEMS");
 const RARITY = objectLiteral(sources.data || "", "RARITY");

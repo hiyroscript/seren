@@ -65,23 +65,20 @@ const G = {
   shake:0, timers:[], relGap:0, nextGap:420, swipeLock:0,
   biome:"city", next:null, seam:null, trackT:60, seamPts:[], seamBits:[],
   traps:[], fx:[], trapGap:0, nextTrap:600,
-  tier:0, speedT:30, blind:0, blindPts:[], dead:0, immune:0, slowT:0,
+  tier:0, speedT:30, blind:0, blindPts:[], dead:0, invuln:0, slowT:0,
   car:"redd", ult:0, ultOn:false, ultKey:false, ultArmed:true,
   /* The active meter displays seconds remaining / the fixed duration. */
   ultT:0, ultMax:ULT_TIME,
   boostLock:false, rivals:[], stepFlash:0, parkWait:0, parkRot:0,
   cdT:0, cdStep:-1, wasCounting:false,
   mode:"endless", diff:"medium",
-  launchT:0, bumpCD:0,
-
-  effLog:[],
-  brakeOn:false, brakeKey:false, brakePtr:false, brakeSpent:false, airMeter:1, airWind:0,
-  airT:0, airMax:0, airPow:0, launchCD:0,
+  /* the short forward shove a rear-end hands its victim */
+  shuntT:0, bumpCD:0,
   slipT:0, item:null, swapT:0, boxes:[], slicks:[], missiles:[], boxGap:0, nextRow:6000, canT:0, lastTap:-9, tapClock:0,
   sirenOwner:null,
   raceT:0, tracksLeft:-1, finishAt:0, finished:null, results:[], raceDone:false,
   /* local play */
-  local:false, players:1, picks:[], humans:[], padBoost:false, padBrake:false,
+  local:false, players:1, picks:[], humans:[], padBoost:false,
   pad:0, padId:null, padIds:[], pk:null, seat:0,
   custom:false, rules:null
 };

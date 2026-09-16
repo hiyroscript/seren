@@ -91,13 +91,13 @@ const o = who === "me" ? G : who;
 ```
 
 This is why the same function drives a bot, a second player on a controller, and
-you. `startUlt`, `useItem`, `tickUlt`, `scrubBad` and the rest each
+you. `startUlt`, `useItem`, `tickUlt`, `clearDebuffs` and the rest each
 have exactly one implementation.
 
 Field names differ slightly between the two — `G.slipT` vs `R.slip`,
 `G.slowT` vs `R.slow` — a historical wart. Helpers like
-`immuneWho`, `noContact` and `warded` exist to paper over it; prefer
-them to reaching into the fields.
+`invulnerableWho`, `noContact`, `refusesDebuffs` and `activeConditions` exist to
+paper over it; prefer them to reaching into the fields.
 
 Player one is *also* listed in `G.humans[0]` as the string `"me"`, so local-play
 code can iterate seats uniformly.
@@ -112,10 +112,9 @@ Roughly grouped:
 | Group | Fields |
 | --- | --- |
 | Lifecycle | `state` (`idle` / `countdown` / `running` / `paused` / `over`), `mode`, `diff`, `timers` |
-| Your car | `lane`, `x`, `tilt`, `speed`, `meters`, `charge`, `boosting`, `dead`, `immune` |
+| Your car | `lane`, `x`, `tilt`, `speed`, `meters`, `charge`, `boosting`, `dead`, `invuln` |
 | Your ultimate | `ult`, `ultOn`, `ultT`, `ultMax` |
-| Your launch | `brakeOn`, `brakeKey`, `brakePtr`, `brakeSpent`, `airMeter`, `airWind`, `airT`, `airMax`, `airPow`, `launchCD` |
-| Statuses on you | `slowT`, `blind`, `slipT`, `canT` |
+| Conditions on you | `slowT`, `blind`, `slipT`, `canT`, `shuntT`, `invuln` |
 | The world | `biome`, `next`, `seam`, `build`, `props`, `walks`, `traps`, `fx`, `traffic` |
 | Objects in play | `boxes` (bubble rows), `slicks`, `missiles` |
 | The field | `rivals`, `humans`, `picks`, `results`, `finished`, `finishAt`, `tracksLeft` |
@@ -143,7 +142,7 @@ frame(ts)                       race.js — requestAnimationFrame loop
 4. scroll the world; generate scenery ahead, cull behind
 5. the race clock and track/speed-tier timers
 6. your ultimate: charge, tick, fire
-7. your status timers, then `updateLaunch`
+7. your status timers, then `sweepDebuffs`
 8. `updateBubbles` → `updateSlicks` → `updateMissiles` → `updateTraps`
 9. your rear-end check, then `updateRivals` (each rival's whole frame)
 10. `serveOrders`, `updateBolts`, `checkFinish`, `updateFx`, seam handover
@@ -152,8 +151,8 @@ Two things follow from that order and are easy to break:
 
 - **Rivals move after the world does.** A rival's frame reads a world that has
   already scrolled this tick.
-- **`updateRivalLaunch` runs before `rivalThink`**, so a bot decides on the road
-  it is actually on.
+- **`botLook` runs before `rivalThink`**, so a bot decides on the road it is
+  actually on rather than on the one it saw last tick.
 
 Pausing works by returning early from `update` (`state === "paused"`), which is
 why the countdown is driven from the frame loop and not from a timer — a timer
@@ -228,8 +227,8 @@ Adding a language means adding a third code to every entry, adding a
 `.lang-opt` button and a Settings segment, and nothing else.
 
 ### `data.js`
-Every definition and every tuning number: `CARS`, `DIFFS`, `TEMPERS`, `EFFECTS`,
-`RARITY`, `ITEMS`, `TRACKS`, and the constants. See
+Every definition and every tuning number: `CARS`, `DIFFS`, `TEMPERS`,
+`CONDITIONS`, `RARITY`, `ITEMS`, `TRACKS`, and the constants. See
 [TUNING.md](TUNING.md).
 
 Loaded before `runtime.js` because the `G` literal reads `ULT_TIME`. Nothing here
@@ -322,8 +321,8 @@ hand player three somebody else's controller mid-corner.
 Sense → weigh → act, once per think-tick.
 
 - `botSense` builds one honest picture of the race from where a car sits.
-- `botTarget`, `laneScore`, `botUltValue`, `botItemWorth`, `botAirWant` score the
-  options against it.
+- `botTarget`, `laneScore`, `botUltValue` and `botItemWorth` score the options
+  against it.
 - `rivalThink` takes the best one and writes down what it meant to do next.
 
 Two rules hold it together. Nothing in here asks whether a car has a person behind
@@ -333,16 +332,30 @@ call.
 
 ### `mechanics.js`
 The rules of the road, shared by every car on it: contact and collisions, lane
-changes, boost, the brake and the launch, wrecking and respawning, effects,
-ultimates, items, hazards, particles.
+changes, boost, wrecking and respawning, Conditions, ultimates, items, hazards,
+particles.
 
-`noContact` defines legitimate protection. `rearEnd` and `bumpTarget` apply
-ordinary contact rules regardless of ultimate state. `startUlt`, `tickUlt` and
-`endUlt` manage one fixed 15-second speed multiplier for every driver.
+Three layers sit on top of each other and are deliberately not the same thing:
 
-Player and rival versions of a mechanic (`launchCar` / `launchRival`,
-`landCar` / `landRival`) exist only because the two carry their state in
-different places — they run the same constants and the same rules.
+- `finishedCar` / `finishedMe` — the race lifecycle state. Crossing the line puts
+  a racer out of play permanently. It is not a Condition and it never shows as
+  one.
+- `invulnerableCar` / `invulnerableMe` / `invulnerableWho` — the temporary
+  Invulnerable Condition and nothing else. This is what `activeConditions` reads.
+- `noContact` — the one internal answer to "can anything reach this car?", which
+  is any of the three (finished, wrecked, invulnerable). Every contact, hazard
+  and targeting test asks this rather than reassembling it.
+
+`activeConditions(who)` is the single derivation of which Conditions a racer has
+right now, read straight off `slowT`/`slow`, `blind`, `slipT`/`slip`, the boost
+state and the invulnerability timer. There is no second, mutable copy to fall out
+of step, and the order it returns is `CONDITIONS`' own key order so a stack of
+badges never reshuffles. A finished racer returns none.
+
+`rearEnd` and `bumpTarget` apply ordinary contact rules regardless of ultimate
+state; the short forward shove a rear-end hands its victim is `SHUNT_TIME` /
+`SHUNT_BOOST` and shows as Boosted. `startUlt`, `tickUlt` and `endUlt` manage one
+fixed 15-second speed multiplier for every driver.
 
 ### `race.js`
 The race: world seeding and track handover, the grid (`spawnRivals`), the
@@ -352,7 +365,7 @@ and the frame loop.
 
 ### `render.js`
 All Canvas 2D drawing. Six car models, three tracks' worth of scenery and road,
-hazards, particles, and the effects that sit over them.
+hazards, particles, and the Conditions that sit over them.
 
 **Draw order here is behaviour** — it decides what covers what. `renderView(dy)`
 is the order for one view; `render()` is the loop over views, with the clip and
@@ -362,13 +375,13 @@ This file reads game state and never changes it.
 
 ### `hud.js`
 Two HUDs that must agree. The DOM one is painted over the canvas (`paintHUD`,
-`paintItemBox`, the effect pills); the canvas one is drawn per column in local
+`paintItemBox`, `syncConditions`); the canvas one is drawn per column in local
 play (`drawSeatHud` and friends), because four copies of the DOM HUD would be four
 stylesheets to keep in step.
 
 What keeps them from drifting is a block of named constants near the top —
 `HUD_EDGE`, `HUD_TOP`, `HUD_READ_W`, `HUD_ACT`, `HUD_ACT_GAP`, `HUD_ACT_BOT`,
-`HUD_RAIL_*`, `HUD_PILL_*` and the ink ramp — plus four functions that derive the
+`HUD_RAIL_*`, `HUD_COND_*` and the ink ramp — plus four functions that derive the
 rest: `hudSide()` (the instrument band's inset), `hudFoot()` (how far the bottom
 row stands off), `readWidth()` and `readMetrics()` (the standings panel, which
 narrows on a narrow view and tightens on a short one). **Each of those has a twin
@@ -379,21 +392,31 @@ the other, or a phone and a split-screen column stop showing the same race.
 to be had, so the dark fill carries the contrast the blur would have carried and
 the hairline plus the top highlight carry the shape.
 
-The effect pills are one element per effect for the life of the page, held in a
-map and revived rather than recreated, hard-capped at six. There is no path that
-can produce an unbounded number of nodes. The pill's label is set in the
-interface's own white and the effect's colour is a swatch beside it, which is why
-Slippery — whose colour is very nearly black — needs no special case.
+This file also owns the **condition icon layer**, which is the only place a
+Condition is ever drawn. `COND_PATHS` holds each icon once, on the same 24-unit
+grid the item icons use, in strokes only; `drawConditionIcon` / `drawConditionBadge`
+build `Path2D` from those strings for the canvas, and `conditionSvg` builds inline
+SVG from the same strings for the page and the garage. Nothing carries a second
+copy of a name, a colour or a buff/debuff classification — those come from
+`CONDITIONS` in `data.js`.
+
+Where the badges go is the one thing that differs by renderer:
+`drawConditionStack` puts them beside a car for every racer that is *not* the
+current `VOWN`, clamped into that view's own column so a split-screen window's
+badges cannot leak into the next; `hudConditions` puts the view owner's own in
+the bottom-left corner; and `syncConditions` does the same for the page, rebuilt
+only when the set actually changes. The rim colour is derived from each icon's
+`ink` rather than listed again, which is why the near-black Skidded badge gets a
+light outline and needs no special case.
 
 ### `input.js`
 Keyboard, pointer and controller, each translated into the same mechanics call.
-`humanSteer`, `humanBoost`, `humanUlt` and `humanBrake` are the four doors; every
-input path ends at one of them.
+`humanSteer`, `humanBoost` and `humanUlt` are the three doors; every input path
+ends at one of them.
 
-`brakeKey`, `brakePtr` and `padBrake` are the input being physically down;
-`brakeOn` is the brake actually biting; `brakeSpent` is the latch that stops key
-autorepeat from re-arming a fresh meter without the player lifting a finger.
-Keeping them apart is what makes a cancelled hold behave.
+`keyBoost`, `ptrBoost` and `padBoost` are the three ways the boost can be held
+down; `setBoost()` is the one place that decides whether it is actually biting,
+so no input path gets to answer that question for itself.
 
 ### `main.js`
 Boot, in order: splash image, desktop class, `deskFit`, `applyLang`, `paintBest`,
@@ -403,9 +426,10 @@ fonts, in case the first read landed before the stylesheet applied.
 
 ## Invariants worth not breaking
 
-1. **One authority per question.** `noContact` decides contact protection. `rockAlt` decides
-   where a meteor is. `airPower` decides launch strength. If two places compute
-   the same thing they will disagree eventually.
+1. **One authority per question.** `noContact` decides contact protection.
+   `rockAlt` decides where a meteor is. `activeConditions` decides which
+   Conditions a racer has. If two places compute the same thing they will
+   disagree eventually.
 2. **Difficulty changes the driver, never the car.** No `DIFFS` value may multiply
    speed, charge rate or any car capability. It buys perception and judgement.
 3. **Bots run your mechanics.** If you add a player ability, a bot must reach it
@@ -414,8 +438,10 @@ fonts, in case the first read landed before the stylesheet applied.
    in the other, or a phone and a split-screen column stop showing the same race.
    The shared numbers are the `HUD_*` constants in `hud.js` and their twins in
    `css/app.css`; they are the contract, not a coincidence.
-5. **A winner is out of play.** Finished cars are off every target list and
-   nothing can reach them.
+5. **A finisher is out of play.** Crossing the line takes a car off every target
+   list, out of every collision and beyond every hazard, item and debuff, for the
+   rest of that race. It is a lifecycle state, never a Condition, and it is never
+   presented as Invulnerable.
 6. **`W` is one view, not the canvas.** Anything measuring off `FULLW` in world
    code is a split-screen bug waiting to happen.
 7. **Nothing boots outside `main.js`.**
@@ -463,13 +489,17 @@ and road branches in `render.js` (`drawSide`, `drawProps`, `drawRoad`,
 and a branch in `botItemWorth` in `ai.js`. The garage odds table and the drop roll
 both read `RARITY`, so they cannot disagree.
 
-### A status effect
+### A Condition
 
-`EFFECTS` in `data.js`, an `<id>Info` string, and a line in `syncEffects` in
-`hud.js` — which is the only place the labels are derived, so an effect that has
-quietly lapsed cannot leave its label behind. Mark negative effects `bad: true` and handle real immunity in `scrubBad`
-and `warded`. `col` is the pill's swatch and the garage dot; it is never the
-only thing carrying the meaning, so a dark one is fine.
+An entry in `CONDITIONS` in `data.js` carrying its localisation key, colour,
+`type` (`"buff"` / `"debuff"`), `icon` and `ink`; the artwork itself in
+`COND_PATHS` in `hud.js`; a `<id>Info` string for its garage card; and a branch
+in `conditionOn` in `mechanics.js` — which is the only place a Condition is
+derived, so one that has quietly lapsed cannot leave its badge behind. Where it
+is in `CONDITIONS` is where it sits in a stack of badges, and its `type` is what
+puts it on the Buff or the Debuff page. A debuff must also be cleared and refused
+by `clearDebuffs` and `refusesDebuffs`. `col` is never the only thing carrying
+the meaning — the icon is — so a dark one is fine.
 
 ### A setting
 
@@ -512,7 +542,8 @@ covers the script order and `defer`, syntax, the uniqueness of every top-level
 name, browser-global collisions, every literal `#id` selector against the real
 DOM, translation completeness and key resolution — for `[data-i18n]` and
 `[data-i18n-aria]` alike, so an icon-only button cannot ship with an untranslated
-name — and the wiring of every car, effect and item.
+name — and the wiring of every car, Condition and item, including that no trace
+of the removed launch mechanic survives in the source or the page.
 
 That is the cheap half. It cannot tell you whether the game still *plays* the
 same — for that, see below.
@@ -530,8 +561,9 @@ What has been used, and is worth repeating after a substantial change:
   without adding anything to the repo). The flows worth covering are the ones in
   the modes list: boot, the first-run language choice, every Settings preference
   and its persistence across a reload, the garage tabs, each
-  mode's path to the grid, the countdown, lanes, boost, brake/launch/cooldown,
-  pause/resume, leave, the personal best, and a four-player split.
+  mode's path to the grid, the countdown, lanes, boost, the condition badges
+  beside rivals and in your own corner, pause/resume, leave, the personal best,
+  and a four-player split.
 - For anything touching gameplay numbers, diff against the previous build rather
   than eyeballing it: seed `Math.random`, run both, and compare the HUD values
   frame for frame. Frame timing still varies between runs, so treat a single

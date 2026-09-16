@@ -3,7 +3,7 @@
 ## Executed
 
 - `node tools/check.mjs`: passes; one existing informational warning for translation keys referenced dynamically. Includes duplicate-ID validation.
-- `node tools/menu-check.mjs`: 70 passing behavior checks (53 at the time of the redesign, 17 added with Settings), executing the real scripts and event handlers against DOM/Canvas test doubles.
+- `node tools/menu-check.mjs`: 80 passing behavior checks (53 at the time of the redesign, 17 added with Settings, 10 added with the Conditions page), executing the real scripts and event handlers against DOM/Canvas test doubles.
 - `git diff --check`: passes.
 
 The behavior checks cover first-run language and saved language changes; Home
@@ -12,7 +12,11 @@ Endless and bot-race entry; 2, 3 and 4 local players; insufficient, connected an
 disconnected simulated controllers; stable controller slot assignments; Standard
 and Custom; every bot count and difficulty; every rule switch; focus retention
 after rebuilding controls; local car turns, taken cars, Back undo and random picks;
-controller car navigation; pause, resume, quit, results and replay; Escape and
+controller car navigation; the Conditions page opening on Buff, its two sub-tabs
+carrying proper tab semantics, selected state and arrow-key navigation, the right
+entries appearing under each from `CONDITIONS[id].type`, the absence of Launched
+and Winner, and the sub-tab choice surviving a rebuild but resetting when the
+page is left and re-entered; pause, resume, quit, results and replay; Escape and
 native Enter handling; and the mobile Local Play disabled state.
 
 Gamepad snapshots are supplied only by the test fixture. Production detection
@@ -60,7 +64,7 @@ outside the menu modules.
 
 - `node tools/check.mjs`: passes; the same single informational warning for
   translation keys referenced dynamically.
-- `node tools/menu-check.mjs`: 70 passing behavior checks. The seventeen new ones
+- `node tools/menu-check.mjs`: 80 passing behavior checks. The seventeen Settings ones
   cover opening Settings as a modal, Home staying unreachable behind it, Tab and
   Shift+Tab wrapping inside it, the sound switch against `soundOn` and the master
   gain, volume persistence and its effect on the gain, all three motion states

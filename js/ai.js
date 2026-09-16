@@ -67,8 +67,8 @@ function laneRisk(R, far, at){
    another bot for third place three hundred metres up the road runs exactly
    this code. The second is that the mind only ever decides - the doing is
    handed straight back to the same functions your own inputs call, so a bot
-   barging, launching, dropping oil or pressing its ultimate is running the
-   mechanic you are running, not a version of it written for bots. */
+   barging, dropping oil or pressing its ultimate is running the mechanic you
+   are running, not a version of it written for bots. */
 
 /* Every other car on the road, described in the terms a driver thinks in. */
 function fieldView(self){
@@ -83,7 +83,6 @@ function fieldView(self){
       out:me ? (G.dead > 0 || finishedMe()) : (obj.dead > 0 || finishedCar(obj)),
       safe:me ? playerUntouchable() : safeCar(obj),
       touch:!(me ? noContact("me") : noContact(obj)),
-      air:me ? airborne() : obj.airT > 0,
       ultOn:!!o.ultOn, ult:o.ultOn ? 1 : (o.ult || 0),
       slow:me ? G.slowT : obj.slow,
       slip:me ? G.slipT : obj.slip,
@@ -174,7 +173,7 @@ function botSense(R){
   s.threatClose = !!s.threat && Math.abs(s.threat.m - mine) < 70;
 
   /* which of the two doors are open, read through whatever is fouling the
-     screen - clutter must never invent an opening it cannot see */
+     screen - being Obscured must never invent an opening it cannot see */
   const opts = [R.lane-1, R.lane+1].filter(function(l){ return l >= 0 && l <= 2; });
   s.opts = opts;
   s.clean = opts.filter(function(l){
@@ -259,7 +258,7 @@ function botUltValue(R, s){
   if(s.frontGap > carH*4) value += 0.25;
   else if(s.frontGap < carH*2) value -= 0.4;
   if(s.now[R.lane] || s.boxed) value -= 0.35;
-  if(R.slow > 0 || R.brakeOn) value -= 0.3;
+  if(R.slow > 0) value -= 0.3;
   return value;
 }
 
@@ -326,7 +325,7 @@ function botItemWorth(R, s){
     const t = seekerTarget(R);
     if(!t) return -1;
     const mark = t.me ? "me" : t.obj;
-    if(t.me ? immuneMe() : immuneCar(t.obj)) return D.judge > 0.5 ? -1 : 0.4;
+    if(noContact(mark)) return D.judge > 0.5 ? -1 : 0.4;
     if(incomingMissile(mark) && D.judge > 0.6) return -1;   /* already on its way */
     let v = 0.7;
     if(t.m - s.mine > 40) v += 0.3;                  /* the further gone, the better */
@@ -349,48 +348,6 @@ function botItemNow(R, s, dt){
   return botItemWorth(R, s) >= worn;
 }
 
-/* ---- when to leave the road ----
-   Four reasons, and a difficulty decides how many of them a driver has worked
-   out. Everyone understands the first one. Only the top of the range treats a
-   full wind-up as a piece of racecraft, because only the top of the range can
-   read whether standing still for three seconds is survivable from here. */
-function botAirWant(R, s){
-  const D = s.D, M = s.M;
-  if(D.air <= 0 || R.launchCD > 0 || R.airT > 0) return null;
-  if(!canBrakeRival(R)) return null;
-  const gap = s.frontGap;
-
-  /* 1. get off the road: nothing grounded matters once the wheels leave it */
-  if(s.now[R.lane] && s.boxed && Math.random() < 0.35 + D.air*0.6)
-    return { why:"escape", aim:0.03 };
-
-  if(D.air < 0.30) return null;                      /* and at the bottom, the only one */
-
-  /* 2. go over the top of whatever is holding this lane up */
-  if(s.front && s.front.touch && gap < carH*3.4 && gap > carH*0.7 &&
-     Math.random() < 0.25 + M.flair*0.5)
-    return { why:"over", aim:clamp(0.28 + M.nerve*0.3, 0, D.wind) };
-
-  if(D.air < 0.60) return null;
-
-  /* 3. come down on somebody. A landing writes off whatever is underneath, so
-     a car that cannot get out from under it is worth standing still for. */
-  if(s.front && !s.front.safe && s.front.touch && gap < carH*5.5 &&
-     softness(s.front) > 0.40 && Math.random() < 0.35 + M.spite*0.6)
-    return { why:"land", aim:clamp(0.45 + M.spite*0.4, 0, D.wind) };
-
-  if(D.air < 0.80) return null;
-
-  /* 4. and at the top it is simply quick - but only from a piece of road
-     where three seconds of standing still will not be taken off you. */
-  if(!s.now[R.lane] && !s.soon[R.lane] && s.backGap > carH*4.5 &&
-     !s.threatClose && !s.seeker && s.frontGap > carH*3 &&
-     Math.random() < 0.25 + M.flair*0.45)
-    return { why:"pace", aim:clamp(0.5 + M.nerve*0.5, 0, D.wind) };
-
-  return null;
-}
-
 /* ---- act ----
    One tick of the loop. Sense, weigh, act - and whatever it meant to do next
    is written down rather than committed to, because the next tick reads the
@@ -399,22 +356,6 @@ function rivalThink(R, dt){
   const s = R.sense || botSense(R);
   R.sense = s;
   const D = s.D, M = s.M;
-
-  /* Up in the air there is only one question worth asking, and it is where
-     this is going to come down. Nothing on the road can be barged, blocked or
-     defended against from up there - but the ground it lands on still counts,
-     so a driver good enough to think about it aims for a clean piece. */
-  if(R.airT > 0){
-    if(s.now[R.lane] && s.clean.length && Math.random() < 0.3 + D.skill*0.7){
-      let bl = s.clean[0], bv = -1e9;
-      for(let i=0;i<s.clean.length;i++){
-        const sc = laneScore(R, s.clean[i], s);
-        if(sc > bv){ bv = sc; bl = s.clean[i]; }
-      }
-      rivalSteer(R, bl);
-    }
-    return;
-  }
 
   /* a note from last tick, still good? */
   let plan = null;

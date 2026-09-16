@@ -134,7 +134,6 @@ function carPadTick(dt){
    plugged in.
 
      left stick, left / right    change lane          (d-pad also works)
-     left stick, held down       brake, then launch
      right stick, held up        boost
      both sticks clicked in      ultimate             (L3 + R3 / LS + RS)
      R2, or Circle               mystery bubble item  (Xbox: RT, or B)
@@ -178,5 +177,5 @@ function padAxis(p, i){
   return typeof v === "number" ? v : 0;
 }
 function newPadKeys(){
-  return { lane:0, laneT:0, brake:false, ult:false, item:false, start:false };
+  return { lane:0, laneT:0, ult:false, item:false, start:false };
 }

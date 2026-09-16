@@ -120,19 +120,13 @@ function spawnRivals(){
       pk:newPadKeys(),
       wantBoost:false, blindPts:[],
       abs:0, changeT:rand(0.2, 0.7),          /* standing start: everyone from zero */
-      slow:0, blind:0, dead:0, immune:0, launch:0, bumpCD:0, slip:0,
+      slow:0, blind:0, dead:0, invuln:0, shuntT:0, bumpCD:0, slip:0,
       item:null, itemRow:-1, canT:0, useT:rand(0.6, 2.4), item:null, canT:0, useT:0,
       inDanger:false, willReact:true, reactT:0, swapT:0,
       ult:0, ultOn:false, ultT:0, ultMax:ULT_TIME,
       ultWait:rand(1, 3), ultHeld:0,
       charge:1, boostLock:false, boosting:false,
       finished:null, parkM:0,
-      /* the launch, on exactly the player's terms: a brake that sheds speed,
-         a wind-up that spends time, a meter that is the speed left in the car,
-         and a cooldown that is the meter coming back */
-      brakeOn:false, brakeHeld:false, brakeSpent:false,
-      airMeter:1, airWind:0, airT:0, airMax:0, airPow:0,
-      launchCD:0, airAim:0, airHold:0, airWhy:null,
       /* the thinking part: who it is currently interested in, what it meant to
          do next, and how long that intention is allowed to stand */
       temper:makeTemper(id), sense:null, senseT:0, plan:null, planT:0,
@@ -184,21 +178,17 @@ function startRace(){
   G.traffic = []; G.shake = 0; G.relGap = 0; G.nextGap = 430;
   G.traps = []; G.fx = []; G.trapGap = 0; G.nextTrap = 620;
   G.tier = 0; G.speedT = SPEED_SECONDS; G.blind = 0; G.blindPts = [];
-  G.dead = 0; G.immune = 0; G.slowT = 0; G.swipeLock = 0;
+  G.dead = 0; G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
-  G.launchT = 0; G.bumpCD = 0;
-  G.brakeOn = false; G.brakeKey = false; G.brakePtr = false; G.brakeSpent = false;
-  G.airMeter = 1; G.airWind = 0;
-  G.airT = 0; G.airMax = 0; G.airPow = 0; G.launchCD = 0;
-
+  G.shuntT = 0; G.bumpCD = 0;
   G.slipT = 0;
   G.item = null; G.swapT = 0; G.boxes = []; G.slicks = []; G.missiles = []; G.canT = 0;
-  G.padBoost = false; G.padBrake = false; G.pk = newPadKeys();
+  G.padBoost = false; G.pk = newPadKeys();
   G.boxGap = 0; G.nextRow = rand(2200, 3400);      /* the first row comes a bit sooner */
   G.lastTap = -9; G.tapClock = 0;
 
-  clearEffects();                    /* nothing carries over from the last race */
+  clearConditions();                 /* nothing carries over from the last race */
   G.cdT = 0; G.cdStep = -1; G.wasCounting = false;
   G.raceT = 0; G.finishAt = 0; G.finished = null; G.results = []; G.parkRot = 0;
   G.raceDone = false;
@@ -282,7 +272,6 @@ function leave(){
 function crash(){
   if(G.state !== "running") return;
   G.state = "over";
-  killLaunch();
   G.shake = 16;
   engineStop();
   noise(.5, .5);
@@ -358,7 +347,7 @@ function checkFinish(){
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
       if(R.ultOn) endUlt(R);
       R.boosting = false;
-      scrubBad(R);                               /* Winner: out of play, and clean */
+      clearDebuffs(R);                           /* out of play, and clean */
     }
   }
   if(G.finished === null && G.meters >= G.finishAt){
@@ -368,8 +357,7 @@ function checkFinish(){
     if(G.ultOn) endUlt("me");
     G.boosting = false;
     G.keyBoost = G.ptrBoost = G.ultKey = G.padBoost = false;
-    scrubBad("me");                             /* Winner: out of play, and clean */
-    killLaunch();                              /* nobody crosses the line mid-flight */
+    clearDebuffs("me");                         /* out of play, and clean */
     if(!G.local) finishRace();
   }
   /* On one screen the race is over when your car crosses. On four it is over
@@ -494,12 +482,13 @@ function update(dt){
   if(st === "countdown") target = 0;          /* the car holds still on the line */
   else if(G.finished !== null){
     /* Over the line: roll out onto the mark your place earned rather than
-       stopping dead on the spot you crossed. Taken outright the way the brake
-       is - it can only ever slow you, so finishing never hands speed back -
-       and the last few pixels are dropped so the car settles instead of
-       creeping. This is checked before the "over" branch because the run-out
-       is the point: "over" is also how a wreck ends, and that one does stop
-       where it stands. */
+       stopping dead on the spot you crossed. The target is taken outright - it
+       can only ever slow you, so finishing never hands speed back - and the
+       last few pixels are dropped so the car settles instead of creeping.
+
+       This is checked before the "over" branch because the run-out is the
+       point: "over" is also how a wreck ends, and that one does stop where it
+       stands. */
     const remPx = Math.max(0, parkMeters(G.finished) - G.meters)/0.075;
     if(remPx*PARK_EASE < 8){
       /* An eased approach never quite arrives, and the last of it is below the
@@ -513,12 +502,6 @@ function update(dt){
     braking = true;
   }
   else if(st === "over") target = Math.max(0, G.speed - 900*dt);
-  else if(airborne()){
-    /* Airborne pace retains launch behavior and the shared speed multiplier. */
-    target = BASE_SPEED*speedMult()*lerp(AIR_MIN_K, AIR_MAX_K, G.airPow);
-    if(G.ultOn) target *= ULT_SPEED;
-    if(G.canT > 0) target *= CAN_SPEED;
-  }
   else if(G.dead > 0) target = 0;   /* wrecked: you stop,
                                                  the race goes on without you */
   else {
@@ -527,17 +510,12 @@ function update(dt){
     if(G.slowT > 0) target *= 0.5;
     if(G.boosting) target *= 1.5;
     if(G.canT > 0) target *= CAN_SPEED;          /* the can is free speed */
-    if(G.launchT > 0) target *= LAUNCH_BOOST;
-    /* The meter is the speed left in the car, so the bar and the road can
-       never disagree: at nothing on the bar you are stopped. */
-    if(G.brakeOn){ target *= G.airMeter; braking = true; }
+    if(G.shuntT > 0) target *= SHUNT_BOOST;      /* shoved along by a rear-ender */
   }
-  /* Everywhere else the car chases its target, which lags a moving one by
-     about a seventh of a second - at this drain rate that left it still
-     rolling at a tenth of pace with the bar reading empty. Under the brake
-     the target is taken outright instead, so "empty" means stopped. It can
-     only ever slow the car: if something else already has it below the brake
-     line, the brake does not hand speed back. */
+  /* Everywhere else the car chases its target. The run-out after the flag
+     takes its target outright instead, so the car settles on its mark rather
+     than lagging a seventh of a second behind it - and it can only ever slow
+     the car, so finishing never hands speed back. */
   if(braking) G.speed = Math.min(G.speed, target);
   else G.speed = lerp(G.speed, target, 1 - Math.pow(0.001, dt));
   G.scroll += G.speed*dt;
@@ -636,22 +614,21 @@ function update(dt){
   if(G.slipT > 0) G.slipT = Math.max(0, G.slipT - dt);
   if(G.canT > 0) G.canT = Math.max(0, G.canT - dt);
   if(G.swapT > 0) G.swapT = Math.max(0, G.swapT - dt);
-  if(G.launchT > 0) G.launchT = Math.max(0, G.launchT - dt);
-  updateLaunch(dt, st);
+  if(G.shuntT > 0) G.shuntT = Math.max(0, G.shuntT - dt);
   G.tapClock += dt;
   if(G.bumpCD > 0) G.bumpCD = Math.max(0, G.bumpCD - dt);
   if(G.slowT > 0)  G.slowT  = Math.max(0, G.slowT - dt);
-  if(G.immune > 0) G.immune = Math.max(0, G.immune - dt);
-  immuneScrub();
+  if(G.invuln > 0) G.invuln = Math.max(0, G.invuln - dt);
+  sweepDebuffs();
   if(G.dead > 0){
     G.dead -= dt;
-    if(G.dead <= 0){ G.dead = 0; G.immune = IMMUNE_TIME; respawnFx(); }
+    if(G.dead <= 0){ G.dead = 0; G.invuln = INVULNERABLE_TIME; respawnFx(); }
   }
   updateBubbles(dt, d, st);
   updateSlicks(dt, d, st);
   updateMissiles(dt, d);
   updateTraps(dt, d, st);
-  if(st === "running" && G.dead <= 0 && !airborne()){
+  if(st === "running" && G.dead <= 0){
     const inFront = carAt(G.lane, playerY, "me");
     if(inFront && inFront.y < playerY) rearEnd("me", inFront);
   }
@@ -706,10 +683,10 @@ function updateRival(R, dt, st){
 
   if(R.slow > 0)   R.slow   = Math.max(0, R.slow - dt);
   if(R.blind > 0)  R.blind  = Math.max(0, R.blind - dt);
-  if(R.immune > 0) R.immune = Math.max(0, R.immune - dt);
+  if(R.invuln > 0) R.invuln = Math.max(0, R.invuln - dt);
   if(R.slip > 0) R.slip = Math.max(0, R.slip - dt);
   if(R.canT > 0) R.canT = Math.max(0, R.canT - dt);
-  if(R.launch > 0) R.launch = Math.max(0, R.launch - dt);
+  if(R.shuntT > 0) R.shuntT = Math.max(0, R.shuntT - dt);
   if(R.swapT > 0) R.swapT = Math.max(0, R.swapT - dt);
   if(R.bumpCD > 0) R.bumpCD = Math.max(0, R.bumpCD - dt);
   if(R.changeT > 0) R.changeT -= dt;
@@ -722,13 +699,12 @@ function updateRival(R, dt, st){
 
   if(R.dead > 0){
     R.dead -= dt;
-    if(R.dead <= 0){ R.dead = 0; R.immune = IMMUNE_TIME; }
+    if(R.dead <= 0){ R.dead = 0; R.invuln = INVULNERABLE_TIME; }
     R.abs = 0;
     R.y += G.speed*dt;
     return;
   }
   if(R.finished !== null){                     /* over the line: roll out onto the mark */
-    killLaunchRival(R);                        /* nobody crosses the line mid-flight */
     R.abs = 0;
     R.tilt = 0;
     /* Eased along the road rather than across the screen. Lerping a screen
@@ -754,9 +730,6 @@ function updateRival(R, dt, st){
   botLook(R, dt);
   const s = R.sense;
 
-  /* The launch, on the player's mechanic and nobody else's. */
-  updateRivalLaunch(R, dt, s);
-
   if(!R.human){
     /* Whatever is in its hand. When to spend it is judgement; what it does when
        spent is useItem, the same door your own item box opens. */
@@ -776,15 +749,15 @@ function updateRival(R, dt, st){
   }
 
   /* boost: chase with it, sit on it when comfortably clear, and never burn it
-     into a hazard or while standing on the brake waiting to go up */
+     into a hazard */
   const clearAhead = !s.now[R.lane];
   if(R.human){
     /* The player's boost, one for one: the same drain, the same refill, the
-       same lock-out at nothing and the same refusal to run while the brake is
-       down or the controls have been taken away - settled first and spent
-       second, which is the order the player's own frame runs in. */
+       same lock-out at nothing and the same refusal to run once the controls
+       have been taken away - settled first and spent second, which is the
+       order the player's own frame runs in. */
     R.boosting = ruleOn("boost") &&
-                 !!R.wantBoost && !R.boostLock && R.charge > 0 && !R.brakeOn &&
+                 !!R.wantBoost && !R.boostLock && R.charge > 0 &&
                  G.state === "running" && R.dead <= 0 && R.finished === null;
     if(R.boosting){
       R.charge = clamp(R.charge - dt*0.4, 0, 1);
@@ -798,7 +771,6 @@ function updateRival(R, dt, st){
     if(R.charge <= 0.001){ R.charge = 0; R.boostLock = true; R.boosting = false; }
     else if(R.charge < D.keep) R.boosting = false;     /* good drivers never run it dry */
     if(!clearAhead && Math.random() < D.boost) R.boosting = false;
-    if(R.brakeOn) R.boosting = false;
   } else {
     R.charge = clamp(R.charge + dt*0.14, 0, 1);
     if(R.charge >= 1) R.boostLock = false;
@@ -807,34 +779,19 @@ function updateRival(R, dt, st){
        is actually racing, whoever that is. */
     const chase = s.front ? 0.85 : (s.place > 1 ? 0.6 : 0.25);
     const eager = chase*(gapM < -20 ? 1.1 : 1)*D.boost*(0.6 + R.temper.nerve*0.7);
-    if(ruleOn("boost") && !R.boostLock && !R.brakeOn && R.charge > 0.5 && clearAhead &&
+    if(ruleOn("boost") && !R.boostLock && R.charge > 0.5 && clearAhead &&
        Math.random() < eager*dt*2) R.boosting = true;
   }
-  if(R.human && R.boosting && R.brakeOn) R.boosting = false;
 
   /* pace: identical to everyone else unless something is acting on it */
   let want = BASE_SPEED*speedMult();
-  let hold = false;
-  if(R.airT > 0){
-    /* Airborne pace retains launch behavior and the shared speed multiplier. */
-    want *= lerp(AIR_MIN_K, AIR_MAX_K, R.airPow);
-    if(R.ultOn) want *= ULT_SPEED;
-    if(R.canT > 0) want *= CAN_SPEED;
-  } else {
-    if(R.ultOn) want *= ULT_SPEED;
-    if(R.slow > 0) want *= 0.5;
-    if(R.boosting) want *= 1.5;
-    if(R.canT > 0) want *= CAN_SPEED;
-    if(R.launch > 0) want *= LAUNCH_BOOST;
-    /* The meter is the speed left in the car, so the bar and the road can
-       never disagree, and the brake can only ever slow it. */
-    if(R.brakeOn){ want *= R.airMeter; hold = true; }
-  }
-  if(hold) R.abs = Math.min(R.abs, want);
-  else {
-    R.abs = lerp(R.abs, want, 1 - Math.pow(0.001, dt));   /* same throttle response as you */
-    if(Math.abs(R.abs - want) < 1.5) R.abs = want;
-  }
+  if(R.ultOn) want *= ULT_SPEED;
+  if(R.slow > 0) want *= 0.5;
+  if(R.boosting) want *= 1.5;
+  if(R.canT > 0) want *= CAN_SPEED;
+  if(R.shuntT > 0) want *= SHUNT_BOOST;                   /* shoved along by a rear-ender */
+  R.abs = lerp(R.abs, want, 1 - Math.pow(0.001, dt));     /* same throttle response as you */
+  if(Math.abs(R.abs - want) < 1.5) R.abs = want;
 
   const ahead = carAt(R.lane, R.y, R);
   if(ahead && ahead.y < R.y) rearEnd(R, ahead);        /* it runs into their back */
@@ -860,9 +817,8 @@ function updateRival(R, dt, st){
   R.tilt = clamp((nx - R.x)/dt/2600, -0.28, 0.28) || 0;
   R.x = nx;
 
-  /* hazards, on exactly the terms the player gets them - including being over
-     the top of them, where the road is simply not where the car is */
-  if(R.immune <= 0 && R.airT <= 0 && !finishedCar(R)){
+  /* hazards, on exactly the terms the player gets them */
+  if(!invulnerableCar(R) && !finishedCar(R)){
     const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
     const bit = 2 << G.rivals.indexOf(R);
     for(let i=G.traps.length-1;i>=0;i--){
@@ -877,7 +833,7 @@ function updateRival(R, dt, st){
       if(!hit){ markPassed(o, rc, bit); continue; }
       o.hit |= bit;
       ultDelta(R, ULT_ON_TRAP);
-      if(warded(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
+      if(refusesDebuffs(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
       if(o.kind === "weed"){ R.slow = SLOW_TIME; puffFx(o.x, o.y); G.traps.splice(i,1); }
       else { R.blind = BLIND_TIME; R.blindPts = blindSpray(); puffFx(o.x, o.y); }
       break;

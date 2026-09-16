@@ -204,14 +204,14 @@ body{
 /* Where the browser cannot blur, the same surface goes opaque instead of
    translucent - the layering survives, the readability never depends on it. */
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  .panel-card,#langCard,#settingsCard,.hud-btn,#gauges,#effList span,
-  #ultPct,#itemBox,#meterRail,.count-card,#immuneTag span{
+  .panel-card,#langCard,#settingsCard,.hud-btn,#gauges,
+  #ultPct,#itemBox,#meterRail,.count-card{
     background:linear-gradient(180deg,#1C1F24,#0B0C0E)!important;
   }
   /* Nothing is blurred behind these, so the dim has to do all the separating. */
   #settingsWrap{background:rgba(5,5,6,.94)!important}
   #langWrap{background:rgba(5,5,6,.94)!important}
-  .hud-btn,#gauges,#effList span,#ultPct,#itemBox,#meterRail{
+  .hud-btn,#gauges,#ultPct,#itemBox,#meterRail{
     background:#121316!important;
   }
   .readout{background:linear-gradient(180deg,rgba(5,6,7,.88),rgba(5,6,7,.72))!important}
@@ -572,7 +572,20 @@ body.no-hints .keys{display:none}
 .info p{margin:12px 0 0;font:13px/1.65 var(--body);color:var(--ink-2)}.tagrow{margin-top:14px;font:10px/1.5 var(--mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)}
 .info.car{display:grid;grid-template-columns:100px 1fr;gap:20px}.info .car-art{height:150px;background:radial-gradient(#25272a,transparent 70%)}
 .kind,.odds{font:9px var(--mono);text-transform:uppercase;border:1px solid var(--line-2);border-radius:3px;padding:4px 6px;color:var(--ink-2)}.kind.trap{color:var(--red-hi)}.odds{color:var(--ink)}
-.eff-dot{width:10px;height:10px;border:1px solid var(--line-3);border-radius:50%;flex-shrink:0}
+/* The reference card wears the badge it wears on the road - same circle, same
+   icon, drawn from the same paths - so what is learned here is recognisable at
+   speed rather than merely described. */
+.cond-dot{display:inline-flex;flex:0 0 auto;line-height:0}
+.cond-dot svg{display:block}
+/* The Conditions page's Buff/Debuff switcher: a second rail inside the page,
+   plainly subordinate to the main tab rail down the left. */
+.subtabs{grid-column:1/-1;display:flex;gap:4px;padding:0 0 2px}
+.subtab{appearance:none;cursor:pointer;min-height:36px;padding:8px 16px;
+  border:1px solid var(--line-2);border-radius:var(--r-pill);background:transparent;
+  color:var(--ink-2);font:11px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.subtab:hover{background:var(--wash-2);color:var(--ink)}
+.subtab.on{border-color:var(--red);background:var(--red-wash);color:var(--ink)}
+.subtab:focus-visible{outline:2px solid var(--red-hi);outline-offset:2px}
 
 /* ============================================================
    11  RACE HUD
@@ -663,50 +676,29 @@ body.no-hints .keys{display:none}
 }
 @keyframes posMine{0%,100%{opacity:.75}50%{opacity:1}}
 
-/* what is being done to you: one pill per state */
-#effList{
+/* What is being done to you: one circular badge per Condition, icon only,
+   stacked upward from the corner. The names live on the garage's Conditions
+   page - mid-race there is no time to read a word, only to recognise a shape.
+   column-reverse means the list is appended in priority order and reads from
+   the corner up, so the stack never reshuffles. */
+#condList{
   position:absolute;left:calc(var(--side) + var(--safe-l));bottom:calc(46px + var(--safe-b));
-  display:flex;flex-direction:column-reverse;gap:4px;pointer-events:none;
+  display:flex;flex-direction:column-reverse;gap:5px;pointer-events:none;
   align-items:flex-start;
 }
-#effList span{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:4px 9px 4px 7px;border-radius:var(--r-pill);
-  background:var(--glass-3);border:1px solid var(--line-2);
-  -webkit-backdrop-filter:var(--glass-blur-sm);backdrop-filter:var(--glass-blur-sm);
-  font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--ink);
-  animation:effIn var(--d-2) var(--ease) both;
-}
-#effList span::before{
-  content:"";width:7px;height:7px;border-radius:2px;flex:0 0 auto;
-  background:var(--eff,var(--ink-2));
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.3);
-}
-#effList span.out{animation:effOut .4s var(--ease) forwards}
-@keyframes effIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
-@keyframes effOut{to{opacity:0;transform:translateX(-10px)}}
+#condList .cond{display:block;line-height:0;animation:condIn var(--d-2) var(--ease) both}
+#condList .cond svg{display:block}
+@keyframes condIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
 
-#immuneTag{
-  position:absolute;left:0;right:0;bottom:calc(46px + var(--safe-b));
-  text-align:center;display:none;pointer-events:none;
-}
-#immuneTag.on{display:block}
-#immuneTag span{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:4px 11px;border-radius:var(--r-pill);
-  background:rgba(10,11,13,.66);border:1px solid rgba(255,216,107,.55);
-  -webkit-backdrop-filter:var(--glass-blur-sm);backdrop-filter:var(--glass-blur-sm);
-  font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.2em;
-  text-transform:uppercase;color:var(--gold);
-}
-/* the gold edge around the whole view while it lasts */
-#shell.immune::after{
+/* The gold edge around the whole view while Invulnerable lasts. Secondary
+   feedback: the badge above is the canonical indicator, and this only says the
+   same thing louder. */
+#shell.invulnerable::after{
   content:"";position:absolute;inset:0;pointer-events:none;z-index:50;
   border:3px solid var(--gold);border-radius:inherit;
-  animation:immuneEdge 1.1s steps(2,jump-none) infinite;
+  animation:invulnEdge 1.1s steps(2,jump-none) infinite;
 }
-@keyframes immuneEdge{0%,100%{border-color:#FFFFFF}50%{border-color:var(--gold)}}
+@keyframes invulnEdge{0%,100%{border-color:#FFFFFF}50%{border-color:var(--gold)}}
 
 /* the two things you spend, together, where the thumb already is */
 #hudActions{
@@ -759,17 +751,18 @@ body.no-hints .keys{display:none}
 #itemBox.full{background:linear-gradient(180deg,rgba(10,11,13,.82),rgba(10,11,13,.7))}
 #itemBox svg{width:28px;height:28px;display:block}
 
-/* The two meters you fill by holding, in one tray: launch above, boost
-   below. One place to look for "how much have I got". */
+/* The boost meter, in its own tray across the foot: one place to look for
+   "how much have I got". js/hud.js lays the split-screen copy out from the
+   same figures. */
 #meterRail{
   position:absolute;left:calc(var(--side) + var(--safe-l));right:calc(var(--side) + var(--safe-r));
   bottom:calc(12px + var(--safe-b));
   padding:6px 8px;border-radius:var(--r-1);
   background:var(--glass-3);border:1px solid var(--line);
   -webkit-backdrop-filter:var(--glass-blur-sm);backdrop-filter:var(--glass-blur-sm);
-  display:flex;flex-direction:column;gap:5px;pointer-events:none;
+  display:flex;flex-direction:column;pointer-events:none;
 }
-#airWrap,#boostWrap{
+#boostWrap{
   position:relative;height:5px;border-radius:3px;
   background:rgba(255,255,255,.14);
   transition:box-shadow var(--d-2) var(--ease);
@@ -779,34 +772,12 @@ body.no-hints .keys{display:none}
 #boostWrap.full #boostFill{background:var(--red-hi)}
 #boostWrap.locked #boostFill{background:rgba(255,255,255,.3)}
 
-#airFill{position:absolute;left:0;top:0;bottom:0;width:100%;
-  background:var(--go);border-radius:3px;transition:background var(--d-2) var(--ease)}
-/* the target you have to get under, visible before you ever hold the brake */
-#airZone{position:absolute;left:0;top:0;bottom:0;
-  background:rgba(47,191,99,.26);border-radius:3px 0 0 3px;pointer-events:none}
-#airMark{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;
-  background:#fff;border-radius:1px;box-shadow:0 0 4px rgba(0,0,0,.9)}
-/* the wind-up refills the emptied track the other way, in white */
-#airWind{position:absolute;left:0;top:0;bottom:0;width:0;
-  background:#fff;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,.8)}
-#airWrap.winding{box-shadow:0 0 10px rgba(255,255,255,.7)}
-#airWrap.wound{box-shadow:0 0 14px rgba(255,233,168,.9);
-  animation:airFull .6s ease-in-out infinite alternate}
-#airWrap.wound #airWind{background:#FFE9A8;box-shadow:0 0 12px rgba(255,210,74,.9)}
-@keyframes airFull{from{opacity:.8}to{opacity:1}}
-#airWrap.armed{box-shadow:0 0 9px rgba(47,191,99,.85)}
-#airWrap.armed #airFill{background:var(--go-hi)}
-#airWrap.armed #airMark{background:var(--go-hi)}
-#airWrap.cooling #airFill{background:rgba(47,191,99,.3)}
-#airWrap.cooling #airMark{background:rgba(255,255,255,.35)}
-#airWrap.air #airFill{background:#fff}
-
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:3}
 
 /* Four sets of instruments are painted on the canvas in local play, so the
    page's single set has to get out of the way completely. */
 body.local .hud .readout,body.local #hudActions,body.local #meterRail,
-body.local #effList,body.local #immuneTag{display:none!important}
+body.local #condList{display:none!important}
 
 /* ============================================================
    12  COUNTDOWN
@@ -920,7 +891,7 @@ body.local #overPanel .stats{display:none}
 /* 14 RESPONSIVE — menu layouts use viewport space; race geometry is unchanged. */
 @media (max-height:480px){
   .readout{padding:7px 10px 8px}.readout .v{font-size:24px}.readout .ladder{margin-top:6px;padding-top:6px;gap:0}.readout .pos .n{font-size:11px}.readout .pos.mine .n{font-size:12px}.readout .b{margin-top:5px}
-  #hudActions,#effList,#immuneTag{bottom:calc(40px + var(--safe-b))}
+  #hudActions,#condList{bottom:calc(40px + var(--safe-b))}
 }
 @media (max-height:680px){#countNum{font-size:56px}.count-card{padding:var(--s-4) var(--s-6);gap:var(--s-3)}}
 @media (orientation:portrait){
@@ -1017,7 +988,7 @@ body.local #shell{width:100vw;height:100dvh;max-width:none;border-radius:0;trans
   }
   :root:not([data-motion="full"]) .lane-line{animation:none}
   /* the states that were carried by movement keep a still form */
-  :root:not([data-motion="full"]) #airWrap.wound{animation:none}
+  :root:not([data-motion="full"]) #condList .cond{animation:none}
   :root:not([data-motion="full"]) .readout .pos.mine::before{animation:none;opacity:1}
 }
 :root[data-motion="reduced"] *,
@@ -1029,7 +1000,7 @@ body.local #shell{width:100vw;height:100dvh;max-width:none;border-radius:0;trans
   scroll-behavior:auto!important;
 }
 :root[data-motion="reduced"] .lane-line{animation:none}
-:root[data-motion="reduced"] #airWrap.wound{animation:none}
+:root[data-motion="reduced"] #condList .cond{animation:none}
 :root[data-motion="reduced"] .readout .pos.mine::before{animation:none;opacity:1}
 
 /* Higher contrast is the same palette worked harder: type, hairlines, the

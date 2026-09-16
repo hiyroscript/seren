@@ -55,7 +55,39 @@ for(const language of ['en','fr']){
   }
   click('btnCloseDiffs');click('btnCloseModes');
   click('btnGarage');
-  for(const tab of ['Cars','Tracks','Items','Effects']){click('tab'+tab);test(language+' reference '+tab,()=>{assert.ok($('#garageBody').children.length);assert.equal($('#tab'+tab).getAttribute('aria-selected'),'true');});}
+  for(const tab of ['Cars','Tracks','Items','Conditions']){click('tab'+tab);test(language+' reference '+tab,()=>{assert.ok($('#garageBody').children.length);assert.equal($('#tab'+tab).getAttribute('aria-selected'),'true');});}
+  /* The Conditions page: two sub-tabs generated from CONDITIONS[id].type, the
+     right five entries split across them, and no Launched or Winner anywhere. */
+  test(language+' Conditions opens on Buff with both sub-tabs',()=>{
+    assert.equal(run('garageTab'),'conditions');assert.equal(run('condTab'),'buff');
+    assert.equal($('#condTabBuff').getAttribute('aria-selected'),'true');
+    assert.equal($('#condTabDebuff').getAttribute('aria-selected'),'false');
+    assert.equal($('#condTabBuff').getAttribute('role'),'tab');
+    assert.equal($('#condTabBuff').getAttribute('tabindex'),'0');
+    assert.equal($('#condTabDebuff').getAttribute('tabindex'),'-1');
+    assert.equal($('#condTabBuff').textContent,run('t("condBuff")'));
+    assert.equal($('#condTabDebuff').textContent,run('t("condDebuff")'));
+    assert.deepEqual(Array.from(run('conditionsOfType("buff")')),['invulnerable','boosted']);
+    const html=$('#garageBody').innerHTML;
+    for(const id of run('conditionsOfType("buff")')) assert.ok(html.includes(run('t(CONDITIONS["'+id+'"].key)')),id);
+    for(const id of run('conditionsOfType("debuff")')) assert.ok(!html.includes(run('t(CONDITIONS["'+id+'"].key)')),id);
+    assert.ok(html.includes('<svg'),'every card carries its badge');
+  });
+  $('#condTabDebuff').click();
+  test(language+' Debuff sub-tab switches the page in place',()=>{
+    assert.equal(run('condTab'),'debuff');assert.equal(run('garageTab'),'conditions');
+    assert.deepEqual(Array.from(run('conditionsOfType("debuff")')),['slowed','obscured','skidded']);
+    const html=$('#garageBody').innerHTML;
+    for(const id of run('conditionsOfType("debuff")')) assert.ok(html.includes(run('t(CONDITIONS["'+id+'"].key)')),id);
+    assert.ok(!/Launched|Propuls|Winner|Vainqueur/.test(html));
+    assert.equal(f.document.activeElement.id,'condTabDebuff');
+  });
+  $('#condTabDebuff').dispatch('keydown',{key:'ArrowLeft'});
+  test(language+' arrow keys walk the sub-tabs',()=>{assert.equal(run('condTab'),'buff');assert.equal(f.document.activeElement.id,'condTabBuff');});
+  $('#condTabBuff').dispatch('keydown',{key:'End'});
+  test(language+' End reaches the last sub-tab',()=>{assert.equal(run('condTab'),'debuff');});
+  click('tabCars');click('tabConditions');
+  test(language+' leaving and returning starts on Buff again',()=>{assert.equal(run('condTab'),'buff');});
   click('btnCloseGarage');
 }
 for(const count of [2,3,4]){
