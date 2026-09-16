@@ -32,7 +32,7 @@ CAR_IDS.forEach(function(id){
   img.src = p.sprite;
 });
 
-function drawSpriteCar(w, h, p, boosting){
+function drawSpriteCar(w, h, p, boosting, ulting){
   const img = CAR_SPRITES[p.sprite];
   if(!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return;
   const b = p.spriteBounds;
@@ -44,6 +44,78 @@ function drawSpriteCar(w, h, p, boosting){
   if(boosting) drawSpriteExhaust(p, left, top, sw, sh, vw, vh);
   /* Full source rectangle: preserve padding and every tire/spoiler detail. */
   ctx.drawImage(img, left, top, sw, sh);
+  /* Over the body, not under it: the fire wraps the car rather than glowing
+     behind it. `ulting` is its own flag and never the boost one, so an
+     ordinary boost and a boost can leave the paint alone. */
+  if(ulting) drawFlannUltFire(w, h, p);
+}
+
+/* ---- the ultimate fire ------------------------------------------
+   Flann's ultimate is an offensive one - see flannUltActive() in mechanics.js
+   - and this is what it looks like. Only Flann, only while ultOn is true;
+   ordinary boost and the boost can are the rear plumes above and nothing more.
+
+   Each tongue is x and y on the car in fractions of its own width and height,
+   a length in fractions of its height, and a phase offset so the flicker does
+   not beat in unison. They run down both sills, close off behind the rear
+   wheels and lick over the shoulders, which reads as a car alight while
+   leaving the middle of the body - the part that says which car it is -
+   clear. */
+const FLANN_FIRE = [
+  [-0.49, -0.26, 0.30, 0.0], [-0.53, -0.02, 0.36, 1.1], [-0.50,  0.22, 0.34, 2.2],
+  [ 0.49, -0.26, 0.30, 0.6], [ 0.53, -0.02, 0.36, 1.7], [ 0.50,  0.22, 0.34, 2.8],
+  [-0.27,  0.44, 0.34, 3.3], [ 0.27,  0.44, 0.34, 4.0],
+  [-0.33, -0.42, 0.24, 4.6], [ 0.33, -0.42, 0.24, 5.2]
+];
+/* Drawn in the car's own translated and rotated space, so the whole fire leans
+   with it through a lane change without a transform of its own.
+
+   The only thing that moves is read off the clock, exactly as the exhaust
+   pulse is: nothing is stored, nothing is seeded and no race state is touched,
+   so drawing the same frame twice draws the same fire. Reduced motion pins the
+   phase at zero, which leaves the flames sitting still rather than taking them
+   away - a car on fire must still look like a car on fire. */
+function drawFlannUltFire(w, h, p){
+  const reduced = motionReduced();
+  const phase = reduced ? 0 : performance.now()*0.007;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  /* the heat the body sits in, so the tongues read as one fire and not ten */
+  const halo = ctx.createRadialGradient(0, h*0.06, w*0.22, 0, h*0.06, w*1.05);
+  halo.addColorStop(0,    withA(p.flame[1], 0.20));
+  halo.addColorStop(0.45, withA(p.flame[0], 0.16));
+  halo.addColorStop(1,    withA(p.flame[0], 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(-w*1.05, h*0.06 - w*1.05, w*2.1, w*2.1);
+
+  for(let i=0;i<FLANN_FIRE.length;i++){
+    const f = FLANN_FIRE[i];
+    const flick = reduced ? 0 : Math.sin(phase + f[3]);
+    const x = w*f[0], y = h*f[1];
+    const len = h*f[2]*(0.86 + flick*0.14);
+    const half = w*0.085*(0.92 + flick*0.08);
+    /* Hot where it meets the paint and gone by the tip, so a tongue fades into
+       the air rather than ending on a line. */
+    const g = ctx.createRadialGradient(x, y, half*0.2, x, y, len);
+    g.addColorStop(0,    withA(p.flame[1], 0.95));
+    g.addColorStop(0.24, withA(p.flame[0], 0.82));
+    g.addColorStop(0.62, withA(p.flame[0], 0.34));
+    g.addColorStop(1,    withA(p.flame[0], 0));
+    ctx.fillStyle = g;
+    /* Wide on the body, drawn out to a point behind it, and leaning back down
+       the car because the car is going forwards. */
+    ctx.beginPath();
+    ctx.moveTo(x - half, y - len*0.10);
+    ctx.bezierCurveTo(x - half*1.25, y + len*0.34, x - half*0.55, y + len*0.72,
+                      x + half*0.10, y + len);
+    ctx.bezierCurveTo(x + half*0.30, y + len*0.62, x + half*1.25, y + len*0.30,
+                      x + half, y - len*0.10);
+    ctx.quadraticCurveTo(x, y - len*0.26, x - half, y - len*0.10);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawSpriteExhaust(p, left, top, sw, sh, vw, vh){
@@ -75,11 +147,18 @@ function drawSpriteExhaust(p, left, top, sw, sh, vw, vh){
   ctx.restore();
 }
 
-function drawCar(x, y, w, h, p, tilt, isPlayer, boosting){
+/* `boosting` is the ordinary exhaust flag every model has always had - the
+   boost meter, a boost can or a running ultimate, anything that makes the car
+   faster. `ulting` is separate and narrower: this racer's ultimate is running
+   right now. Keeping them apart is what lets Flann's body fire appear for the
+   ultimate alone while an ordinary boost still only lights the pipes. Menus
+   pass neither, so a preview is never on fire. */
+function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting){
   ctx.save();
   ctx.translate(x, y);
   if(tilt) ctx.rotate(tilt);
-  if(p.style === "sprite") drawSpriteCar(w, h, p, boosting);
+  /* One car has a fire of its own; the other five have the shared models. */
+  if(p.style === "sprite") drawSpriteCar(w, h, p, boosting, !!ulting && p.key === "flann");
   else if(p.style === "jet") drawJet(w, h, p, isPlayer, boosting);
   else if(p.style === "buggy") drawBuggy(w, h, p, isPlayer, boosting);
   else if(p.style === "wedge") drawWedge(w, h, p, isPlayer, boosting);
@@ -907,7 +986,9 @@ function renderView(dy){
     const rc = CARS[RV.car];
     const rblink = RV.invuln > 0 && Math.floor(RV.invuln*9) % 2 === 0;
     if(!rblink){
-      drawCar(RV.x, RV.y, carW, carH, rc, RV.tilt, true, RV.boosting || RV.ultOn);
+      const rd = carDims(RV.car);
+      drawCar(RV.x, RV.y, rd.w, rd.h, rc, RV.tilt, true,
+              RV.boosting || RV.ultOn, flannUltActive(RV));
       ctx.globalAlpha = 1;
       if(G.local && RV.human) drawSeatMark(RV, RV.x, RV.y);
     }
@@ -919,7 +1000,9 @@ function renderView(dy){
   if(G.state !== "idle" && G.dead <= 0 && meSeen){
     const car = CARS[G.car];
     if(!blink){
-      drawCar(G.x, playerY, carW, carH, car, G.tilt, true, G.boosting || G.ultOn);
+      const cd = carDims(G.car);
+      drawCar(G.x, playerY, cd.w, cd.h, car, G.tilt, true,
+              G.boosting || G.ultOn, flannUltActive("me"));
       ctx.globalAlpha = 1;
       if(G.local) drawSeatMark("me", G.x, playerY);
     }

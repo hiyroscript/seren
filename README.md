@@ -120,17 +120,41 @@ never inherit half a custom race by accident.
 ## The cars and their ultimates
 
 Every car has the same mechanical ultimate: a **75-second charge**, then
-**15 seconds at 2× its own pace**, with no additional powers. Difficulty changes
-when a bot spends the boost, never its strength, duration or charge rate.
+**15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
+boost, never its strength, duration or charge rate. One car does something else
+with those fifteen seconds as well.
 
 | Car | Ultimate effect |
 | --- | --- |
-| **Flann** | 15 seconds at 2× pace |
+| **Flann** | 15 seconds at 2× pace, **on fire** — see below |
 | **Phantom** | 15 seconds at 2× pace |
 | **Bolt** | 15 seconds at 2× pace |
 | **Timestamp** | 15 seconds at 2× pace |
 | **Rose** | 15 seconds at 2× pace |
 | **Siren** | 15 seconds at 2× pace |
+
+### Flann's ram
+
+For the whole fifteen seconds, Flann visibly catches fire and turns into a
+battering ram. It keeps the ordinary speed boost and the ordinary charge clock;
+what it gains is priority in a collision.
+
+- **Racers.** Any contact with another racer wrecks that racer, whichever of the
+  two ran into the other — behind, alongside, into a lane it wanted or out of
+  one somebody else wanted. Flann takes no Slow, no shunt and no wreck for it.
+  Rear-end an ulting Flann and you are the one that gets wrecked.
+- **Tumbleweed.** Smashed apart on contact. No Slow and no meter cost.
+- **Meteor.** Neither the falling rock nor the blast can destroy it, and the
+  ultimate carries on.
+- **Puddle.** Unchanged. Water is liquid and cannot be rammed apart, so an
+  ulting Flann still gets the spray over its screen and still wears **Obscured**
+  — Boosted and Obscured at the same time.
+
+None of this is invulnerability. A respawning or finished racer is still out of
+reach in both directions, so a ram cannot spawn-kill or touch a recorded result,
+and two ulting Flanns cancel each other out and trade an ordinary shunt. The
+moment the fifteen seconds are up, Flann is an ordinary car again. No other car
+gets any of it.
 
 ### The ultimate meter
 
@@ -144,11 +168,17 @@ when a bot spends the boost, never its strength, duration or charge rate.
 
 ### How ultimates interact
 
-Ultimates do not change contact rules. An active racer simply moves at boosted
-pace and otherwise interacts normally: collisions, barges, wrecks, hazards,
-oil and seekers still apply. Slowed and other legitimate debuffs coexist with
-the speed multiplier. Only **Boosted** is added to the Conditions on show, with
-ordinary boost flames and a generic activation burst.
+For the five cars that are not Flann, ultimates do not change contact rules. An
+active racer simply moves at boosted pace and otherwise interacts normally:
+collisions, barges, wrecks, hazards, oil and seekers still apply. Flann's ram is
+the one exception, and it changes who *loses* a contact rather than whether the
+contact can happen at all — see above.
+
+For every car, Slowed and other legitimate debuffs coexist with the speed
+multiplier, and only **Boosted** is added to the Conditions on show, with
+ordinary boost flames and a generic activation burst. Flann adds its body fire
+on top of those, and only for the ultimate: an ordinary boost or a boost can
+lights the exhaust and nothing else.
 
 ## Driving
 
@@ -172,7 +202,9 @@ you.
 ### Contact rules
 
 A car does not make road contact when it has finished, is wrecked, or is
-Invulnerable from a respawn. An ultimate grants none of these protections.
+Invulnerable from a respawn. An ultimate grants none of these protections —
+including Flann's, which still has to physically meet what it destroys and is
+still refused by all three of them.
 
 Finishing is not a Condition and it is not temporary Invulnerability: it is a
 race lifecycle state. The instant a car crosses the line it is out of play for
@@ -204,6 +236,9 @@ minutes in.
 | **Meteor** | Space | A blinking red ring marks the impact. Anything in the blast is destroyed and respawns after 3 seconds | −10% |
 | **Tumbleweed** | Desert | Rolls across from either side; halves your speed for 1.7 seconds | −5% |
 
+A Flann with its ultimate running smashes the tumbleweed and shrugs off the
+meteor, at no cost to its meter. The puddle still gets it.
+
 The meteor's ring is a spot on the *road*, not on your screen, and how long the
 rock has left is measured in seconds — so it lands where it was always going to
 land no matter what you do to your own speed. Every ultimate leaves the
@@ -212,6 +247,14 @@ world clock and other racers’ speed unchanged.
 The seeker clears hazards it passes through.
 
 ### Mystery bubbles and items
+
+> **The rewards are switched off at the moment.** Bubbles still drift across the
+> road and are still collected, but nobody — you, a bot or a local seat — comes
+> away holding a Boost can, Oily oil or a Seeker. Nothing has been removed: the
+> items below are the items that come back when `MYSTERY_ITEMS_ENABLED` in
+> `js/data.js` goes back to `true`, and everything in this section describes
+> them as they were and will be. The custom-race **mystery bubbles** switch is a
+> separate thing and still decides whether rows appear at all.
 
 Three bubbles drift across the road together, a row every 5,400–8,600 road units.
 Touch one for a random item and take as many of the three as you can reach — each
@@ -517,6 +560,8 @@ uses them, and the third kills the page on load. One script finds all of it:
 node tools/check.mjs
 node tools/menu-check.mjs
 node tools/ultimate-check.mjs
+node tools/sprite-check.mjs
+node tools/hitbox-check.mjs
 ```
 
 It is plain Node with no dependencies — there is no `package.json` and nothing to
@@ -537,13 +582,29 @@ job unchanged. It verifies:
   colour and one piece of icon artwork, and lands on the right Buff/Debuff page;
   no trace of the removed launch mechanic survives anywhere in the source or the
   page; every item has artwork and a valid rarity
+- the Mystery Bubble reward gate is one named switch rather than a deletion, and
+  the roll, the rarities, the artwork, oil, seekers and bubble rows all survive
+  behind it
+- Flann's ram is the game's only car-specific ultimate logic and its race size
+  the only per-car dimension: `flannUltActive()` is the one place a racer is
+  compared to Flann, the contact rules, the hazards and the renderer all read it,
+  the shared charge clock, duration and pace are untouched, exactly one car
+  carries a race scale, and `carHit()` takes its hull size from the same helper
+  the sprite is drawn at
 
 Run it before you commit. It takes well under a second.
 
 `node tools/menu-check.mjs` also checks menu state and event wiring using
 DOM/Canvas test doubles, including localization, every Settings preference and
-what it reaches, setup, simulated controllers, car turns and pause/results. Browser visuals and hardware still need separate
-checks; see [the redesign QA record](docs/MENU-REDESIGN-QA.md).
+what it reaches, setup, simulated controllers, car turns and pause/results.
+`node tools/ultimate-check.mjs` runs the ultimate, Condition, hazard, contact and
+Mystery Bubble behaviour for all six cars as player, bot and local seat;
+`node tools/sprite-check.mjs` covers race sizes and the sprite and ultimate-fire
+drawing; `node tools/hitbox-check.mjs` covers contact geometry. Browser visuals
+and hardware still need separate checks; see
+[the redesign QA record](docs/MENU-REDESIGN-QA.md),
+[the ultimate record](docs/ULTIMATE-QA.md) and
+[the Flann record](docs/FLANN-QA.md).
 
 ## Project layout
 
