@@ -1,526 +1,814 @@
-You are working directly in the current hiyroscript/seren repository on main.
+You are modifying the existing Seren browser racing game. Work directly from the current repository and preserve its existing architecture, game feel, local multiplayer behavior, accessibility settings, tests, and shared player/bot mechanics.
 
-Before editing anything, inspect the existing architecture and preserve its current style: plain JavaScript, Canvas 2D rendering, shared player/bot/local-player mechanics, no new framework, no new dependency, no build system, and no duplicate player-only implementation where the game already has shared helpers.
+Do not implement this as a disconnected special-case minigame. Study the existing Flann sprite/ultimate implementation and extend the same systems cleanly.
 
-IMPORTANT NAMING NOTE:
-The car I am referring to as Flarr is currently named/keyed Flann in the repository:
+# Objective
 
-* car ID: flann
-* sprite: v_flann.PNG
-* car definition: CARS.flann
+Replace **Phantom** completely with **Neela**.
 
-Do NOT rename flann, the asset, localization keys, save data, or the visible Flann name as part of this task. Treat “Flarr” in this request as referring to the existing Flann racer.
+Neela’s normal race model must use:
 
-Goal
+`v_neela.PNG`
 
-Make four focused gameplay changes:
+Neela’s temporary alternate ultimate form must use:
 
-1. Make Flann slightly larger on the actual race track so its sprite feels properly proportioned to the road and the other cars.
-2. Give Flann a unique ultimate power: while its ultimate is active, Flann becomes a flaming offensive ram that destroys normal racers and destructible environmental hazards on contact instead of being harmed or slowed by those contacts.
-3. Keep puddles as the explicit environmental exception: water still affects Flann during the ultimate because it is liquid and cannot be smashed.
-4. Temporarily disable all usable rewards granted by Mystery Bubbles. Preserve the system in code so it can be re-enabled later instead of deleting it.
+`vtm_neela.PNG`
 
-Do not redesign unrelated mechanics.
+Both assets already exist at the repository root.
 
-1. Make Flann larger on the race track
+Rename Phantom to Neela everywhere: internal car ID where appropriate, selection menus, garage/reference pages, localization, bot temperament mapping, tests, documentation, comments, and any other place that currently refers to Phantom.
 
-Flann currently uses the full v_flann.PNG through drawSpriteCar(), with the visible sprite bounds defined in CARS.flann.spriteBounds. The image geometry itself is already correctly centered and should not be recropped, stretched, distorted, or replaced.
+Neela keeps the normal shared ultimate rules:
 
-The problem is simply that the car reads too small relative to the lane/road during gameplay.
+* 75 seconds to charge.
+* 15 seconds total duration.
+* 2× normal pace while active.
+* The ultimate meter counts down normally.
+* Repressing ultimate while active must not restart it.
+* Wrecking/finishing must continue to terminate an active ultimate according to Seren’s existing lifecycle unless the current game already specifies otherwise.
 
-Increase Flann’s on-road race size only by roughly 10–15%. A starting target of approximately 1.12× the current logical race size is appropriate. Visually, Flann’s body should occupy roughly 70–72% of a lane’s width instead of reading noticeably undersized.
+On top of that shared lifecycle, Neela gets the special transformation/teleport mechanic described below.
 
-Implement this in a clean, data-driven way rather than scattering * 1.12 throughout the code. For example, add a Flann-specific race scale to its CARS.flann data and centralize obtaining the race dimensions for a given racer.
+---
 
-Important:
+# 1. Replace Phantom with the Neela sprite properly
 
-* Scale both width and height uniformly.
-* Preserve the sprite’s existing aspect ratio.
-* Preserve the full source image and the existing measured spriteBounds.
-* Preserve the exhaust anchors.
-* Do not enlarge the garage/menu/select preview unless necessary. The request is specifically about how Flann looks on the road during gameplay.
-* Do not globally increase carW or carH, because that would enlarge all six cars.
-* Phantom, Bolt, Timestamp, Rose, and Siren must retain their existing size.
+Do not simply draw `v_neela.PNG` inside Phantom’s old rectangular box.
 
-The physical collision geometry should scale with Flann’s new race size. Do not create a visibly larger car with the old smaller collision hull.
+Follow the approach already used for Flann in `js/data.js`, `js/runtime.js`, `js/render.js`, `js/mechanics.js`, and the sprite/hitbox tests.
 
-carHit(who) currently derives its polygon from CARS[o.car].hitShape || CAR_HIT_RECT and multiplies those normalized points by global carW / carH. Update this so Flann’s world-space hull uses the same Flann-specific race dimensions as its rendered sprite.
+Change the car entry from `phantom` to `neela` and make it sprite-based.
 
-The existing custom eight-point Flann hull must remain tapered and inset relative to the artwork; simply scale that hull with the rendered car. Do not revert it to a rectangle.
+The Neela definition should include measured, normalized geometry for the actual PNG:
 
-Any code that genuinely needs a racer’s physical body dimensions should use a common helper rather than independently guessing Flann’s scale.
+* `sprite: "v_neela.PNG"`
+* correctly measured `spriteBounds`
+* correctly measured exhaust/tailpipe anchor or anchors
+* a precise `hitShape`
+* blue/cyan energy colors
+* any Neela-specific race scale only if the visible artwork genuinely needs one
 
-Do not unnecessarily alter grid spacing, road width, lane width, camera scale, or the dimensions of every other racer just because Flann is larger.
+Do not copy Flann’s bounds or exhaust coordinates. Measure Neela’s actual transparent image and determine where the visible body begins/ends and where the real rear outlet is.
 
-2. Flann’s ultimate becomes an offensive fire/ram ultimate
+Preserve the full PNG when rendering, including transparent padding, exactly as Flann does. Use the measured visible bounds only for sizing/centering.
 
-The existing shared ultimate lifecycle must remain intact:
+The hit polygon must follow the visible physical body, not the transparent PNG rectangle. Exclude empty transparent corners and decorative energy/exhaust regions.
 
-* charge time stays 75 seconds;
-* duration stays 15 seconds;
-* active ultimate meter still counts down from the full duration;
-* current 2× ultimate speed benefit remains;
-* activation/input behavior remains unchanged;
-* repeated activation while already active still does nothing;
-* ultimate expiry returns Flann to normal immediately;
-* bots and local human players must get the same Flann-specific power when they are driving Flann.
+Do not leave Neela using Phantom’s generic `CAR_HIT_RECT` unless measurements prove that is genuinely correct.
 
-Do NOT make this a new separate ultimate state machine. Extend the existing ultOn lifecycle with a Flann-specific effect.
+Menus and garage previews must show `v_neela.PNG`, never the alternate form.
 
-Create a clear helper along the lines of:
+If Phantom’s old procedural `drawJet()` renderer becomes completely unused after this change, verify that with repository-wide search and tests before removing it. Do not delete shared rendering code merely because Phantom stopped using it if something else still references it.
 
-flannUltActive(who)
+---
 
-It should answer true only when:
+# 2. Normal Neela boost exhaust: BLUE ENERGY, not fire
 
-* the racer exists,
-* its car is flann,
-* and its existing ultOn state is active.
+Neela’s normal boost visual must originate from the actual tailpipe/rear outlet visible in `v_neela.PNG`.
 
-Use one shared predicate everywhere rather than repeating car === "flann" && ultOn.
+Use the same principle as Flann’s sprite exhaust:
 
-Do not turn Flann’s ultimate into the existing Invulnerable Condition. Do not set invuln. Do not make noContact() globally return true for an ulting Flann.
+the effect root must be defined in image-space coordinates and transformed with the sprite, so resizing, lane-change tilt, race scaling and split-screen rendering never cause the effect to drift away from the vehicle.
 
-That would be the wrong abstraction because Flann still needs to physically contact racers/hazards in order to destroy them, and puddles must still affect it.
+However, Neela’s boost should not look like Flann’s flame.
 
-This is collision priority/offensive armor, not ordinary respawn invulnerability.
+It should look like concentrated blue energy:
 
-3. Racer collision behavior during Flann’s ultimate
+* bright white/cyan at the emitter
+* vivid electric blue/cyan body
+* transparent blue fade toward the end
+* smoother and cleaner than fire
+* slightly trail-like rather than a pointed orange flame
+* additive/lightened glow where appropriate
 
-While Flann’s ultimate is active, any ordinary physical collision between Flann and another active racer should wreck/destroy the other racer and leave Flann driving normally.
+The root of the energy must remain pinned exactly to Neela’s tailpipe under every sprite size and tilt.
 
-This applies regardless of which racer initiated the contact.
+Ordinary boost, boost cans, and the speed granted by the ultimate may all use this exhaust indication exactly as the existing `boosting` flag works, but none of those states should accidentally trigger Neela’s transformation.
 
-Examples that must work:
+Respect Reduced Motion. Reduced Motion may remove oscillation/flicker, but it must not remove essential visual feedback.
 
-* Flann drives into the back of another racer → the other racer is wrecked; Flann is not slowed.
-* Another racer rear-ends an ulting Flann → the attacker is wrecked; Flann is not shunted or slowed.
-* Flann changes lane into another racer → the other racer is wrecked instead of being barged sideways.
-* Another racer tries to barge into an ulting Flann → the attacker is wrecked; Flann is not pushed into another lane.
-* A bot-controlled Flann behaves identically.
-* A human-controlled Flann in local multiplayer behaves identically.
-* The main player being Flann is not a special case.
+---
 
-Integrate this into the existing shared contact system, especially:
+# 3. Add explicit Neela ultimate state
 
-* rearContact()
-* rearEnd()
-* bumpTarget()
-* move()
-* rivalLaneTo()
+Do not infer every part of this mechanic from `ultOn` alone.
 
-Be careful with lane-change control flow.
+Add a small, explicit Neela state model on every racer object, including `G` and rival objects.
 
-For example, if bumpTarget() destroys the attacking racer because the victim is an ulting Flann, the caller must not then continue and move the newly wrecked attacker into the destination lane as though nothing happened.
+Use names consistent with the repository, but conceptually the state needs to represent:
 
-Return or communicate an explicit collision outcome if needed so move() / rivalLaneTo() can correctly stop or continue.
+* whether Neela is currently in the alternate `vtm_neela.PNG` form
+* the exact world/race position where Neela activated the ultimate
+* whether Neela has already hit/swapped with another racer during this ultimate
+* per-racer whiteout/obscure timer
+* per-racer transformation/teleport visual timer if needed
+* any very short internal collision guard required to prevent the same physical contact from firing twice in one frame
 
-When Flann destroys another racer:
+Reset all of those fields in race setup/reset and clean them up reliably when the ultimate ends, the racer wrecks, finishes, or another race begins.
 
-* use the existing wreck/destruction lifecycle;
-* preserve botBlame() / killer attribution where appropriate;
-* preserve existing wreck particles/audio/shake where possible;
-* preserve ultimate charge rewards/penalties according to the existing wreckRival() / destroyCar() semantics;
-* do not create a second incompatible wreck implementation.
+Do not make Neela Invulnerable as part of this system.
 
-Flann itself must NOT receive the normal rear-contact slow, side-barge slow, shunt, or wreck consequence from a racer it destroys during its active ultimate.
+Do not route this through `noContact()`.
 
-Existing lifecycle protection must remain authoritative:
+Like Flann’s special collision behavior, this is an extra consequence of genuine physical contact, not a replacement for contact.
 
-* finished racers remain out of play;
-* already wrecked racers remain out of play;
-* temporary respawn-invulnerable racers remain protected by the existing contact rules.
+---
 
-Do not introduce spawn-killing or allow the ultimate to alter an already-recorded race result.
+# 4. Ultimate activation sequence
 
-Once Flann’s ultimate expires, all racer collisions must immediately return to the ordinary shared Seren behavior.
+When a Neela racer activates ultimate:
 
-4. Desert hazard: Flann destroys it during ultimate
+1. Start the existing shared ultimate lifecycle normally.
+2. Capture Neela’s activation position immediately before the transformation.
+3. Trigger the temporary white-screen sequence for Neela’s own view, if Neela is controlled by a human who has a view.
+4. Begin Neela’s vehicle transformation effect.
+5. Switch its rendered/raced form to `vtm_neela.PNG`.
+6. Keep the racer fully controllable throughout the sequence.
+7. Keep the normal 2× ultimate speed multiplier active.
+8. Start the long blue alternate-form energy trail.
 
-The desert environmental hazard is currently the weed / tumbleweed.
+The screen going white is visual only.
 
-Normally it slows the racer through hitWeed().
+Do not:
 
-When an active Flann ultimate physically collides with a tumbleweed:
+* pause the race
+* freeze Neela
+* suppress controls
+* stop the ultimate countdown
+* stop other racers
+* alter the world clock
+* secretly auto-steer the vehicle
+* implement automatic homing
 
-* Flann receives no Slow;
-* Flann is not otherwise penalized by that contact;
-* the tumbleweed is destroyed/removed immediately;
-* play an appropriate impact/destruction effect using the existing smashFx() or equivalent existing debris system;
-* the effect should visually communicate that Flann smashed straight through it;
-* the same behavior must work for player Flann, bot Flann, and local-human Flann.
+Despite the appearance of `vtm_neela.PNG`, the racer must continue to use Seren’s existing lane controls and bot steering. Human input and bot AI remain authoritative.
 
-Do not treat the tumbleweed as having merely “missed.” It should visibly be destroyed by the collision.
+Use one named constant for the whiteout duration rather than scattering magic numbers. Keep it short enough to feel like a transformation flash rather than making the race unplayable.
 
-Do not give this immunity to the other five cars.
+---
 
-5. Meteors: Flann is protected during ultimate
+# 5. Store Neela’s origin in WORLD/RACE coordinates, not screen coordinates
 
-While Flann’s ultimate is active, meteors must not wreck Flann.
+This part is critical.
 
-Handle both relevant cases:
+Player one does not have an ordinary mutable race `y`: player one is kept at `playerY`, while rival positions are relative to that camera and `metersOf()` converts those relative positions into race distance.
 
-Direct falling-rock contact
-If the falling meteor/rock physically intersects active Flann before its normal ground impact, treat Flann as smashing through the meteor:
+Therefore, DO NOT implement the later teleport as:
 
-* remove/consume the meteor appropriately;
-* show destruction/debris FX;
-* do not wreck Flann;
-* do not end Flann’s ultimate.
+`oldX = ...; oldY = ...; swap x/y`
 
-Meteor explosion/blast
-If a meteor reaches the ground and detonates while active Flann is within the blast radius:
+That will be incorrect as soon as the road has scrolled.
 
-* the explosion may still visually happen;
-* other racers inside the blast continue to use normal rules;
-* active Flann must not be destroyed by that blast;
-* Flann’s ultimate continues.
+Create a proper concept of a racer world pose, containing at least:
 
-This meteor protection must also work when Flann is a rival/bot/local-human racer, not just the main player.
+* absolute race meters/progress
+* lane
+* logical lateral position as needed
 
-Do not globally change safeCar(), noContact(), or Invulnerable just to accomplish this. Add the Flann-ultimate exception at the hazard consequence layer.
+At the moment Neela activates, save this world pose.
 
-After the ultimate expires, meteors must wreck Flann normally again.
+At the moment Neela impacts another racer, capture that racer’s world pose before changing anything.
 
-6. Puddles are the explicit exception
+Build centralized helpers such as the conceptual equivalents of:
 
-Puddles MUST continue affecting Flann even while its ultimate is active.
+`racerWorldPose(who)`
 
-Do not destroy puddles.
+`teleportRacerToPose(who, pose)`
 
-Do not make the ultimate refuse the puddle debuff.
+Do not duplicate player-one versus rival coordinate calculations all over the mechanic.
 
-If an active Flann drives through a puddle:
+If teleporting player one requires rebasing the player-one camera/world representation, do that centrally and preserve the absolute world position of every unrelated racer and road object.
 
-* the puddle contact occurs normally;
-* Obscured / blind is applied normally;
-* the water spray remains;
-* existing puddle sound/shake/VFX remain;
-* Flann’s ultimate does not end;
-* Flann retains its ultimate speed/power while also being obscured.
+A player-one rebase must not accidentally shift standings, hazards, bubbles, slicks, active item objects, scenery, meteor markers, effects, finish calculations, or other racers to different absolute race positions.
 
-This is intentional: fire/impact can smash solid hazards, but the puddle is liquid and cannot be destroyed by ramming it.
+The mathematical invariant should be:
 
-Do not accidentally make a generic “ultimate immunity” helper that also blocks puddles.
+after rebasing player one, every unrelated racer’s `metersOf()` result remains unchanged.
 
-A clean active-ultimate Flann should therefore be capable of simultaneously showing:
+Any persistent Neela trail points must also remain in the correct world location across such a rebase.
 
-* Boosted from the ultimate;
-* Obscured after hitting a puddle.
+---
 
-7. Do not accidentally extend this to mystery-item hazards
+# 6. Alternate-form collision with road hazards
 
-Mystery Bubble rewards are being disabled in this task, so oil and seekers should no longer be obtainable during normal play.
+While Neela’s ultimate is active, Neela receives Flann-like priority against Seren’s solid road hazards.
 
-Do not spend time inventing a complicated Flann-vs-oil or Flann-vs-seeker ultimate interaction unless needed to keep existing dormant code safe.
+Follow the existing Flann behavior instead of inventing a second unrelated hazard subsystem.
 
-The environmental behavior required here is specifically:
+For Seren’s normal three track hazards:
 
-* tumbleweed/desert hazard: smash it;
-* meteor: cannot hurt Flann during ultimate;
-* puddle: still affects Flann.
+**Tumbleweed:** Neela destroys/smashes it on contact. Neela does not receive Slow or the ordinary ultimate-meter penalty from that hit.
 
-8. Add a real “car on fire” ultimate visual
+**Meteor:** Neela survives the solid meteor/blast interaction while the relevant Neela ultimate protection is active. Use the same established gameplay interpretation as Flann rather than creating generic Invulnerability.
 
-Flann needs a clearly visible on-fire effect for the entire time its ultimate is active.
+**Puddle:** completely unchanged. Neela cannot “destroy” water. The puddle still applies the normal water screen effect and Obscured behavior exactly as it does to Flann.
 
-The current sprite renderer already displays rear exhaust flames whenever boosting || ultOn, but that is not enough. I want the vehicle itself to visibly appear engulfed/surrounded by controlled racing flames during its ultimate.
+Do not silently turn this into immunity against every offensive mechanic in the game.
 
-Create a distinct Flann ultimate-fire rendering effect.
+Oil slicks, seekers, ordinary racer contact and other non-solid systems should retain their normal behavior unless the mechanic described here explicitly overrides racer contact.
 
-Requirements:
+The special solid-hazard permission should remain active for the entire remaining Neela ultimate, including after Neela has returned from `vtm_neela.PNG` to `v_neela.PNG` following a racer impact.
 
-* Only Flann gets this effect.
-* Only while ultOn === true.
-* Ordinary boost must NOT trigger it.
-* A boost can must NOT trigger it.
-* The existing rear exhaust may continue.
-* Fire should visually wrap around or trail along the body, especially the sides/rear, without covering the entire sprite so heavily that the car becomes unreadable.
-* Use Flann’s existing orange/golden flame palette where appropriate.
-* It should read immediately as “this car is on fire / powered up.”
-* It must move/rotate with the car during lane-change tilt.
-* It must render correctly for the player, bots, and every local multiplayer viewport.
-* It must disappear immediately when the ultimate ends or the racer is wrecked.
-* Rendering must remain state-pure; drawing the effect must not mutate race state.
+Give this rule one authoritative predicate/helper instead of spreading checks like:
 
-Do not pass only one combined boosting || ultOn boolean into the renderer if that makes it impossible to distinguish ordinary exhaust from the new ultimate fire.
+`car === "neela" && ultOn`
 
-Extend the renderer interface cleanly so it can distinguish:
+through many files.
 
-* normal boost/exhaust;
-* active ultimate;
-* Flann-specific ultimate fire.
+For example, conceptually separate:
 
-A reasonable rendering approach is a dedicated helper such as drawFlannUltFire(w, h, p) invoked inside the same translated/rotated car-local coordinate system as the sprite.
+* “Neela’s ultimate is active and therefore may clear solid hazards”
+* “Neela is currently in the alternate sprite form”
 
-Use several restrained flame tongues/glows around the body rather than a giant opaque overlay.
+Those are NOT the same thing after a racer impact.
 
-Animation should use a stable time-based phase such as the existing exhaust implementation.
+---
 
-Respect motionReduced():
+# 7. Collision with another racer while in the alternate form
 
-* full motion: subtle continuous flame flicker;
-* reduced motion: a static flame/glow treatment with no rapid flickering.
+This is the core mechanic.
 
-Do not alter the actual v_flann.PNG file.
+While Neela is still in `vtm_neela.PNG` form, physically contacting another eligible racer must NOT wreck either racer.
 
-9. Mystery Bubble rewards are temporarily disabled
+Instead perform exactly one swap/teleport event.
 
-Mystery Bubbles currently grant:
+The contacted racer must be a racer that can legitimately participate in contact under Seren’s existing rules.
 
-* can
+Finished racers, wrecked racers and racers protected by respawn Invulnerability must remain excluded through the existing contact protection rules.
+
+When a valid collision occurs:
+
+1. Capture the impacted racer’s exact world pose at the instant of impact.
+2. Start the white-screen sequence for Neela.
+3. Start the same white-screen sequence for the impacted racer if that racer owns a human view.
+4. Trigger Neela’s transformation flash.
+5. Trigger an equivalent white teleport flash on the impacted racer.
+6. Exit Neela’s alternate `vtm_neela.PNG` form immediately.
+7. Render Neela using normal `v_neela.PNG` again.
+8. Teleport Neela to the exact world position/lane occupied by the impacted racer at impact.
+9. Teleport the impacted racer to the world position/lane Neela occupied immediately before activating the ultimate.
+10. Neither racer is destroyed by this swap.
+
+The saved Neela origin is the position from immediately before ultimate activation.
+
+It is NOT:
+
+* Neela’s position one frame before impact
+* the point where the alternate form currently is
+* merely Neela’s old lane
+* a stale screen-space `y`
+
+The exchange must work correctly in every ordering:
+
+* player Neela → bot
+* player Neela → local human
+* bot Neela → player one
+* bot Neela → local human
+* local-human Neela → player one
+* local-human Neela → another local human
+
+Handle player one specially only inside the centralized world-pose/teleport helper.
+
+Do not make separate versions of the entire mechanic for player and rival objects.
+
+---
+
+# 8. What happens AFTER Neela hits a racer
+
+A racer collision ends the alternate visual form, but it does NOT necessarily end the ultimate.
+
+If Neela still has ultimate time remaining:
+
+* `ultOn` remains true
+* the meter continues from its current remaining value
+* the normal 2× speed remains
+* Neela stays in normal `v_neela.PNG` car form
+* Neela retains the solid-hazard clearing permission described above
+* Neela MUST NOT gain the ability to destroy racers
+* racer-to-racer contacts revert to Seren’s normal rear-end/barge/contact rules
+* Neela must not perform another teleport swap during that same ultimate
+
+In other words:
+
+**one alternate-form racer swap maximum per ultimate.**
+
+After that first impact, the rest of the ultimate is a boosted normal-looking Neela with the special solid-hazard permission until the meter reaches zero.
+
+When the meter reaches zero, all Neela-specific ultimate privileges disappear immediately.
+
+---
+
+# 9. If Neela never hits a racer
+
+If the ultimate naturally expires while Neela is still in `vtm_neela.PNG` form:
+
+* transform Neela back into `v_neela.PNG`
+* keep Neela at its current race position
+* do not teleport anyone
+* play the local vehicle transformation flash
+* stop creating new alternate-form trail
+* let the existing trail already behind the vehicle fade naturally
+* remove the solid-hazard permission because the ultimate has ended
+
+Do not leave stale alternate-form state after `endUlt()`.
+
+---
+
+# 10. The white-screen/Obscured sequence
+
+The white transition must genuinely cover the racer’s view.
+
+It should be pure/near-pure white and temporarily hide both the road and that racer’s interface.
+
+Do not misuse the existing puddle `blind` state for this.
+
+`blind` currently drives the water-on-glass rendering. Setting `blind` for Neela would incorrectly draw puddle-water graphics.
+
+Instead give racers a separate Neela whiteout/transition timer.
+
+Extend the existing Condition derivation so **Obscured** is active when either:
+
+* normal puddle blindness is active, OR
+* this whiteout timer is active
+
+Conceptually:
+
+`obscured = blind > 0 || neelaWhiteoutT > 0`
+
+Keep the Condition system derived from actual gameplay state.
+
+Do not create an unrelated “Neela obscured badge.”
+
+Use the existing `obscured` Condition and its existing icon/localization.
+
+For single-player, remember that much of the HUD is DOM layered over the canvas. A white rectangle drawn only into the canvas may leave DOM instruments visible. The sequence must hide those instruments too.
+
+For local multiplayer, do NOT reuse the existing global `#flash` in a way that blinds every local player simultaneously.
+
+Seren renders each human’s view separately. The whiteout must belong to the view owner.
+
+A good architecture is:
+
+* `whiteoutActive(who)` derives from that racer
+* local-play white overlay is drawn after that column’s road AND `drawSeatHud()`, so the entire column interface disappears
+* single-player uses a correctly layered white overlay / shell state that covers the road and DOM HUD
+* only affected human views are covered
+
+If Neela hits a bot, the bot obviously has no dedicated screen to cover, but its Obscured condition state may still exist briefly and can appear beside that car in another player’s view.
+
+If bot Neela hits a human, whiteout the human’s view.
+
+If two local humans are involved, whiteout both relevant columns independently.
+
+Do not let one player’s whiteout obscure unrelated local players.
+
+---
+
+# 11. Transformation/teleport vehicle flash
+
+Add a local visual transition directly on the affected vehicle whenever a transformation or teleport occurs.
+
+The requested visual language is a brief fade/flash toward solid white.
+
+For Neela, play it when:
+
+* normal car → alternate form
+* alternate form → normal car after racer impact
+* alternate form → normal car on natural ultimate expiry
+
+For an impacted racer, play it at the teleport event as well.
+
+This effect should be generic enough to work on any impacted racer model, because the victim can be Flann, Bolt, Timestamp, Rose, Siren, etc.
+
+Do not write a separate white-flash implementation for each car.
+
+The flash should preserve the racer’s actual silhouette. A white-tinted silhouette/ghost or strong white body overlay that fades away is preferable to a generic circle.
+
+Keep the effect cosmetic. It must not modify hitboxes or gameplay state.
+
+Reduced Motion should still show a clear static/short transition cue, but without unnecessary flicker or pulsing.
+
+---
+
+# 12. `vtm_neela.PNG` rendering and precise hitbox
+
+Treat the alternate model as its own measured sprite geometry.
+
+Do not assume the normal Neela bounds/hitbox also fit `vtm_neela.PNG`.
+
+Measure and define:
+
+* alternate sprite visible bounds
+* alternate exhaust/energy-tail anchor
+* alternate collision polygon
+* any required size relationship to the normal racer dimensions
+
+Use a clear data-driven representation such as an ultimate/alternate sprite entry under Neela rather than hardcoding PNG geometry in several rendering functions.
+
+Extend sprite preloading so both `v_neela.PNG` and `vtm_neela.PNG` are loaded once and cached.
+
+`carHit()` or the equivalent central geometry path should automatically select the correct Neela hit shape while the alternate form is active.
+
+Rendering and collision must use matching dimensions and rotation.
+
+The alternate hitbox must:
+
+* follow the visible alternate model closely
+* exclude transparent PNG padding
+* rotate with vehicle tilt
+* work identically for player one, bots and local humans
+* switch back immediately when Neela returns to car form
+
+Do not reuse the existing Seeker item’s `missileDims()` or collision implementation merely because the sprite has a similar theme. The Seeker is an independent item with autonomous tracking and its own lifecycle. Neela is still a racer.
+
+---
+
+# 13. Very long persistent blue energy trail
+
+While Neela is in `vtm_neela.PNG` form, create a distinctive, very long blue energy trail from the actual tail/emitter point of that sprite.
+
+This must be substantially longer and more persistent than the normal Neela boost effect.
+
+Visual target:
+
+* bright white/cyan core close to the emitter
+* saturated electric blue around it
+* softer cyan outer glow
+* trail tapers and becomes more transparent with age
+* old parts remain in the world behind Neela
+* they progressively fade instead of vanishing as soon as Neela moves
+* smooth enough to look continuous even during fast lane changes
+* trail follows the actual driven path rather than merely drawing a straight line behind the current vehicle
+
+Do not generate an unbounded number of objects.
+
+Use a bounded trail-node/history system with sensible sampling distance/time and maximum age.
+
+A trail lifetime around the order of a couple of seconds can be used as an initial tuning point, but choose the exact value visually so it reads as “very long” at ultimate speed.
+
+Old nodes must finish fading after:
+
+* Neela hits a racer and returns to car form
+* the ultimate expires
+* Neela wrecks
+
+Stop adding new alternate-form nodes immediately when the form ends, but do not delete existing visible nodes abruptly.
+
+Trail positions must move correctly with Seren’s road/world coordinate system and must survive any player-one world rebase used by the teleport mechanic.
+
+Respect Reduced Motion: reduce animation/pulsation if necessary, but retain the spatial trail because it communicates the alternate form’s movement.
+
+---
+
+# 14. Preserve existing racer contact rules outside the one swap
+
+Do not turn Neela into Flann against racers.
+
+Flann’s existing ultimate can wreck racers through collision priority.
+
+Neela must not inherit that rule.
+
+Neela’s racer behavior is:
+
+**Before first racer impact while in alternate form:** contact triggers the teleport swap and nobody is wrecked.
+
+**After that swap, while ultimate remains:** ordinary racer contact rules.
+
+**After ultimate expires:** completely ordinary racer contact rules.
+
+If two contacts occur in one physics/update step, resolve only one Neela teleport deterministically and guard against a second event caused by the freshly teleported positions.
+
+That guard must not become seconds of hidden Invulnerability. It should only prevent duplicate handling of the same event/frame.
+
+---
+
+# 15. Rename all Phantom-facing content
+
+Search the entire repository for both:
+
+`phantom`
+
+and
+
+`Phantom`
+
+Replace every legitimate car reference with Neela.
+
+At minimum inspect:
+
+* `js/data.js`
+* `js/i18n.js`
+* `js/render.js`
+* `js/mechanics.js`
+* `js/race.js`
+* `js/ai.js`
+* `js/ui.js`
+* `js/hud.js`
+* local multiplayer code
+* all files under `tools/`
+* README/documentation
+* comments
+* any hardcoded six-car arrays
+
+Update `CAR_IDS` so Neela occupies Phantom’s slot rather than adding a seventh car.
+
+Update `TEMPERS` from `phantom` to `neela`, preserving Phantom’s current temperament values unless there is a gameplay reason directly caused by the new ultimate to alter them.
+
+Update localization keys from `phantom` / `phantomUlt` to `neela` / `neelaUlt`.
+
+Add accurate English and French Neela descriptions.
+
+The description should explain, in player-facing language, that Neela briefly changes form, can smash solid road hazards while the ultimate lasts, puddles still Obscure it, and the first racer it hits exchanges race positions with Neela’s activation point instead of being wrecked.
+
+Do not expose implementation terminology such as world rebasing in the player-facing description.
+
+If the game can actually persist a `"phantom"` car ID in saved data, add a minimal migration from `"phantom"` to `"neela"`. If no persisted car ID exists, do not add pointless legacy code.
+
+---
+
+# 16. AI and bot behavior
+
+Neela must work identically whether controlled by:
+
+* player one
+* a bot
+* a local multiplayer human
+
+Do not give bot Neela a separate simplified implementation.
+
+Existing bot steering remains active while Neela is in alternate form.
+
+Do not implement automatic homing.
+
+The bot continues making lane decisions through Seren’s existing AI; the special behavior happens when actual geometry produces contact.
+
+Review AI ultimate valuation because Neela now has a tactical effect. Do not rewrite the AI system, but make sure no assumptions say that Flann is the only car with a unique ultimate.
+
+A bot should not break because its current plan references Phantom’s old ID.
+
+---
+
+# 17. Rendering architecture
+
+Keep rendering read-only.
+
+Existing Seren comments and tests explicitly treat rendering as something that must not mutate race state.
+
+Continue that rule.
+
+Trail lifetime, whiteout timers, transform timers and alternate-form state must be advanced from gameplay/update code, not inside draw functions.
+
+Rendering should only inspect those values.
+
+Avoid allocating new `Image` objects every frame.
+
+Cache both Neela images exactly once through the sprite system.
+
+Make sure late image loading still requests a repaint just as the current sprite loader does.
+
+---
+
+# 18. Tests are mandatory
+
+Update and extend the existing Node regression suite rather than relying only on visual testing.
+
+The repository already has:
+
+* `tools/check.mjs`
+* `tools/menu-check.mjs`
+* `tools/ultimate-check.mjs`
+* `tools/sprite-check.mjs`
+* `tools/hitbox-check.mjs`
+* `tools/game-fixture.mjs`
+
+Update assumptions that only Flann uses a sprite or that there is only one cached vehicle image.
+
+### `sprite-check.mjs`
+
+Add checks for:
+
+* exact filename/casing `v_neela.PNG`
+* exact filename/casing `vtm_neela.PNG`
+* both files cached once
+* normal Neela sprite centered from measured visible bounds
+* alternate sprite centered from its own measured bounds
+* Neela’s normal energy root exactly matches measured exhaust coordinates
+* alternate trail root exactly matches its measured tail anchor
+* roots remain pinned across several sizes
+* roots rotate correctly with lane-change tilt
+* menu preview always uses `v_neela.PNG`
+* menu preview never uses `vtm_neela.PNG`
+* alternate asset is used only during the relevant ultimate form
+* normal boost does not cause transformation
+* rendering remains state-pure
+* Reduced Motion behavior is deterministic
+
+### `hitbox-check.mjs`
+
+Add checks for:
+
+* Neela normal polygon matches normal artwork
+* alternate-form polygon matches alternate artwork
+* transparent corners are rejected
+* true body points are accepted
+* rotation follows rendered rotation
+* player/rival geometry is identical
+* hit shape switches immediately on transformation
+* hit shape returns immediately after racer impact
+* hit shape returns on natural expiry
+* exact edge contact and tiny separation behave correctly
+
+Do not weaken Flann’s existing hitbox tests.
+
+### `ultimate-check.mjs`
+
+Add a dedicated Neela section covering player, bot and local-human forms.
+
+Test:
+
+* activation starts the standard 15-second meter
+* activation captures origin exactly once
+* alternate form activates
+* controls/state continue while whiteout is running
+* whiteout does not pause the countdown
+* Neela remains reachable and is not Invulnerable
+* tumbleweed is destroyed
+* meteor cannot wreck Neela while special hazard permission applies
+* puddle still applies its normal effect
+* Obscured is active during Neela’s whiteout without requiring `blind`
+* oil/seeker behavior is not accidentally converted to broad immunity
+* natural expiry returns normal form
+* alternate trail stops receiving new nodes after form ends
+* old trail nodes fade instead of being purged instantly
+
+For racer impact test all important ownership directions.
+
+Verify:
+
+* neither racer is wrecked
+* victim’s pre-impact pose is captured first
+* Neela goes to victim pose
+* victim goes to Neela’s activation pose
+* Neela immediately returns to normal sprite/form
+* ultimate timer does not reset
+* remaining ultimate speed continues
+* remaining solid-hazard privilege continues
+* second racer impact during the same ultimate does not teleport again
+* ordinary collision rules apply after the first swap
+* ultimate eventually expires normally
+
+Also test:
+
+* finished target cannot trigger swap
+* wrecked target cannot trigger swap
+* Invulnerable target cannot trigger swap
+* a collision does not trigger twice in one frame
+* wrecking Neela clears stale form state
+* finishing clears stale form state
+
+### Player-one coordinate/rebase regression
+
+Add a specific test for the difficult case where `"me"` is teleported.
+
+Record absolute race positions of unrelated rivals and relevant world objects before the teleport.
+
+Teleport player one.
+
+Assert that unrelated racers retain the same absolute meter positions afterward.
+
+Assert Neela/victim destinations are exact.
+
+Assert standings calculations remain coherent.
+
+Assert no hazard or trail object gains an accidental world-space offset.
+
+### `menu-check.mjs`
+
+Verify:
+
+* Neela appears where Phantom used to
+* localized name is Neela
+* Neela ultimate description is shown
+* no Phantom user-facing string remains
+* normal Neela model is the menu model
+
+Run the full suite after changes.
+
+Do not “fix” a failing test by deleting meaningful assertions.
+
+---
+
+# 19. Manual validation
+
+After automated tests pass, visually verify the game in a browser.
+
+Test Neela in:
+
+* Endless
+* Race against bots
+* 2-player local
+* 3-player local
+* 4-player local
+
+Check ordinary driving first.
+
+Normal `v_neela.PNG` must:
+
+* be centered correctly
+* be the right visual scale in its lane
+* have no transparent-padding collision weirdness
+* tilt naturally
+* have the blue normal boost effect attached exactly to the rear outlet
+
+Then test ultimate activation.
+
+Confirm:
+
+* only Neela’s own human view whites out
+* controls still respond while white
+* `vtm_neela.PNG` is already the active form during the transition
+* the white vehicle transformation reads cleanly when the view comes back
+* the long energy trail emerges from the correct tail point
+* the trail follows lane changes smoothly
+
+Hit a puddle while active.
+
+Confirm the normal puddle behavior still happens.
+
+Hit solid road hazards.
+
+Confirm they are cleared without breaking the ultimate.
+
+Hit another racer.
+
+Confirm visually that:
+
+* both relevant human screens white out independently
+* no unrelated local-player view turns white
+* Neela returns to `v_neela.PNG`
+* Neela appears at the other racer’s previous position
+* the other racer appears at Neela’s activation position
+* neither is wrecked
+* both get the white transformation/teleport visual
+* the old long trail remains briefly and fades
+* Neela’s meter continues from the same remaining point
+* Neela remains fast
+* Neela can still clear the permitted solid hazards
+* Neela can no longer teleport another racer that ultimate
+
+Let the ultimate expire without hitting anybody and verify the alternate form simply changes back at its current location.
+
+---
+
+# 20. Code-quality constraints
+
+Do this carefully and integrate with the existing code style.
+
+Prefer authoritative predicates and shared helpers over repeated car-ID checks.
+
+Examples of responsibilities that deserve one central answer:
+
+* Is this racer Neela?
+* Is Neela’s alternate form currently active?
+* Does this racer currently have Neela’s solid-hazard privilege?
+* What is this racer’s absolute world pose?
+* Is this racer’s screen currently white/Obscured?
+* Which hit shape should this racer use?
+* Which sprite should this racer render?
+
+Do not combine concepts that intentionally diverge after impact.
+
+Especially:
+
+`Neela ultimate active`
+
+is not identical to:
+
+`Neela alternate form active`
+
+after the first racer collision.
+
+Keep Flann’s existing mechanic working unchanged.
+
+Keep the generic ultimate lifecycle shared.
+
+Do not regress:
+
+* respawn Invulnerability
+* finish protection
+* Flann ram behavior
+* puddles
+* meteors
+* tumbleweeds
 * oil
-* seeker
-
-Temporarily disable all of those gameplay rewards.
-
-Do NOT delete the Mystery Bubble/item implementation. This is intended to be easy to restore later.
-
-Prefer one centralized feature gate such as:
-
-MYSTERY_ITEMS_ENABLED = false
-
-or another clearly named equivalent.
-
-When this gate is false:
-
-* collecting a Mystery Bubble must not assign holder.item;
-* it must not replace an existing item;
-* it must not start/update a bot’s item-use timer;
-* it must not create a boost-can effect;
-* it must not create oil;
-* it must not launch a seeker;
-* the player’s item HUD remains empty;
-* bots cannot acquire or use Mystery Bubble items;
-* local human racers cannot acquire them either.
-
-At the start of a race the existing item state is already reset; preserve that behavior.
-
-For defense in depth, useItem() should also refuse to execute Mystery Bubble items while the feature is disabled. This ensures stale/manual state cannot accidentally re-enable the mechanic.
-
-Do not remove rollItem(), fireSeeker(), oil rendering, seeker rendering, rarity data, localization, or item assets merely because they are temporarily disabled.
-
-The Bubble rows themselves may remain visible and collectible if that is the least invasive approach. If retained:
-
-* collection can still consume that bubble;
-* a neutral/pop pickup VFX is fine;
-* but absolutely no usable item/reward may be granted.
-
-Do not display misleading rarity/item feedback that implies a Can/Oil/Seeker was actually awarded when rewards are disabled.
-
-Keep the existing rules.bubbles custom-race switch meaningful for whether Bubble rows spawn. The new reward gate is separate from the existing race-rule switch.
-
-10. Preserve everything unrelated
-
-Do not change the behavior of Phantom, Bolt, Timestamp, Rose, or Siren ultimates.
-
-They should remain the existing shared:
-
-* 15 second duration;
-* 2× speed;
-* no special collision immunity;
-* ordinary hazard vulnerability;
-* ordinary racer collision behavior.
-
-Do not make all ultimates invincible.
-
-Do not make every car destroy racers.
-
-Do not change the ultimate charge clock.
-
-Do not change finish protection or respawn invulnerability.
-
-Do not change road dimensions, biome timing, difficulty, AI competence, standings, finishing, save data, controls, or localization unless necessary for the exact requested behavior.
-
-Do not rename Flann or flann.
-
-Do not modify the source PNG.
-
-11. Automated tests must be updated, not bypassed
-
-The existing test suite currently contains explicit assumptions that:
-
-* every ultimate has no secondary effect;
-* all active ultimate users remain vulnerable to puddles, tumbleweeds, meteors, oil, and seekers;
-* ordinary contact applies while ultimate is active;
-* there is no car-dependent ultimate logic.
-
-Those assertions are now intentionally outdated for Flann only.
-
-Update the tests so they protect the new design rather than deleting coverage.
-
-tools/ultimate-check.mjs should explicitly test at minimum:
-
-Flann, as:
-
-* main player;
-* bot;
-* local human rival.
-
-During ultimate:
-
-* still receives the existing 2× speed;
-* still lasts exactly 15 seconds;
-* still uses the shared charge lifecycle;
-* repeat activation does not reset duration;
-* tumbleweed collision destroys the weed and does not Slow Flann;
-* meteor direct contact does not wreck Flann;
-* meteor blast does not wreck Flann;
-* puddle still applies Obscured/blind;
-* rear-ending another racer wrecks the other racer;
-* being rear-ended by another racer wrecks the attacker;
-* lane-barging another racer wrecks the other racer;
-* an attempted barge into Flann wrecks the attacker rather than moving Flann;
-* Flann does not receive ordinary contact Slow/Shunt for a collision it wins;
-* finish protection remains intact;
-* respawn invulnerability remains intact;
-* ultimate expiry restores ordinary tumbleweed/meteor/racer-collision vulnerability.
-
-Also explicitly test at least one non-Flann racer to prove:
-
-* tumbleweed still slows it during ultimate;
-* meteor still wrecks it during ultimate;
-* racer contact remains ordinary during ultimate;
-* puddle still works as before.
-
-Update tools/sprite-check.mjs to cover:
-
-* Flann’s on-road race render is larger than its old/base race dimensions;
-* the other five cars remain their original size;
-* direct/menu sprite drawing retains the original image geometry;
-* Flann ultimate fire appears when Flann ultOn is active;
-* ordinary Flann boost produces exhaust but NOT the body-fire ultimate effect;
-* reduced-motion rendering is stable/static;
-* player, rival, and local viewport rendering all support the effect;
-* drawing remains state-pure.
-
-Update tools/hitbox-check.mjs to verify:
-
-* Flann’s tapered hull scales consistently with its larger race render;
-* transparent sprite padding remains excluded;
-* rotated collision geometry remains correct;
-* player and rival Flann still use identical geometry;
-* other cars’ hit geometry is unchanged.
-
-Add Mystery Bubble regression coverage proving that with the temporary reward gate disabled:
-
-* player collection leaves G.item === null;
-* bot collection leaves R.item === null;
-* local human collection leaves its item null;
-* repeated bubble collection still never grants an item;
-* useItem() cannot activate a manually/stale-set Can/Oil/Seeker while the gate is false;
-* no canT boost is created;
-* no slick is spawned;
-* no missile is spawned.
-
-Do not simply weaken broad tests until they pass. Replace stale assumptions with precise Flann-specific and non-Flann regression checks.
-
-12. Update stale documentation/comments
-
-Search the repository for comments/docs that state things such as:
-
-* all six ultimates have no secondary effect;
-* there is no car-dependent ultimate logic;
-* puddles/tumbleweeds/meteors affect every active ultimate;
-* all logical racer dimensions are unchanged;
-* Flann’s ultimate only controls exhaust visibility.
-
-Update only statements made false by this task.
-
-Pay particular attention to:
-
-* docs/ULTIMATE-QA.md
-* docs/FLANN-QA.md
-* docs/ARCHITECTURE.md
-* docs/TUNING.md
-* relevant comments in js/data.js
-* relevant comments in js/mechanics.js
-* relevant comments in js/render.js
-* relevant static checks in tools/check.mjs
-
-Comments should describe the new distinction clearly:
-the base ultimate lifecycle remains shared, but Flann adds a car-specific collision/hazard power while active.
-
-13. Likely files to inspect/change
-
-The implementation should naturally center around the current ownership boundaries:
-
-js/data.js
-Flann race-scale tuning and the temporary Mystery reward feature gate if appropriate.
-
-js/runtime.js
-Only if a shared dimension/helper or feature state genuinely belongs here. Do not make the global base carW/carH larger.
-
-js/mechanics.js
-Flann-ultimate predicate, racer collision priority, bubble reward gate, player hazard behavior, meteor behavior, destruction FX.
-
-js/race.js
-Rival/bot/local-human hazard consequences and any racer update path required for identical Flann behavior across every driver type.
-
-js/render.js
-Per-racer race dimensions and Flann’s body-fire ultimate effect.
-
-tools/ultimate-check.mjs
-New Flann-specific ultimate behavior plus non-Flann regression coverage.
-
-tools/sprite-check.mjs
-Larger race sprite and ultimate-fire rendering.
-
-tools/hitbox-check.mjs
-Scaled Flann physical hull.
-
-tools/check.mjs
-Remove/update static assumptions that prohibit the now-intentional car-specific ultimate behavior and add Bubble-disable coverage where appropriate.
-
-Relevant docs as described above.
-
-Keep ownership sensible; do not force changes into every file if a cleaner shared helper makes some unnecessary.
-
-14. Definition of done
-
-The task is complete when the game feels like this:
-
-Flann is visibly a little larger and more substantial on the asphalt, but still fits naturally inside a lane and does not look comically oversized.
-
-When Flann activates its ultimate, it retains the familiar speed boost but now visibly catches fire. It becomes an aggressive battering ram for the entire 15-second window.
-
-It can plow directly through the desert tumbleweed, smashing it apart.
-
-A meteor cannot destroy it during that window.
-
-It can ram another active racer from behind or from the side and wreck that racer without taking the ordinary collision penalty itself.
-
-A racer foolish enough to crash into the ulting Flann is the one that gets wrecked.
-
-But driving through a city puddle still splashes the screen and obscures Flann exactly as it does normally.
-
-When the 15 seconds end, the fire disappears and Flann immediately goes back to being vulnerable to ordinary collisions, tumbleweeds, and meteors.
-
-No other car receives these powers.
-
-Mystery Bubbles can no longer give anybody a Can, Oil, or Seeker for now.
-
-15. Validation
-
-From the repository root, run all relevant existing checks after implementation:
-
-node tools/check.mjs
-
-node tools/menu-check.mjs
-
-node tools/ultimate-check.mjs
-
-node tools/sprite-check.mjs
-
-node tools/hitbox-check.mjs
-
-Then run:
-
-git diff --check
-
-Do not consider the task finished merely because static checks pass. Inspect the final diff for accidental changes to the five other cars, shared road dimensions, finish protection, invulnerability, controls, localization, save data, or unrelated AI behavior.
-
-If browser/manual visual testing is available, also verify:
-Flann’s size in a normal race, its ultimate body-fire visibility, puddle visibility while ulting, smashing a tumbleweed, surviving a meteor, ramming racers from front/rear/side contact situations, and 2/3/4-player local columns.
-
-Implement the complete change, including tests and any documentation made stale by the new behavior. Do not stop after producing a plan.
+* seekers
+* local multiplayer
+* Conditions
+* Reduced Motion
+* menus
+* race results
+* standings
+* hit geometry
+
+Do not stop once the feature “looks about right.” Run the tests, resolve every regression, and then do the browser validation above.
+
+The finished behavior should feel like it was designed into Seren’s existing racer/Condition/render architecture rather than added as a collection of Phantom-specific hacks.
