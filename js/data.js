@@ -29,10 +29,82 @@ const CARS = {
               [0.26,0.42],[-0.26,0.42],[-0.38,0.30],[-0.36,-0.30]],
     flame:["#FF7A3A","#FFD9A0"]
   },
-  phantom: {
-    key:"phantom", style:"jet", accent:"#6FC8FF",
-    body:"#EDF1F6", dark:"#16305A", glass:"#7FB3E8", trim:"#1E5FA8",
-    flame:["#2FA8F0","#CFEFFF"]
+  /* ---- Neela ----------------------------------------------------
+     The second sprite car, and the second ultimate that does more than run
+     fast. Its geometry is measured off v_neela.PNG and vtm_neela.PNG and off
+     nothing else - none of it is Flann's, which is a different car in a
+     different shape.
+
+     v_neela.PNG is 1024x1536 with the body inside (220,25)-(803,1422), so the
+     visible artwork is 584 x 1398: a much narrower, longer car than Flann's
+     679 x 1337. Sized into the shared car box that leaves the body covering
+     barely half a lane while every other car covers about two thirds, which is
+     what the race scale below is for and all it is for.
+
+     The two exhaust anchors are the centres of the measured chrome outlets at
+     (325,1334)-(378,1376) and (645,1336)-(698,1376). The hull traces the core
+     body row by row - the nose taper, the waist between the wheels, the rear
+     arches - and stops short of the diffuser blade under the tail. */
+  neela: {
+    key:"neela", style:"sprite", sprite:"v_neela.PNG", accent:"#4DA8FF",
+    /* Measured: at 1:1 the body is 0.777 of the shared car box across, so it
+       reads as half a lane against cars that fill two thirds of one. Eighteen
+       per cent brings it to a shade under the box - still the narrowest car on
+       the road, which is what the artwork is - without making it so long that
+       the hull stops being a car's. Uniform, so the aspect ratio, the measured
+       bounds, the anchors and the hull all scale together. */
+    raceScale:1.18,
+    /* Normalized source pixels: visible body bounds (220,25)-(803,1422).
+       Keep the full PNG when drawing; bounds only control its scale and
+       centre. */
+    spriteBounds:[220/1024, 25/1536, 584/1024, 1398/1536],
+    /* The measured centre of each rear outlet, inside the chrome. */
+    exhaust:[[352/1024, 1355/1536], [671/1024, 1355/1536]],
+    /* Blue energy out of the pipes rather than fire: same anchors, same
+       transform, a different look. drawSpriteCar() reads this. */
+    exhaustStyle:"energy",
+    /* Inset body in logical car units, traced off the measured silhouette:
+       nose taper, shoulders, the waist between the wheels, the rear arches.
+       Excludes the transparent corners and the diffuser blade under the tail. */
+    hitShape:[[0,-0.464],[0.200,-0.346],[0.314,-0.239],[0.266,-0.128],
+              [0.269,0.011],[0.309,0.194],[0.378,0.305],[0.325,0.376],
+              [0.261,0.444],[0,0.475],[-0.261,0.444],[-0.325,0.376],
+              [-0.378,0.305],[-0.309,0.194],[-0.269,0.011],[-0.266,-0.128],
+              [-0.314,-0.239],[-0.200,-0.346]],
+    flame:["#2E9BFF","#EAFBFF"],
+    /* ---- the alternate form ----
+       What Neela races as while its ultimate is running, until the first racer
+       it touches. Its own sprite, its own measured bounds, its own emitter and
+       its own hull: racerModel() hands this to the renderer and to carHit()
+       together, so the body being drawn and the body being collided are never
+       two different shapes.
+
+       vtm_neela.PNG is the same 1024x1536 sheet with the craft inside
+       (228,22)-(795,1506) - 568 x 1485, most of that extra length being the
+       energy blade under the tail. `scale` is measured, not chosen: at 1.09 of
+       the racer's own box the craft's fuselage and fin span come out the same
+       size as the car it replaced, so the transformation changes the shape on
+       the road and not how much road it takes up. */
+    altForm:{
+      key:"neelaAlt", style:"sprite", sprite:"vtm_neela.PNG", accent:"#4DA8FF",
+      scale:1.09,
+      spriteBounds:[228/1024, 22/1536, 568/1024, 1485/1536],
+      /* the measured centre of the main thruster mouth, (442,1265)-(582,1347) */
+      exhaust:[[512/1024, 1306/1536]],
+      exhaustStyle:"energy",
+      /* and the root of the long trail, which is the same emitter */
+      trailRoot:[512/1024, 1306/1536],
+      /* Traced off the alternate silhouette: nose, fuselage, the swept mid
+         fins out to their measured tips, the waist and the rear flare. It
+         stops at the base of the tail fork - the rear fin blades and the
+         energy spike below are trailing edges, not body. */
+      hitShape:[[0,-0.481],[0.100,-0.397],[0.163,-0.286],[0.175,-0.138],
+                [0.220,-0.039],[0.354,0.083],[0.200,0.091],[0.168,0.165],
+                [0.130,0.243],[0.251,0.353],[0,0.364],[-0.251,0.353],
+                [-0.130,0.243],[-0.168,0.165],[-0.200,0.091],[-0.354,0.083],
+                [-0.220,-0.039],[-0.175,-0.138],[-0.163,-0.286],[-0.100,-0.397]],
+      flame:["#2E9BFF","#EAFBFF"]
+    }
   },
   bolt: {
     key:"bolt", style:"buggy", accent:"#FFD21E",
@@ -56,7 +128,7 @@ const CARS = {
   }
 };
 const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
-const CAR_IDS = ["flann","phantom","bolt","timestamp","rose","siren"];
+const CAR_IDS = ["flann","neela","bolt","timestamp","rose","siren"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -110,13 +182,18 @@ const DIFF_IDS = ["easy","medium","hard","brutal"];
    brawler, Timestamp sits on its ultimate waiting for the moment - and every
    race jitters it, so the Flann you raced last time is not quite this one.
 
+   Neela keeps the leaning the car in this slot always had. Its ultimate does
+   something new, but what the driver wants out of a race - room, and not much
+   appetite for hurting anybody to get it - has not changed, and trading places
+   with somebody is not a way of hurting them.
+
    - nerve     what it will risk: tight gaps, hazards, a lane somebody else wants
    - spite     how much it would rather hurt somebody than simply drive faster
    - patience  how long it will sit on an item or an ultimate for a better use
    - guard     how hard it defends the place it is holding */
 const TEMPERS = {
   flann:      { nerve:0.74, spite:0.86, patience:0.22, guard:0.42 },
-  phantom:   { nerve:0.88, spite:0.46, patience:0.44, guard:0.30 },
+  neela:     { nerve:0.88, spite:0.46, patience:0.44, guard:0.30 },
   bolt:      { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
   timestamp: { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
   rose:      { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
@@ -166,6 +243,29 @@ function conditionsOfType(type){
 const ULT_CHARGE = 75;                    /* seconds from empty to ready */
 const ULT_TIME = 15;                       /* seconds it lasts */
 const ULT_SPEED = 2.0;                    /* what every ultimate is worth in pace */
+/* ---- Neela's ultimate -------------------------------------------
+   The shared lifecycle above is untouched - same charge, same fifteen seconds,
+   same double pace. These are the numbers for what Neela does inside it, and
+   they live here rather than being spelled out wherever they happen to be
+   needed.
+
+   The whiteout is a transformation flash and not a blindfold: long enough to
+   hide the change of shape, short enough that a car travelling at twice pace
+   is never driven blind into anything. The vehicle flash outlasts it a little
+   on purpose, so the car is already back in view while it is still burning off.
+
+   The guard is one frame's worth and nothing like a protection: it exists only
+   so a pair of bodies that have just been swapped cannot be read as a second
+   contact in the same step. */
+const NEELA_WHITEOUT = 0.42;              /* seconds of white over an involved view */
+const NEELA_MORPH = 0.6;                  /* seconds the white body flash burns off */
+const NEELA_SWAP_GUARD = 0.05;            /* seconds: one step, not a shield */
+/* The alternate form's trail. Sampled by distance so it is smooth through a
+   lane change at any pace, capped so it can never grow without bound, and long
+   enough that at ultimate speed it runs off the top of the screen. */
+const NEELA_TRAIL_LIFE = 1.8;             /* seconds a node takes to fade out */
+const NEELA_TRAIL_GAP = 9;                /* px of travel between nodes */
+const NEELA_TRAIL_MAX = 170;              /* nodes kept per racer, hard cap */
 /* gold, silver, bronze, then plain white for the rest of the field */
 const PLACE_COLS = ["#FFD24A", "#D9DEE6", "#D08A4A", "#FFFFFF"];
 /* ---------------- mystery bubbles ---------------- */

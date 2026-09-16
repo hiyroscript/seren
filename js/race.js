@@ -121,6 +121,10 @@ function spawnRivals(){
       wantBoost:false, blindPts:[],
       abs:0, changeT:rand(0.2, 0.7),          /* standing start: everyone from zero */
       slow:0, blind:0, dead:0, invuln:0, shuntT:0, bumpCD:0, slip:0,
+      /* Neela's ultimate, carried by every racer so nothing downstream has to
+         ask which kind of object it is holding. See G in runtime.js. */
+      neelaForm:false, neelaOrigin:null, neelaSwapped:false,
+      whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
       item:null, itemRow:-1, canT:0, useT:rand(0.6, 2.4), item:null, canT:0, useT:0,
       inDanger:false, willReact:true, reactT:0, swapT:0,
       ult:0, ultOn:false, ultT:0, ultMax:ULT_TIME,
@@ -181,6 +185,7 @@ function startRace(){
   G.dead = 0; G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
+  clearNeelaState("me"); G.trail = [];     /* nothing of the last race's ultimate */
   G.shuntT = 0; G.bumpCD = 0;
   G.slipT = 0;
   G.item = null; G.swapT = 0; G.boxes = []; G.slicks = []; G.missiles = []; G.canT = 0;
@@ -323,6 +328,7 @@ function checkFinish(){
       G.results.push({ me:false, car:R.car, place:R.finished });
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
+      clearNeelaState(R);                        /* out of play: no alternate form */
       if(R.ultOn) endUlt(R);
       R.boosting = false;
       clearDebuffs(R);                           /* out of play, and clean */
@@ -332,6 +338,7 @@ function checkFinish(){
     G.finished = G.results.length + 1;
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
+    clearNeelaState("me");                      /* out of play: no alternate form */
     if(G.ultOn) endUlt("me");
     G.boosting = false;
     G.keyBoost = G.ptrBoost = G.ultKey = G.padBoost = false;
@@ -592,6 +599,11 @@ function update(dt){
   if(G.canT > 0) G.canT = Math.max(0, G.canT - dt);
   if(G.swapT > 0) G.swapT = Math.max(0, G.swapT - dt);
   if(G.shuntT > 0) G.shuntT = Math.max(0, G.shuntT - dt);
+  /* Neela's own clocks, advanced here and only read by the renderer. */
+  if(G.whiteT > 0) G.whiteT = Math.max(0, G.whiteT - dt);
+  if(G.morphT > 0) G.morphT = Math.max(0, G.morphT - dt);
+  if(G.swapGuard > 0) G.swapGuard = Math.max(0, G.swapGuard - dt);
+  updateTrail("me", dt, d);
   G.tapClock += dt;
   if(G.bumpCD > 0) G.bumpCD = Math.max(0, G.bumpCD - dt);
   if(G.slowT > 0)  G.slowT  = Math.max(0, G.slowT - dt);
@@ -637,6 +649,10 @@ function updateRival(R, dt, st){
   if(R.canT > 0) R.canT = Math.max(0, R.canT - dt);
   if(R.shuntT > 0) R.shuntT = Math.max(0, R.shuntT - dt);
   if(R.swapT > 0) R.swapT = Math.max(0, R.swapT - dt);
+  if(R.whiteT > 0) R.whiteT = Math.max(0, R.whiteT - dt);
+  if(R.morphT > 0) R.morphT = Math.max(0, R.morphT - dt);
+  if(R.swapGuard > 0) R.swapGuard = Math.max(0, R.swapGuard - dt);
+  updateTrail(R, dt, G.speed*dt);
   if(R.bumpCD > 0) R.bumpCD = Math.max(0, R.bumpCD - dt);
   if(R.changeT > 0) R.changeT -= dt;
   if(R.reactT > 0)  R.reactT -= dt;
@@ -781,11 +797,12 @@ function updateRival(R, dt, st){
         : dx*dx + dy*dy <= o.r*o.r*0.86;
       if(!hit){ markPassed(o, rc, bit); continue; }
       o.hit |= bit;
-      /* A rival Flann with its ultimate running smashes the tumbleweed exactly
-         as the player's does: no Slow, no meter penalty, and the weed destroyed
-         on contact. The puddle is deliberately not here - water is not a solid
-         thing to break, so it goes on fouling the screen below. */
-      if(o.kind === "weed" && flannUltActive(R)){
+      /* A rival holding an ultimate with the solid-hazard privilege smashes the
+         tumbleweed exactly as the player's does: no Slow, no meter penalty, and
+         the weed destroyed on contact. The puddle is deliberately not here -
+         water is not a solid thing to break, so it goes on fouling the screen
+         below for Flann and Neela alike. */
+      if(o.kind === "weed" && clearsSolidHazards(R)){
         smashWeed(o, R.car); G.traps.splice(i,1); break;
       }
       ultDelta(R, ULT_ON_TRAP);

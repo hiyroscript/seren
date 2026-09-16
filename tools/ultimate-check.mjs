@@ -72,19 +72,42 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     equal('refusesDebuffs(who)',false);equal('noContact(who)',false);
     equal('invulnerableWho(who)',false);
     equal(`who === 'me' ? playerUntouchable() : safeCar(who)`,false);
-    /* Flann's ultimate is collision priority and not the Invulnerable
-       Condition: it changes who loses a contact, never whether the contact
-       can happen at all. So every answer above is the same for all six. */
+    /* Neither car-specific ultimate is the Invulnerable Condition: both are
+       collision priority, changing who loses a contact rather than whether the
+       contact can happen at all. So every answer above is the same for all
+       six, and the predicates below are the only thing that differs. */
     equal('flannUltActive(who)',car === 'flann');
+    equal('neelaUltActive(who)',car === 'neela');
+    equal('neelaFormActive(who)',car === 'neela');
+    equal('clearsSolidHazards(who)',car === 'flann' || car === 'neela');
+    equal('neelaCanSwap(who)',car === 'neela');
   });
-  test(label + ' collision priority: ' + (car === 'flann' ? 'the ram' : 'ordinary barging'),()=>{
+  const priority = car === 'flann' ? 'the ram'
+                 : car === 'neela' ? 'the exchange' : 'ordinary barging';
+  test(label + ' collision priority: ' + priority,()=>{
     setup(car,kind);
     run(`globalThis.attacker = who === 'me' ? G.rivals[0] : 'me';
          globalThis.att = attacker === 'me' ? G : attacker;
          globalThis.victim = {me:who==='me',obj:who==='me'?null:o,lane:1};
          o.lane = 1;
          globalThis.outcome = bumpTarget(victim,1,attacker);`);
-    if(car === 'flann'){
+    if(car === 'neela'){
+      /* Barging into an alternate-form Neela trades places with it. Nobody is
+         wrecked, nobody takes the lane, and the ultimate carries on - minus the
+         alternate body and minus the one swap it was holding. */
+      equal('outcome','swapped');
+      equal('o.dead',0);equal('att.dead',0);
+      equal('o.ultOn',true);equal('o.ultT',15);
+      equal('neelaFormActive(who)',false);
+      equal('neelaUltActive(who)',true);          /* the hazard privilege stays */
+      equal('o.neelaSwapped',true);
+      equal(`who === 'me' ? G.slowT : o.slow`,0);
+      /* A second barge in the same ultimate is the ordinary rule again. */
+      run(`o.swapGuard = 0; att.swapGuard = 0;
+           globalThis.again = bumpTarget({me:who==='me',obj:who==='me'?null:o,lane:1},1,attacker);`);
+      equal(`again === 'moved' || again === 'wrecked'`,true);
+      equal('o.neelaSwapped',true);
+    } else if(car === 'flann'){
       /* Barging into an ulting Flann wrecks the barger. Flann does not move
          lane, is not slowed, and keeps its ultimate. */
       equal('outcome','stopped');
@@ -110,9 +133,10 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     }
   });
   for(const type of ['puddle','weed','oil','meteor','seeker']){
-    /* The two solid hazards are Flann's to smash while its ultimate runs;
-       water, oil and a guided missile are not, for anybody. */
-    const smashed = car === 'flann' && (type === 'weed' || type === 'meteor');
+    /* The two solid hazards are Flann's and Neela's to smash while their
+       ultimates run; water, oil and a guided missile are not, for anybody. */
+    const smashed = (car === 'flann' || car === 'neela') &&
+                    (type === 'weed' || type === 'meteor');
     test(label + (smashed ? ' smashes ' : ' vulnerable to ') + type,()=>{
       setup(car,kind);hit(kind,type);
       if(type === 'puddle') equal('o.blind > 0',true);
@@ -148,16 +172,34 @@ for(const car of cars) for(const kind of ['player','bot','local']){
   });
 }
 /* Every pair of cars, both ulting, running into each other's backs. Only the
-   pairs with exactly one Flann in them behave differently: two ulting Flanns
-   cannot smash each other, so they fall back to the ordinary shunt like
-   anybody else. */
-test('rear contact between every pair of ulting cars, ordinary except the ram',()=>{
+   pairs with exactly one Flann or exactly one Neela in them behave
+   differently: two ulting Flanns cannot smash each other and two
+   alternate-form Neelas cannot trade places with each other, so both of those
+   pairs fall back to the ordinary shunt like anybody else.
+
+   A Flann and a Neela meeting is the exchange rather than the kill: the swap
+   is settled first because the contact spends Neela's form either way, and
+   spending it on a wreck would leave a car destroyed and a swap still owed. */
+test('rear contact between every pair of ulting cars, ordinary except the ram and the exchange',()=>{
   for(const car of cars) for(const rival of cars){
-    const meRam = car === 'flann' && rival !== 'flann';
-    const themRam = rival === 'flann' && car !== 'flann';
+    const swap = (car === 'neela') !== (rival === 'neela');
+    const meRam = !swap && car === 'flann' && rival !== 'flann';
+    const themRam = !swap && rival === 'flann' && car !== 'flann';
     setup(car,'player');run(`globalThis.r=G.rivals[0];r.car=${JSON.stringify(rival)};r.lane=G.lane;r.y=playerY-carH*0.5;startUlt(r);
+      globalThis.beforeM=[G.meters,metersOf(r)];
       rearEnd('me',{me:false,obj:r,lane:r.lane,y:r.y});`);
-    if(meRam){
+    if(swap){
+      /* Nobody is wrecked and nobody is shunted; the two of them have simply
+         exchanged places, and both ultimates are still running. */
+      equal('G.dead',0);equal('r.dead',0);
+      equal('G.slowT',0);equal('r.shuntT',0);
+      equal('G.ultOn',true);equal('r.ultOn',true);
+      equal('G.ultT',15);equal('r.ultT',15);
+      equal('neelaFormActive("me") || neelaFormActive(r)',false);
+      /* and they really did move: the two metre readings have traded */
+      equal('Math.abs(G.meters-beforeM[1]) < 1e-6',true);
+      equal('Math.abs(metersOf(r)-beforeM[0]) < 1e-6',true);
+    } else if(meRam){
       /* Driving into the back of somebody while on fire destroys them, and
          the ram takes none of the ordinary rear-end consequence for it. */
       equal('r.dead > 0',true);equal('G.dead',0);
@@ -183,7 +225,7 @@ test('rear contact between every pair of ulting cars, ordinary except the ram',(
    whether the car is being driven by the person holding the controller, by a
    bot, or by a second person in a local seat. */
 function duel(kind, ulting = true){
-  run(`G.local = false; G.car = ${kind === 'player' ? '"flann"' : '"phantom"'};
+  run(`G.local = false; G.car = ${kind === 'player' ? '"flann"' : '"bolt"'};
        G.rules = defaultRules(); G.rules.bots = 1; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); G.state = 'running';
        G.nextTrap = 1e9; G.nextRow = 1e9;
@@ -191,7 +233,7 @@ function duel(kind, ulting = true){
        G.dead = 0; G.invuln = 0; G.finished = null; G.slowT = 0; G.blind = 0;
        G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
        globalThis.rvl = G.rivals[0];
-       rvl.car = ${kind === 'player' ? '"phantom"' : '"flann"'}; rvl.human = ${kind === 'local'};
+       rvl.car = ${kind === 'player' ? '"bolt"' : '"flann"'}; rvl.human = ${kind === 'local'};
        rvl.dead = 0; rvl.invuln = 0; rvl.finished = null; rvl.slow = 0; rvl.blind = 0;
        rvl.slip = 0; rvl.shuntT = 0; rvl.bumpCD = 0; rvl.changeT = 1e6;
        rvl.lane = 1; rvl.x = laneCX(1); rvl.y = playerY - carH*0.4;
@@ -334,7 +376,7 @@ for(const kind of ['player','bot','local']){
 /* The falling rock is tested against the player's own car and always has been,
    so this half of the meteor rule is a player-side one. */
 test('flann/player ultimate smashes a falling rock instead of being crushed',()=>{
-  for(const car of ['flann','phantom']){
+  for(const car of ['flann','bolt']){
     duel('player');
     run(`G.car = ${JSON.stringify(car)};
          globalThis.mo = {kind:'meteor', x:G.x, y:0, r:80, mr:18,
@@ -371,8 +413,8 @@ test('the ram works through the ordinary per-frame contact sweep',()=>{
   }
 });
 
-/* The other five keep the ultimate they always had. */
-for(const car of ['phantom','bolt','timestamp','rose','siren'])
+/* The other four keep the ultimate they always had. */
+for(const car of ['bolt','timestamp','rose','siren'])
   test(car + ' gains no collision or hazard power from its ultimate',()=>{
     run(`G.local=false;G.car=${JSON.stringify(car)};G.rules=defaultRules();
          G.rules.bots=1;G.rules.bubbles=false;G.mode='endless';startRace();
@@ -413,7 +455,18 @@ test('every bot spends the shared ultimate on every difficulty',()=>{
 });
 test('HUD and render paths work for all cars and local columns',()=>{
   for(const car of cars){
-    setup(car,'player');run(`syncConditions();render();hudConditions('me');hudConditions(G.rivals[0]);
+    setup(car,'player');
+    /* Firing Neela's ultimate whites its own view out for a moment, and that
+       is the ordinary Obscured Condition rather than a badge of its own - so
+       it shows up here, derived from the whiteout timer and not from `blind`.
+       Run it off, and the rest of this is the shared path every car takes. */
+    if(car === 'neela'){
+      equal(`activeConditions('me').indexOf('obscured') >= 0`,true);
+      equal('G.blind',0);
+      equal(`JSON.stringify(activeConditions('me'))`,JSON.stringify(['boosted','obscured']));
+      run('G.whiteT=0;');
+    } else equal('G.whiteT',0);
+    run(`syncConditions();render();hudConditions('me');hudConditions(G.rivals[0]);
                              drawConditionStack(G.rivals[0],G.rivals[0].x,G.rivals[0].y);`);
     equal(`JSON.stringify(activeConditions('me'))`,JSON.stringify(['boosted']));
     equal(`$('#condList').children.length`,1);
@@ -433,11 +486,14 @@ test('HUD and render paths work for all cars and local columns',()=>{
    the world badges and the HUD badges read. Nothing keeps a second copy, so a
    lapsed timer cannot leave a badge behind. */
 test('every Condition is derived from the state that owns it',()=>{
-  const cases = [['slowT','slowed'],['blind','obscured'],['slipT','skidded'],
-                 ['canT','boosted'],['invuln','invulnerable']];
+  /* Obscured appears twice on purpose: it has two sources now - puddle water
+     on the glass and a Neela transition - and both have to derive it on their
+     own, without the other being set. */
+  const cases = [['slowT','slowed'],['blind','obscured'],['whiteT','obscured'],
+                 ['slipT','skidded'],['canT','boosted'],['invuln','invulnerable']];
   for(const [field,id] of cases){
     setup('flann','player',false);
-    run(`G.slowT=G.blind=G.slipT=G.canT=G.invuln=G.shuntT=0;G.boosting=false;G.${field}=2;`);
+    run(`G.slowT=G.blind=G.whiteT=G.slipT=G.canT=G.invuln=G.shuntT=0;G.boosting=false;G.${field}=2;`);
     equal(`activeConditions('me').indexOf(${JSON.stringify(id)}) >= 0`,true);
     equal(`conditionOn('me',${JSON.stringify(id)})`,true);
     run(`G.${field}=0;`);
@@ -447,7 +503,7 @@ test('every Condition is derived from the state that owns it',()=>{
   for(const human of [false,true]){
     setup('flann','bot',false);
     run(`globalThis.r=G.rivals[0];r.human=${human};
-         r.slow=r.blind=r.slip=r.canT=r.invuln=r.shuntT=0;r.boosting=false;
+         r.slow=r.blind=r.whiteT=r.slip=r.canT=r.invuln=r.shuntT=0;r.boosting=false;
          r.invuln=2;r.slow=2;r.blind=2;r.slip=2;`);
     equal('JSON.stringify(activeConditions(r))',
           JSON.stringify(['invulnerable','slowed','obscured','skidded']));
@@ -622,6 +678,675 @@ test('useItem refuses a stale Can, Oil or Seeker while rewards are off',()=>{
     equal('G.canT',0);equal('bot.canT',0);          /* no boost can */
     equal('G.slicks.length',0);                     /* no oil */
     equal('G.missiles.length',0);                   /* no seeker */
+  }
+});
+
+
+/* ================================================================
+   NEELA'S ULTIMATE  -  the second car-specific power
+   ================================================================
+   The shared lifecycle above is shared and stays shared. Everything here is
+   what Neela adds inside its fifteen seconds, and it has to be identical
+   whether the car is being driven by the person holding the controller, by a
+   bot, or by a second person in a local seat.
+
+   Two states, deliberately not one: the ultimate running - which carries the
+   solid-hazard privilege for the whole fifteen seconds - and the alternate
+   body being on the road, which carries the single exchange and ends at the
+   first racer contact. Most of what follows is about keeping them apart. */
+
+/* One Neela and one other racer on the same piece of road. Each side is 'me'
+   (player one), 'seat' (a rival with a person in it) or 'bot', which is every
+   ownership direction the exchange can run in. The rest of the grid is parked
+   far up the road as unrelated traffic, which is what the world-position
+   checks are measured against. */
+function duo(nSide, vSide, ulting = true){
+  assert.notEqual(nSide, vSide);
+  const nExpr = nSide === 'me' ? '"me"' : 'G.rivals[0]';
+  const vExpr = vSide === 'me' ? '"me"'
+              : (nSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
+  run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"bolt"'};
+       G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
+       G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
+       G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
+       G.traps = []; G.slicks = []; G.missiles = []; G.boxes = []; G.fx = [];
+       G.dead = 0; G.invuln = 0; G.finished = null; G.slowT = 0; G.blind = 0;
+       G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
+       G.tilt = 0; G.whiteT = 0; G.morphT = 0; G.swapGuard = 0;
+       G.rivals.forEach((r, i) => {
+         r.car = "bolt"; r.human = false; r.dead = 0; r.invuln = 0;
+         r.finished = null; r.slow = 0; r.blind = 0; r.slip = 0; r.shuntT = 0;
+         r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.whiteT = 0; r.morphT = 0;
+         r.swapGuard = 0; r.ult = 0; r.lane = 1; r.x = laneCX(1);
+         r.y = playerY - 3000 - i*900; r.abs = BASE_SPEED;
+       });
+       globalThis.N = ${nExpr}; globalThis.V = ${vExpr};
+       globalThis.no = N === 'me' ? G : N; globalThis.vo = V === 'me' ? G : V;
+       no.car = "neela";
+       ${nSide === 'seat' ? 'no.human = true;' : ''}
+       ${vSide === 'seat' ? 'vo.human = true;' : ''}
+       globalThis.pose = w => racerWorldPose(w);
+       globalThis.asVictim = w => ({ me:w === 'me', obj:w === 'me' ? null : w,
+                                     lane:(w === 'me' ? G : w).lane,
+                                     y:w === 'me' ? playerY : w.y });
+       globalThis.others = () => G.rivals.filter(r => r !== N && r !== V);
+       globalThis.elsewhere = () => others().map(metersOf);
+       no.ult = 1; ${ulting ? 'startUlt(N);' : ''}`);
+}
+/* Put the two of them body to body, without going near the helper the mechanic
+   itself uses to move racers. */
+function collide(){
+  run(`if(N === 'me'){ V.lane = G.lane; V.x = G.x; V.y = playerY; }
+       else if(V === 'me'){ N.lane = G.lane; N.x = G.x; N.y = playerY; }
+       else { V.lane = N.lane; V.x = N.x; V.y = N.y; }`);
+}
+/* Let the road actually run, so an activation pose is genuinely in the past by
+   the time it is used. */
+function drive(frames = 40){ run(`for(let i=0;i<${frames};i++) update(1/60);`); }
+const SIDES = [['me','bot'],['me','seat'],['bot','me'],['bot','seat'],
+               ['seat','me'],['seat','bot']];
+
+test('activation transforms, captures its origin once, and takes nothing else',()=>{
+  for(const [n, v] of SIDES){
+    duo(n, v, false);
+    const before = run('JSON.stringify(elsewhere())');
+    run(`globalThis.was = pose(N); if(N === 'me') fireUlt(); else fireUltRival(N);`);
+    /* the shared lifecycle, unchanged */
+    equal('no.ultOn',true);equal('no.ultT',15);equal('no.ultMax',15);equal('no.ult',1);
+    /* and Neela's own state on top of it */
+    equal('neelaFormActive(N)',true);
+    equal('no.neelaSwapped',false);
+    equal('racerModel(N).sprite','vtm_neela.PNG');
+    equal('Math.abs(no.neelaOrigin.m - was.m) < 1e-9',true);
+    equal('no.neelaOrigin.lane',run('was.lane'));
+    /* Nothing was moved by pressing the button. */
+    equal('Math.abs(pose(N).m - was.m) < 1e-9',true);
+    assert.equal(run('JSON.stringify(elsewhere())'),before,'nobody else moved');
+    /* Pressing it again, and starting it again, never re-takes the origin. */
+    drive(30);
+    run(`globalThis.moved = pose(N);
+         if(N === 'me') fireUlt(); else fireUltRival(N);
+         startUlt(N);`);
+    equal('Math.abs(no.neelaOrigin.m - was.m) < 1e-9',true);
+    equal('Math.abs(moved.m - was.m) > 1',true);   /* it really has driven on */
+    equal('no.ultT < 15',true);                    /* and the meter was not reset */
+  }
+});
+test('the whiteout covers a view without pausing the race or the controls',()=>{
+  duo('me','bot');
+  equal('whiteoutActive("me")',true);
+  equal('G.whiteT',run('NEELA_WHITEOUT'));
+  /* Obscured, from the whiteout timer and not from puddle water. */
+  equal('G.blind',0);
+  equal(`activeConditions("me").indexOf("obscured") >= 0`,true);
+  equal(`conditionOn("me","obscured")`,true);
+  /* The controls answer throughout, and the car is still steering itself. */
+  run('move(1);');equal('G.lane',2);
+  run('move(-1);move(-1);');equal('G.lane',0);
+  /* The countdown runs through it, the road keeps moving, and everybody else
+     keeps racing. */
+  const t0 = run('G.ultT'), m0 = run('G.meters');
+  const field0 = run('JSON.stringify(elsewhere())');
+  drive(6);
+  assert.ok(run('G.ultT') < t0,'the meter is still counting down');
+  assert.ok(run('G.meters') > m0,'the road is still moving');
+  assert.notEqual(run('JSON.stringify(elsewhere())'),field0,'so is everybody else');
+  equal('G.state','running');
+  /* And it is genuinely temporary. */
+  run(`for(let i=0;i<60;i++) update(1/60);`);
+  equal('whiteoutActive("me")',false);
+  equal(`activeConditions("me").indexOf("obscured") >= 0`,false);
+  equal('neelaFormActive("me")',true);            /* the form outlasts the flash */
+});
+test('an alternate-form Neela is reachable and is not Invulnerable',()=>{
+  for(const [n, v] of SIDES){
+    duo(n, v);
+    equal('refusesDebuffs(N)',false);
+    equal('noContact(N)',false);
+    equal('invulnerableWho(N)',false);
+    equal(`N === 'me' ? playerUntouchable() : safeCar(N)`,false);
+    equal('flannUltActive(N)',false);             /* and it is not Flann's power */
+  }
+});
+
+
+/* Whichever sweep actually applies a hazard to this racer: the player's own
+   comes through updateTraps(), a rival's through updateRival(). */
+function N_UPDATE(side){
+  return side === 'me' ? `updateTraps(0,0,'running');` : `updateRival(N,0,'running');`;
+}
+
+/* ---- hazards -----------------------------------------------------
+   The solid ones come apart for the whole of the ultimate, including after the
+   exchange has taken the alternate body away. Water does not, and neither oil
+   nor a seeker is a solid thing to be smashed. */
+test('the solid-hazard privilege runs for the whole ultimate, form or no form',()=>{
+  for(const kind of ['player','bot','local']){
+    const [n, v] = kind === 'player' ? ['me','bot'] : ['bot','me'];
+    /* tumbleweed, in the alternate form */
+    duo(n, v);
+    if(kind === 'local') run('no.human = true;');
+    run(`G.traps = [{kind:'weed', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     r:25, vx:0, fall:1, age:0, rot:0, hit:0, nm:0}];
+         globalThis.meter = no.ultT;`);
+    run(N_UPDATE(n));
+    equal('G.traps.length',0);
+    equal(`N === 'me' ? G.slowT : N.slow`,0);
+    equal('no.ultOn',true);equal('no.ultT',run('meter'));
+    equal('G.fx.length > 0',true);
+    /* and again after the exchange, with the car back in its own body */
+    duo(n, v);
+    collide();
+    run(`rearEnd(N, asVictim(V));`);
+    equal('neelaFormActive(N)',false);
+    equal('neelaUltActive(N)',true);
+    run(`G.traps = [{kind:'weed', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     r:25, vx:0, fall:1, age:0, rot:0, hit:0, nm:0}];`);
+    run(N_UPDATE(n));
+    equal('G.traps.length',0);
+    equal(`N === 'me' ? G.slowT : N.slow`,0);
+    /* and not once the meter has run out */
+    run('endUlt(N);');
+    equal('clearsSolidHazards(N)',false);
+    run(`G.traps = [{kind:'weed', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     r:25, vx:0, fall:1, age:0, rot:0, hit:0, nm:0}];`);
+    run(N_UPDATE(n));
+    equal(`(N === 'me' ? G.slowT : N.slow) > 0`,true);
+  }
+});
+test('a meteor blast cannot wreck an ulting Neela, and can once it is over',()=>{
+  for(const n of ['me','bot']){
+    duo(n, n === 'me' ? 'bot' : 'me');
+    run(`G.traps = [{kind:'meteor', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     r:80, mr:18, fall:0, max:1, phase:0, t:0}];
+         updateTraps(0,0,'running');`);
+    equal('no.dead',0);equal('no.ultOn',true);equal('no.ultT',15);
+    equal('G.traps[0].phase',1);                  /* the blast still happened */
+    /* after the exchange the privilege is still Neela's */
+    duo(n, n === 'me' ? 'bot' : 'me');
+    collide();run(`rearEnd(N, asVictim(V));`);
+    run(`G.traps = [{kind:'meteor', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     r:80, mr:18, fall:0, max:1, phase:0, t:0}];
+         updateTraps(0,0,'running');`);
+    equal('no.dead',0);equal('no.ultOn',true);
+    /* and gone the moment the meter is */
+    run('endUlt(N);');
+    run(`G.traps = [{kind:'meteor', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     r:80, mr:18, fall:0, max:1, phase:0, t:0}];
+         updateTraps(0,0,'running');`);
+    equal('no.dead > 0',true);
+  }
+});
+test('the falling rock is gone through rather than survived under',()=>{
+  duo('me','bot');
+  run(`globalThis.mo = {kind:'meteor', x:G.x, y:0, r:80, mr:18,
+                        fall:0.02, max:1, phase:0, t:0};
+       globalThis.alt = rockAlt(mo); mo.y = playerY + alt;
+       G.traps = [mo]; updateTraps(0,0,'running');`);
+  equal('alt < racerDims("me").h*0.55',true);
+  equal('G.traps.length',0);                      /* taken off the road, not detonated */
+  equal('G.dead',0);equal('G.ultOn',true);equal('G.ultT',15);
+  equal('G.fx.length > 0',true);
+});
+test('a puddle still fouls the screen, because water cannot be smashed',()=>{
+  for(const n of ['me','bot']){
+    duo(n, n === 'me' ? 'bot' : 'me');
+    run('no.whiteT = 0;');                        /* so Obscured can only be the water */
+    run(`G.traps = [{kind:'puddle', x:N === 'me' ? G.x : N.x,
+                     y:N === 'me' ? playerY : N.y,
+                     rx:80, ry:50, s:0.5, hit:0, nm:0}];`);
+    run(N_UPDATE(n));
+    equal('no.blind > 0',true);
+    equal('G.traps.length',1);                    /* the puddle is still there */
+    equal('no.ultOn',true);equal('no.ultT',15);
+    equal('neelaFormActive(N)',true);             /* and it did not end the form */
+    equal(`activeConditions(N).indexOf('boosted') >= 0`,true);
+    equal(`activeConditions(N).indexOf('obscured') >= 0`,true);
+  }
+});
+test('oil and a seeker are not converted into broad immunity',()=>{
+  /* Oil: an ulting Neela loses grip exactly as anybody else does. */
+  duo('me','bot');
+  run(`G.slicks = [{x:G.x,y:playerY,r:30,rx:60,ry:40,rot:0,jit:0.1,s:0.5,
+                    life:10,fade:0,owner:null}]; updateSlicks(0,0,'running');`);
+  equal('G.slipT > 0',true);
+  equal('neelaFormActive("me")',true);            /* it is a debuff, not a contact */
+  /* Seeker: it destroys an ulting Neela like anything else it reaches. */
+  duo('me','bot');
+  run(`G.missiles = [{x:G.x,y:playerY,vx:0,vy:-100,mark:'me',owner:G.rivals[1],
+                      life:10,fade:0}]; updateMissiles(0,0);`);
+  equal('G.dead > 0',true);
+  equal('neelaFormActive("me")',false);           /* wrecked: no stale form left */
+  equal('G.neelaOrigin',null);
+});
+
+/* ---- the exchange ------------------------------------------------
+   The core of it, in every ownership direction. Neela goes to where the racer
+   it touched was standing at the instant of contact; that racer goes to where
+   Neela was standing when the button was pressed - not to where Neela was a
+   frame ago, and not merely to Neela's old lane. */
+for(const [n, v] of SIDES){
+  const tag = 'neela/' + n + ' into ' + v;
+  test(tag + ' exchanges places and wrecks nobody',()=>{
+    duo(n, v);
+    drive(45);                                   /* the activation pose is now history */
+    collide();
+    run(`globalThis.origin = pose(N);
+         globalThis.saved = { m:no.neelaOrigin.m, lane:no.neelaOrigin.lane,
+                              x:no.neelaOrigin.x };
+         globalThis.victimPose = pose(V);
+         globalThis.field = elsewhere();
+         globalThis.meter = no.ultT;
+         rearEnd(N, asVictim(V));`);
+    /* The saved origin is the activation pose, and the road has moved on from
+       it - so a teleport that used the current position would land elsewhere. */
+    equal('Math.abs(origin.m - saved.m) > 5',true);
+    /* Neither racer is destroyed. */
+    equal('no.dead',0);equal('vo.dead',0);
+    equal('no.finished',null);equal('vo.finished',null);
+    /* Neela is where the other racer was at the instant of contact. */
+    equal('Math.abs(pose(N).m - victimPose.m) < 1e-6',true);
+    equal('pose(N).lane',run('victimPose.lane'));
+    /* And that racer is where Neela fired from. */
+    equal('Math.abs(pose(V).m - saved.m) < 1e-6',true);
+    equal('pose(V).lane',run('saved.lane'));
+    /* The ultimate is neither reset nor cut short. */
+    equal('no.ultOn',true);
+    equal('no.ultT',run('meter'));
+    equal('no.ultMax',15);
+    /* Back to the car, immediately, and the exchange is spent. */
+    equal('neelaFormActive(N)',false);
+    equal('racerModel(N).sprite','v_neela.PNG');
+    equal('no.neelaSwapped',true);
+    /* Both of them get the white transition and the flash on the body. */
+    equal('whiteoutActive(N)',true);
+    equal('whiteoutActive(V)',true);
+    equal('no.morphT > 0',true);
+    equal('vo.morphT > 0',true);
+    equal(`activeConditions(N).indexOf('obscured') >= 0`,true);
+    equal(`activeConditions(V).indexOf('obscured') >= 0`,true);
+    /* Nobody else on the road moved an inch down it. */
+    equal(`elsewhere().every((m,i) => Math.abs(m - field[i]) < 1e-6)`,true);
+  });
+  test(tag + ' spends the exchange once and then races ordinarily',()=>{
+    duo(n, v);
+    drive(45);                                   /* so the origin is well behind */
+    collide();
+    run(`globalThis.originM = no.neelaOrigin.m;
+         rearEnd(N, asVictim(V));`);
+    equal('no.neelaSwapped',true);
+    /* Drive on, so the pair meet again somewhere that is not the origin - the
+       guard expires on the way, which is the point of it being a guard. */
+    drive(120);
+    equal('no.swapGuard',0);equal('vo.swapGuard',0);
+    /* A second contact in the same ultimate is the ordinary rear-end: somebody
+       is slowed, somebody is shunted, and nobody is sent back to the origin. */
+    collide();
+    run(`no.bumpCD = 0; vo.bumpCD = 0;
+         globalThis.stay = pose(N);
+         globalThis.far = Math.abs(stay.m - originM);
+         globalThis.meter = no.ultT;
+         rearEnd(N, asVictim(V));`);
+    equal('far > 30',true);                      /* there is somewhere to be sent */
+    equal('Math.abs(pose(V).m - originM) > far*0.5',true);
+    equal('Math.abs(pose(N).m - stay.m) < far*0.25',true);
+    equal(`(N === 'me' ? G.slowT : N.slow) > 0`,true);
+    equal(`(V === 'me' ? G.shuntT : V.shuntT) > 0`,true);
+    equal('no.dead',0);equal('vo.dead',0);
+    /* And it is still the same ultimate, still fast, still clearing hazards. */
+    equal('no.ultOn',true);equal('no.ultT',run('meter'));
+    equal('clearsSolidHazards(N)',true);
+    /* Neela never gains the power to destroy a racer. */
+    equal('ramWinner(N, V)',null);
+    /* Right up to the meter running out, at which point all of it goes. */
+    run('tickUlt(N, ULT_TIME);');
+    equal('no.ultOn',false);
+    equal('clearsSolidHazards(N)',false);
+    equal('neelaFormActive(N)',false);
+    equal('no.neelaOrigin',null);
+    equal('no.neelaSwapped',false);
+  });
+}
+test('the exchange also runs through the ordinary per-frame contact sweep',()=>{
+  /* Through the real frame rather than a direct call, so the mechanic is
+     proved on the path the game actually runs. The rest of the frame carries
+     on around it - which is the point - so the landings are checked to within
+     the fraction of a metre one more step of driving is worth. */
+  const STEP = 2;
+  /* Player one driving into the back of a bot, through update(). */
+  duo('me','bot');
+  drive(45);
+  run(`V.y = playerY - carH*0.2; V.x = G.x; V.lane = G.lane;
+       globalThis.saved = { m:G.neelaOrigin.m, lane:G.neelaOrigin.lane };
+       globalThis.victimPose = pose(V);
+       update(1/60);`);
+  equal('G.dead',0);equal('V.dead',0);
+  equal('neelaFormActive("me")',false);
+  equal('G.neelaSwapped',true);
+  equal(`Math.abs(metersOf(V) - saved.m) < ${STEP}`,true);
+  equal(`Math.abs(G.meters - victimPose.m) < ${STEP}`,true);
+  equal('G.ultOn',true);
+  /* And a Neela in a rival seat running up the back of player one, through
+     updateRival() - bot and local human alike. */
+  for(const side of ['bot','seat']){
+    duo(side,'me');
+    drive(45);
+    run(`N.y = playerY + carH*0.2; N.x = G.x; N.lane = G.lane;
+         globalThis.saved = { m:N.neelaOrigin.m, lane:N.neelaOrigin.lane };
+         globalThis.mine = pose('me');
+         updateRival(N, 1/60, 'running');`);
+    equal('G.dead',0);equal('N.dead',0);
+    equal('neelaFormActive(N)',false);
+    equal('N.neelaSwapped',true);
+    /* Player one was the one exchanged, so it is now where Neela fired from,
+       and Neela is where player one was. */
+    equal(`Math.abs(G.meters - saved.m) < ${STEP}`,true);
+    equal('G.lane',run('saved.lane'));
+    equal(`Math.abs(metersOf(N) - mine.m) < ${STEP}`,true);
+  }
+});
+test('the exchange fires once per contact, not twice in a step',()=>{
+  duo('me','bot');
+  collide();
+  run(`globalThis.saved = { m:G.neelaOrigin.m };
+       globalThis.victimPose = pose(V);
+       rearEnd('me', asVictim(V));
+       globalThis.landed = pose('me');
+       /* the freshly put-down bodies, read again in the same step */
+       rearEnd('me', asVictim(V));
+       globalThis.outcome = bumpTarget(asVictim(V), 1, 'me');`);
+  equal('Math.abs(pose("me").m - landed.m) < 1e-6',true);
+  equal('outcome','none');                        /* the guard refused the repeat */
+  equal('G.dead',0);equal('V.dead',0);
+  equal('G.swapGuard > 0',true);
+  /* And the guard is a step, not a shield: it is gone within a few frames. */
+  run('for(let i=0;i<6;i++) update(1/60);');
+  equal('G.swapGuard',0);
+  equal('V.swapGuard',0);
+});
+test('a finished, wrecked or respawning racer can never be exchanged with',()=>{
+  for(const [field, value] of [['finished',1],['dead',2],['invuln',2]]){
+    for(const [n, v] of [['me','bot'],['bot','me']]){
+      duo(n, v);
+      collide();
+      run(`vo.${field} = ${value};
+           globalThis.mine = pose(N); globalThis.theirs = pose(V);
+           globalThis.outcome = bumpTarget(asVictim(V), 1, N);
+           rearEnd(N, asVictim(V));`);
+      equal('outcome','none');
+      equal('Math.abs(pose(N).m - mine.m) < 1e-6',true);
+      equal('Math.abs(pose(V).m - theirs.m) < 1e-6',true);
+      equal('no.neelaSwapped',false);
+      equal('neelaFormActive(N)',true);           /* the exchange is still owed */
+      equal('no.ultOn',true);
+      if(field === 'invuln'){ equal('vo.dead',0); equal('vo.invuln',2); }
+      /* The protection reads the same way round: a protected Neela is reached
+         by nobody either. */
+      duo(n, v);
+      collide();
+      run(`no.${field} = ${value};
+           globalThis.mine = pose(N); globalThis.theirs = pose(V);
+           globalThis.outcome = bumpTarget(asVictim(N), 1, V);
+           rearEnd(V, asVictim(N));`);
+      equal('outcome','none');
+      equal('Math.abs(pose(V).m - theirs.m) < 1e-6',true);
+      equal('vo.dead',0);
+    }
+  }
+});
+
+/* ---- letting it run out, and being taken off the road ------------ */
+test('an ultimate that touches nobody simply changes back where it stands',()=>{
+  for(const [n, v] of [['me','bot'],['bot','me'],['seat','bot']]){
+    duo(n, v);
+    drive(60);
+    run(`globalThis.standing = pose(N); globalThis.theirs = pose(V);
+         globalThis.field = elsewhere();
+         tickUlt(N, ULT_TIME);`);
+    equal('no.ultOn',false);
+    equal('neelaFormActive(N)',false);
+    equal('racerModel(N).sprite','v_neela.PNG');
+    /* Nobody is teleported: Neela stays exactly where it was, and so does
+       everyone else. */
+    equal('Math.abs(pose(N).m - standing.m) < 1e-6',true);
+    equal('Math.abs(pose(V).m - theirs.m) < 1e-6',true);
+    equal(`elsewhere().every((m,i) => Math.abs(m - field[i]) < 1e-6)`,true);
+    /* The local flash plays, and no state is left behind. */
+    equal('no.morphT > 0',true);
+    equal('no.neelaOrigin',null);
+    equal('no.neelaSwapped',false);
+    equal('no.swapGuard',0);
+    equal('clearsSolidHazards(N)',false);
+  }
+});
+test('wrecking and finishing both clear the alternate form outright',()=>{
+  /* Wrecked: no form, no origin, no flash left running. */
+  for(const n of ['me','bot']){
+    duo(n, n === 'me' ? 'bot' : 'me');
+    run(`if(N === 'me') destroyCar(); else wreckRival(N, 'me');`);
+    equal('no.dead > 0',true);
+    equal('no.ultOn',false);
+    equal('neelaFormActive(N)',false);
+    equal('no.neelaForm',false);
+    equal('no.neelaOrigin',null);
+    equal('no.neelaSwapped',false);
+    equal('no.whiteT',0);equal('no.morphT',0);
+    equal('clearsSolidHazards(N)',false);
+    equal('neelaCanSwap(N)',false);
+  }
+  /* Finished: out of play, out of the form, and wearing no Condition at all. */
+  for(const n of ['me','bot']){
+    duo(n, n === 'me' ? 'bot' : 'me');
+    run(`G.finishAt = (N === 'me' ? G.meters : metersOf(N)) - 1;
+         G.results = []; checkFinish();`);
+    equal('no.finished !== null',true);
+    equal('no.ultOn',false);
+    equal('neelaFormActive(N)',false);
+    equal('no.neelaOrigin',null);
+    equal('no.whiteT',0);
+    equal('JSON.stringify(activeConditions(N))','[]');
+  }
+  /* And a fresh race starts with none of it. */
+  run(`G.car = "neela"; G.rules = defaultRules(); startRace(); clearTimers();`);
+  equal('G.neelaForm',false);equal('G.neelaOrigin',null);
+  equal('G.neelaSwapped',false);equal('G.whiteT',0);equal('G.morphT',0);
+  equal('G.swapGuard',0);equal('G.trail.length',0);
+  equal(`G.rivals.every(r => !r.neelaForm && r.neelaOrigin === null &&
+                             !r.neelaSwapped && r.whiteT === 0 &&
+                             r.trail.length === 0)`,true);
+});
+
+/* ---- the trail ---------------------------------------------------- */
+test('the trail is laid while the form is up, bounded, and fades rather than vanishing',()=>{
+  duo('me','bot');
+  equal('G.trail.length',0);
+  run('for(let i=0;i<30;i++) update(1/60);');
+  const laid = run('G.trail.length');
+  assert.ok(laid > 3,'the alternate form lays a trail behind it');
+  /* Nodes are world positions on the road, so they scroll with it. */
+  run('globalThis.oldest = G.trail[0].y; update(1/60);');
+  assert.ok(run('G.trail[0].y') > run('oldest'),'the trail travels with the road');
+  /* It is bounded however long the ultimate runs. */
+  run('for(let i=0;i<900;i++) update(1/60);');
+  assert.ok(run('G.trail.length') <= run('NEELA_TRAIL_MAX'),'and it is capped');
+  /* Ending the form stops new nodes without deleting the ones already down. */
+  duo('me','bot');
+  run('for(let i=0;i<40;i++) update(1/60);');
+  const before = run('G.trail.length');
+  assert.ok(before > 3);
+  run('leaveNeelaForm("me"); globalThis.kept = G.trail.length;');
+  equal('kept',before);                           /* nothing purged on the spot */
+  run('update(1/60);');
+  assert.ok(run('G.trail.length') <= before,'and nothing new is added');
+  run('globalThis.lives = G.trail.map(n => n.life); update(1/60);');
+  equal('G.trail.every((n,i) => n.life < lives[i])',true);   /* they are fading */
+  /* And they finish fading on their own rather than being cut off. */
+  run(`for(let i=0;i<Math.ceil(NEELA_TRAIL_LIFE*70);i++) update(1/60);`);
+  equal('G.trail.length',0);
+});
+test('a wreck and an exchange both leave the trail behind to fade',()=>{
+  /* After the exchange the car is in its own body again, so nothing new is
+     laid - but what is behind it is still on the road. */
+  duo('me','bot');
+  run('for(let i=0;i<40;i++) update(1/60);');
+  collide();
+  run('rearEnd("me", asVictim(V));');
+  assert.ok(run('G.trail.length') > 3,'the old trail is still there');
+  const after = run('G.trail.length');
+  run('update(1/60);');
+  assert.ok(run('G.trail.length') <= after);
+  /* A wreck is the same: the car goes, the trail fades where it was dropped. */
+  duo('me','bot');
+  run('for(let i=0;i<40;i++) update(1/60); destroyCar();');
+  assert.ok(run('G.trail.length') > 3,'a wreck does not purge the road');
+  run('for(let i=0;i<10;i++) update(1/60);');
+  assert.ok(run('G.trail.length') > 0);
+  run(`for(let i=0;i<Math.ceil(NEELA_TRAIL_LIFE*70);i++) update(1/60);`);
+  equal('G.trail.length',0);
+});
+
+/* ---- moving player one --------------------------------------------
+   The hard case. Player one has no race `y`: it is held at playerY while the
+   world runs past, so putting it somewhere else means moving the world instead
+   - and the whole point of doing that centrally is that nothing which was not
+   asked to move ends up somewhere different. This is the check that says so. */
+test('teleporting player one leaves every other absolute position exactly alone',()=>{
+  duo('bot','me');
+  drive(50);
+  /* A road with something of everything on it, placed at known distances. */
+  run(`G.traps = [
+         {kind:'weed',   x:roadX+30, y:playerY-500, r:25, vx:0, fall:0, age:0, rot:0, hit:0, nm:0},
+         {kind:'puddle', x:roadX+60, y:playerY+240, rx:70, ry:40, s:0.4, hit:0, nm:0},
+         {kind:'meteor', x:roadX+90, y:playerY-900, r:80, mr:18, fall:2, max:2, phase:0, t:0, s:0.2, nm:0}];
+       G.boxes = [{y:playerY-700, gone:0, s:0.3, life:BUBBLE_LIFE, blink:0, ph:0, doomed:false}];
+       G.slicks = [{x:roadX+40, y:playerY+120, r:40, rx:60, ry:40, rot:0, jit:0.1,
+                    s:0.5, life:10, fade:0, owner:null}];
+       G.missiles = [{x:roadX+50, y:playerY-1400, vx:0, vy:-100, mark:'me',
+                      owner:G.rivals[2], life:10, fade:0}];
+       /* One spark with a colour of its own, so it can still be found among
+          the ones the exchange itself throws. */
+       addFx(roadX+20, playerY-60, 0, 0, 5, 3, "#123456");
+       /* A world position is a distance down the road, whatever the object. */
+       globalThis.roadM = y => G.meters + (playerY - y)*0.075;
+       globalThis.snapshot = () => ({
+         racers: G.rivals.map(metersOf),
+         lanes:  G.rivals.map(r => r.lane),
+         traps:  G.traps.map(o => roadM(o.y)),
+         boxes:  G.boxes.map(o => roadM(o.y)),
+         slicks: G.slicks.map(o => roadM(o.y)),
+         missiles: G.missiles.map(o => roadM(o.y)),
+         fx:     G.fx.filter(o => o.c === "#123456").map(o => roadM(o.y)),
+         trail:  G.rivals[0].trail.map(o => roadM(o.y)),
+         seam:   G.seam === null ? null : roadM(G.seam),
+         build:  G.build.map(a => a.map(b => roadM(b.y))),
+         props:  G.props.map(o => roadM(o.y)),
+         walks:  G.walks.map(o => roadM(o.y)),
+         finishAt: G.finishAt,
+         parks:  G.rivals.map(r => r.parkM)
+       });
+       globalThis.before = JSON.stringify(snapshot());
+       globalThis.order = () => [{me:true,who:'me',m:G.meters}].concat(
+         G.rivals.map(r => ({me:false,who:r,m:metersOf(r)})))
+         .sort((a,b) => b.m - a.m);`);
+  /* Neela is a bot here, so it is player one that gets moved. */
+  collide();
+  run(`globalThis.saved = { m:N.neelaOrigin.m, lane:N.neelaOrigin.lane };
+       globalThis.mine = pose('me');
+       globalThis.moved = Math.abs(saved.m - mine.m);
+       rearEnd(N, asVictim('me'));`);
+  /* It really was a move, and a long one. */
+  equal('moved > 50',true);
+  equal('Math.abs(G.meters - saved.m) < 1e-6',true);
+  equal('G.lane',run('saved.lane'));
+  equal('Math.abs(metersOf(N) - mine.m) < 1e-6',true);
+  /* And after it, every unrelated thing in the world is at exactly the same
+     distance down the road as it was before: racers, hazards, bubbles, slicks,
+     the seeker in flight, sparks, scenery, the track seam and Neela's own
+     trail nodes. */
+  const after = JSON.parse(run('JSON.stringify(snapshot())'));
+  const start = JSON.parse(run('before'));
+  const walk = (a, b, path) => {
+    if(Array.isArray(a)){
+      assert.equal(a.length, b.length, path+' length');
+      a.forEach((v,i) => walk(v, b[i], path+'['+i+']'));
+    } else if(typeof a === 'number'){
+      assert.ok(Math.abs(a-b) < 1e-6, path+': '+a+' != '+b);
+    } else assert.deepEqual(a, b, path);
+  };
+  for(const key of Object.keys(start)){
+    /* The two racers that were exchanged are the two that are meant to have
+       moved; everything else has not. */
+    if(key === 'racers'){
+      for(let i=1;i<start[key].length;i++)
+        assert.ok(Math.abs(after[key][i]-start[key][i]) < 1e-6,
+                  'rival '+i+' kept its absolute position');
+      continue;
+    }
+    if(key === 'lanes'){ continue; }
+    walk(start[key], after[key], key);
+  }
+  /* Standings are still coherent: the whole field is still on the ladder, it
+     is still in descending order down the road, and the place the HUD prints
+     for a racer is the place that ladder gives it - all of it read off the
+     same metersOf() every other reader uses. */
+  equal('order().length',run('FIELD_SIZE'));
+  equal('order().every((a,i,all) => i === 0 || all[i-1].m >= a.m - 1e-9)',true);
+  equal('placeOf("me")',run('order().findIndex(a => a.me) + 1'));
+  for(let i=0;i<5;i++)
+    equal(`placeOf(G.rivals[${i}])`,run(`order().findIndex(a => a.who === G.rivals[${i}]) + 1`));
+  /* Nobody was wrecked to do any of it. */
+  equal('G.dead',0);equal('N.dead',0);
+});
+
+/* ---- local play ---------------------------------------------------
+   Four people, four columns, one world. The white belongs to the view it was
+   started on and to no other. */
+test('a whiteout covers only the views it belongs to, in two, three and four seats',()=>{
+  for(const seats of [2,3,4]){
+    run(`G.local = true; G.players = ${seats}; G.rules = defaultRules();
+         G.rules.bots = ${6 - seats};
+         G.picks = ["neela"].concat(CAR_IDS.filter(c => c !== "neela")).slice(0,${seats});
+         G.car = G.picks[0]; startRace(); clearTimers(); G.state = 'running';
+         G.nextTrap = 1e9; G.nextRow = 1e9; G.traps = []; G.invuln = 0;
+         G.rivals.forEach(r => { r.dead = 0; r.invuln = 0; r.changeT = 1e6; });
+         G.ult = 1; startUlt("me"); render();`);
+    equal('G.humans.length',seats);
+    equal('whiteoutActive("me")',true);
+    for(let i=1;i<seats;i++)
+      equal(`whiteoutActive(G.humans[${i}])`,false);
+    /* Exchanging with a seated human whites that seat out and nobody else. */
+    run(`globalThis.other = G.humans[1];
+         other.lane = G.lane; other.x = G.x; other.y = playerY;
+         other.dead = 0; other.invuln = 0; other.finished = null;
+         G.whiteT = 0; other.whiteT = 0;
+         rearEnd("me", {me:false, obj:other, lane:other.lane, y:other.y});
+         render();`);
+    equal('whiteoutActive("me")',true);
+    equal('whiteoutActive(other)',true);
+    for(let i=2;i<seats;i++)
+      equal(`whiteoutActive(G.humans[${i}])`,false,'seat '+(i+1)+' is untouched');
+    equal('G.dead',0);equal('other.dead',0);
+    /* A bot has no screen of its own, but it still wears the Condition, which
+       is what another player sees beside its car. */
+    run(`G.humans.forEach(h => { const o = h === 'me' ? G : h; o.whiteT = 0; });
+         globalThis.bot = G.rivals.find(r => !r.human);
+         G.car = "neela"; G.neelaForm = false; G.neelaSwapped = false;
+         G.ult = 1; G.ultOn = false; startUlt("me");
+         bot.lane = G.lane; bot.x = G.x; bot.y = playerY;
+         bot.dead = 0; bot.invuln = 0; bot.finished = null;
+         rearEnd("me", {me:false, obj:bot, lane:bot.lane, y:bot.y});`);
+    equal('whiteoutActive(bot)',true);
+    equal(`activeConditions(bot).indexOf('obscured') >= 0`,true);
+    equal('bot.blind',0);
+    for(let i=1;i<seats;i++)
+      equal(`whiteoutActive(G.humans[${i}])`,false,'no seat is dragged in with it');
+    run('G.local = false; VIEWS = 1;');
   }
 });
 

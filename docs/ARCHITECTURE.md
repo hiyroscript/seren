@@ -353,38 +353,97 @@ of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
 `startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
-for every driver, and that lifecycle is shared by all six cars. One car adds a
-power on top of it: while `flannUltActive(who)` is true — the racer exists, its
-car is `flann`, and its ordinary `ultOn` is running — Flann is a ram. It is
-deliberately **not** the Invulnerable Condition and does not go through
-`noContact()`, because an ulting Flann still has to physically meet a racer or a
-hazard in order to break it. The exception is applied at the consequence:
+for every driver, and that lifecycle is shared by all six cars. Two cars add a
+power on top of it, and both are applied at the consequence rather than through
+`noContact()`: an ulting Flann or Neela still has to physically meet a racer or
+a hazard for anything to happen, and a puddle still gets through to both.
+`flannCar()` and `neelaCar()` are the only two places in the game a racer's
+`car` is compared to a name; everything else asks one of the predicates built
+on them.
+
+**Flann is a ram** while `flannUltActive(who)` is true — the racer exists, its
+car is `flann`, and its ordinary `ultOn` is running.
 
 - `ramWinner(a, b)` says which of two racers in contact wins it outright, or
   `null` for the ordinary rules. Two ulting Flanns cancel.
-- `rearEnd` and `bumpTarget` ask it first. The loser is wrecked through the
+- `rearEnd` and `bumpTarget` ask it. The loser is wrecked through the
   existing lifecycle (`wreckRacer` → `destroyCar` / `wreckRival`, so blame,
   meter penalty and reward, particles, shake and audio are all the usual ones)
   and the winner takes no slow, shunt or cooldown for it.
-- `bumpTarget` returns the outcome — `none`, `moved`, `wrecked`, `rammed` or
-  `stopped` — so `move()` and `rivalLaneTo()` do not go on to move a car that
-  has just wrecked itself on an ulting Flann.
-- `hitWeed` and the rival hazard sweep in `race.js` smash the tumbleweed
-  instead of taking Slow; the falling rock and `detonate`'s blast cannot reach
-  it. Puddles are the deliberate exception and still apply normally: water is
-  not a solid thing to break.
 
-For every other car, and for Flann the moment its ultimate expires, `rearEnd`
-and `bumpTarget` apply ordinary contact rules regardless of ultimate state; the
-short forward shove a rear-end hands its victim is `SHUNT_TIME` / `SHUNT_BOOST`
-and shows as Boosted.
+**Neela changes shape**, and its two states are deliberately not one question:
+
+- `neelaUltActive(who)` is "the fifteen seconds are running". It carries the
+  solid-hazard privilege for the whole of them.
+- `neelaFormActive(who)` is "the alternate body is the one on the road". It
+  carries the single exchange, and it is what `racerModel()` reads.
+
+They are the same until the first racer contact and different from then until
+the meter runs out. `beginNeelaForm` (from `startUlt`) captures the activation
+pose *before* anything about the racer changes, raises the form, and starts the
+racer's own whiteout and body flash. `swapMover(a, b)` says which of two racers
+in contact is a transformed Neela with its exchange unspent — two of them
+cancel, exactly as two Flanns do — and `neelaSwap` performs it: both world poses
+are read first, the form is dropped with its flash, both racers get a whiteout
+and a flash, and then each is put on the other's pose. Neither is wrecked and
+the meter is not touched. `leaveNeelaForm` also runs on natural expiry, with no
+teleport; `clearNeelaState` runs on a wreck or a finish, without the flash,
+before `endUlt` is reached.
+
+`clearsSolidHazards(who)` is the one question both powers answer: `hitWeed` and
+the rival hazard sweep in `race.js` smash the tumbleweed instead of taking Slow,
+and the falling rock and `detonate`'s blast cannot reach the car. Puddles are
+the deliberate exception for both and still apply normally: water is not a solid
+thing to break.
+
+`bumpTarget` returns the outcome — `none`, `moved`, `wrecked`, `rammed`,
+`stopped` or `swapped` — and `laneChangeDied()` says which of those leave no
+lane change to finish, so `move()` and `rivalLaneTo()` never go on to move a car
+that has just been wrecked on an ulting Flann or traded away by a Neela.
+
+For every other car, for Flann the moment its ultimate expires, and for Neela
+from the exchange onwards, `rearEnd` and `bumpTarget` apply ordinary contact
+rules regardless of ultimate state; the short forward shove a rear-end hands its
+victim is `SHUNT_TIME` / `SHUNT_BOOST` and shows as Boosted. `swapGuard` is a
+single step's worth of "this contact has already been dealt with", not
+protection: it exists only so the two bodies an exchange has just put down
+cannot be read as a second contact in the same frame.
+
+### Where a racer actually is
+
+Player one has no race `y`. It is held at `playerY` while the road runs past, and
+every rival's position is a screen offset from that camera which `metersOf()`
+turns into a distance. So nothing may compare or copy positions directly:
+
+- `racerWorldPose(who)` returns `{ m, lane, x }` — distance along the road,
+  lane, and lateral position. It does not move when the camera does, which is
+  what lets Neela hand back a pose taken fifteen seconds earlier.
+- `teleportRacerToPose(who, pose)` places a rival outright. For player one it
+  calls `rebaseWorld(dy)`, which is the one place player one's position can
+  change and is arithmetically a single frame of scrolling done in one step:
+  `G.scroll`, `G.meters` and the `y` of every rival, hazard, bubble, slick,
+  seeker, spark, building, prop, walk, trail node and the track seam all travel
+  together. The invariant is that `metersOf()` gives every unrelated racer
+  exactly the answer it gave before, and marks that are already distances — the
+  finish line, a finisher's `parkM` — are untouched.
+
+### Which body a racer is wearing
+
+`racerModel(who)` is the single answer. Five cars and a normal Neela are their
+own entry in `CARS`; a Neela in its alternate form is `CARS.neela.altForm`,
+which carries its own sprite, measured bounds, emitter, hull and `scale`
+relative to the racer's box. `racerDims(who)` and `carHit(who)` both read it, so
+the body being drawn and the body being collided switch on the same frame and
+switch back on the same frame.
 
 Body contact is centralized in `carHit(who)`. Flann uses an inset eight-point
-`hitShape` in logical car units; other cars retain their existing inset body
-rectangle. Both rotate with the rendered tilt. The shape is multiplied up by the
-racer's own size out of `carDims()`, so a car drawn larger on the road is
-collided larger by exactly the same factor — Flann's hull scales with its
-sprite and there is never a big car carrying a small hitbox. Hitboxes never read
+`hitShape` in logical car units, Neela an eighteen-point one traced off
+`v_neela.PNG` and a twenty-point one traced off `vtm_neela.PNG`; the other four
+cars retain their existing inset body rectangle. All of them rotate with the
+rendered tilt. The shape is multiplied up by the racer's own size out of
+`racerDims()`, so a car drawn larger on the road is collided larger by exactly
+the same factor — a sprite car's hull scales with its sprite and there is never
+a big car carrying a small hitbox. Hitboxes never read
 image alpha, image readiness, camera offsets or DPR. `nearestOnCar()` tests the
 polygon for round hazards, pickups and seekers. `rearContact()` requires actual
 body overlap; `carAt()` deliberately projects into a target lane for the barge
@@ -409,40 +468,85 @@ hazards, particles, and the Conditions that sit over them.
 is the order for one view; `render()` is the loop over views, with the clip and
 translate per column.
 
-Flann uses the exact `v_flann.PNG` through the `sprite` branch of `drawCar()`;
-its image is loaded once into `CAR_SPRITES`. On load, the shared menu canvases
-repaint. The other five racers retain their procedural Canvas models. Showroom,
-garage, player, bot and local columns all use this same dispatch.
+Flann and Neela use the exact `v_flann.PNG` and `v_neela.PNG` through the
+`sprite` branch of `drawCar()`, and Neela's ultimate uses `vtm_neela.PNG`. All
+three sheets are loaded once each into `CAR_SPRITES` — a car with an `altForm`
+contributes both of its sheets, so the alternate body is decoded and cached at
+boot rather than the first time an ultimate is pressed. On load, the shared menu
+canvases repaint. The other four racers retain their procedural Canvas models.
+Showroom, garage, player, bot and local columns all use this same dispatch, and
+the menus paint from `CARS` directly, so a preview is always the car and never
+the shape it turns into.
 
-`CARS.flann.spriteBounds` describes the visible body within the padded PNG.
-`drawSpriteCar()` uses the image's natural dimensions and one uniform scale,
-centres the visible bounds on the logical car position, and draws the full PNG.
-The local draw order is shadow, exhaust, image, ultimate fire; race markers and
-Conditions remain outside the model.
+A model's `spriteBounds` describes the visible body within the padded PNG.
+`spriteFrame(model, w, h)` works the placement out once — the image's natural
+dimensions, one uniform scale, the visible bounds centred on the logical car
+position, the full PNG drawn — and `spriteAnchor(frame, a)` turns an image-space
+anchor into a point in the car's own space. Everything that has to be pinned to
+a piece of artwork goes through those two, which is what stops an effect
+drifting off a tailpipe at another size, tilt or race scale.
+`racerTailPoint(who)` is the world-space version, used by the update code that
+drops trail nodes; it reads and changes nothing.
+The local draw order is shadow, exhaust, image, ultimate fire, transformation
+flash; race markers and Conditions remain outside the model.
 
-The shared `carW`/`carH` the road is built on are unchanged, and five of the six
+The shared `carW`/`carH` the road is built on are unchanged, and four of the six
 racers are drawn at exactly them. What a car may have is a race scale of its
-own — `CARS.<id>.raceScale` — and exactly one does: Flann is drawn and collided
-1.12× so it reads properly against the lane. `raceScale()`, `carDims()` and
-`racerDims()` in `runtime.js` are the only readers of it, and everything that
-needs a racer's physical body asks them. Menus are not racers and do not come
-through them, so `paintCarIcon()`'s previews are untouched.
+own — `CARS.<id>.raceScale` — and the two sprite cars do, each measured off its
+own artwork: Flann 1.12× and Neela 1.18×, so both read properly against the
+lane. An alternate form may also carry a `scale` against its racer's own box —
+Neela's is 1.09×, measured so the craft's fuselage and fin span come out the
+size of the car it replaced. `raceScale()`, `carDims()`, `racerModel()` and
+`racerDims()` in `runtime.js` are the only readers, and everything that needs a
+racer's physical body asks them. Menus are not racers and do not come through
+them, so `paintCarIcon()`'s previews are untouched.
 
-`CARS.flann.exhaust` contains two normalized anchors measured at source pixels
-(355, 1377) and (669, 1377), the centres of the paired rear tailpipes. They share
-the image's transform, including tilt. Smooth sine pulses change plume dimensions
-without moving the roots; reduced motion uses a static plume. Only the existing
-boost/ultimate visual flag enables them, so previews never have exhaust.
+`CARS.<id>.exhaust` holds the measured emitter anchors: Flann's two at source
+pixels (355, 1377) and (669, 1377), Neela's two at (352, 1355) and (671, 1355),
+and the alternate form's single thruster at (512, 1306). They share the image's
+transform, including tilt. `CARS.<id>.exhaustStyle` picks what comes out of
+them — `drawSpriteFlame` for Flann's fire, `drawSpriteEnergy` for Neela's blue
+energy, which is drawn lightened and is a clean streak rather than a pointed
+tongue. Every gradient in both starts on the anchor itself, so the root is the
+measured outlet exactly, at every size and every point of the pulse. Smooth sine
+pulses change plume dimensions without moving those roots; reduced motion uses a
+static plume rather than no plume. Only the existing boost/ultimate visual flag
+enables them, so previews never have exhaust — and so an ordinary boost, a boost
+can and the ultimate's own speed all light Neela's pipes without transforming
+anything.
 
-`drawCar` takes `boosting` and `ulting` as separate flags on purpose.
-`boosting` is the old one — anything that makes the car go faster — and lights
-the exhaust on every model. `ulting` is narrower: this racer's ultimate is
+While the alternate body is on the road, update code drops bounded trail nodes
+at `racerTailPoint(who)` — sampled by distance (`NEELA_TRAIL_GAP`), capped
+(`NEELA_TRAIL_MAX`), aged over `NEELA_TRAIL_LIFE` — and `drawRacerTrail` strokes
+them in three lightened passes from a wide cyan haze down to a white-hot core.
+They are world positions that scroll with the road, they survive a player-one
+rebase because `rebaseWorld` moves them with everything else, and the form
+ending stops new ones without deleting the ones already down. Nothing in the
+drawing is on a clock, so reduced motion keeps the whole trail: it is where the
+car has been, which is information rather than decoration.
+
+`drawCar` takes `boosting`, `ulting` and `white` as separate arguments on
+purpose. `boosting` is the old one — anything that makes the car go faster — and
+lights the exhaust on every model. `ulting` is narrower: this racer's ultimate is
 running right now, and for Flann alone it adds `drawFlannUltFire(w, h, p)`, a
 set of restrained flame tongues laid down both sills and around the tail inside
-the car's own translated and rotated space. Ordinary boost and a boost can never
-trigger it, and menus pass neither flag. Its only moving part is read off the
-clock, exactly as the exhaust pulse is, so drawing stays state-pure; reduced
-motion pins the phase and leaves the flames still rather than removing them.
+the car's own translated and rotated space. `white` is the transformation flash,
+drawn by `drawMorphFlash` from the model's own hull so it is the car's
+silhouette that goes white — which is why it works on whichever of the six a
+Neela exchange happens to catch, without a line of per-car code. Ordinary boost
+and a boost can never trigger either, and menus pass none of the three. The
+fire's only moving part is read off the clock, exactly as the exhaust pulse is,
+so drawing stays state-pure; reduced motion pins the phase and leaves the flames
+still rather than removing them. The flash reads a timer and no clock at all, so
+it has no oscillation for reduced motion to take away.
+
+The white transition belongs to a view rather than to the canvas.
+`whiteoutActive(who)` derives from that racer's own timer, and `drawWhiteout` is
+called after a column's road *and* after `drawSeatHud`, inside that column's
+clip — so one person's game disappears and nobody else's does. On one screen the
+instruments are page elements over the canvas, so `paintHUD` puts a `whiteout`
+class on the shell for exactly as long as the timer runs and the stylesheet
+takes the HUD layer out of sight.
 
 This file reads game state and never changes it.
 
@@ -518,13 +622,18 @@ fonts, in case the first read landed before the stylesheet applied.
 6. **`W` is one view, not the canvas.** Anything measuring off `FULLW` in world
    code is a split-screen bug waiting to happen.
 7. **Nothing boots outside `main.js`.**
-8. **A preference has one home.** It is stored once, read through
+8. **Player one is the camera, not a position.** It is held at `playerY` while
+   the world runs past, so `racerWorldPose()` is the only honest way to read a
+   racer's place and `teleportRacerToPose()` / `rebaseWorld()` the only way to
+   change player one's. Anything that compares or copies a raw `y` between
+   player one and a rival is wrong the moment the road has scrolled.
+9. **A preference has one home.** It is stored once, read through
    `getSetting()`, written through `setSetting()`, applied by `applySettings()`
    and drawn by `paintSettings()`. A control is a view of it, never a second copy
    of it — the moment the DOM, the store and the running game each hold their own
    answer, two of them are wrong.
 
-These eight are judgement calls — `tools/check.mjs` cannot check any of them. What
+These nine are judgement calls — `tools/check.mjs` cannot check any of them. What
 it does check is the layer underneath: that the files load in the right order,
 that names do not collide, and that every selector, string and table entry the
 code reaches for actually exists.
@@ -536,24 +645,30 @@ code reaches for actually exists.
 1. `CARS` in `data.js` — an entry with `key`, `style`, `accent`, `body`, `dark`,
    `glass`, optional `trim`/`pip` and `flame` colors for a procedural model.
    An image model instead uses `style:"sprite"`, `sprite`, normalized
-   `spriteBounds` and `exhaust`; keep `accent` and `flame` for shared effects.
+   `spriteBounds`, `exhaust` and an `exhaustStyle`; keep `accent` and `flame`
+   for shared effects, and measure `spriteBounds`, the anchors and `hitShape`
+   off that PNG rather than copying another car's.
 2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
-3. `render.js` — a body drawing function and a `drawCar` style branch.
+3. `render.js` — a body drawing function and a `drawCar` style branch. A sprite
+   car needs neither: it goes through `drawSpriteCar` already.
 4. `i18n.js` — its name and `<id>Ult` describing the shared 15-second double-pace
-   boost in both languages. Five of the six say exactly that and nothing more;
-   `flannUlt` is longer because Flann's ultimate does more, and a new car's
-   should match the five unless it is given a power of its own.
+   boost in both languages. Four of the six say exactly that and nothing more;
+   `flannUlt` and `neelaUlt` are longer because those two ultimates do more, and
+   a new car's should match the four unless it is given a power of its own.
 5. `index.html` — its selection button and preview canvas; wire selection in
    `main.js`.
 
 Every car automatically uses the generic ultimate lifecycle, AI valuation,
-boost flames and Boosted status, and a new car should stay there. The single
-exception is Flann's ram, described under `mechanics.js` above: the base
-lifecycle is shared and stays shared, and what Flann adds is a collision and
-hazard power that runs only while that shared `ultOn` is true, behind one
-predicate. Adding a second car-specific power means extending that pattern —
-one named predicate, applied at the consequence — and never a parallel ultimate
-state machine.
+boost flames and Boosted status, and a new car should stay there. The two
+exceptions are Flann's ram and Neela's exchange, described under `mechanics.js`
+above: the base lifecycle is shared and stays shared, and what those two add is
+a collision and hazard power that runs only while that shared `ultOn` is true,
+behind named predicates. Adding a third means extending that pattern — one
+identity predicate, the questions built on it, applied at the consequence — and
+never a parallel ultimate state machine. If the power needs a car to be
+somewhere else, it goes through `racerWorldPose` and `teleportRacerToPose` and
+never through raw `x`/`y`; if it needs a second body, it goes in an `altForm`
+and comes out through `racerModel()`.
 
 Note `FIELD_SIZE` is 6 and local play hands every car in the game to the grid, so
 a seventh car changes the shape of a local race.

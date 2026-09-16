@@ -111,6 +111,63 @@ authoritative: a ram cannot reach a racer `noContact()` refuses, in either
 direction. The moment the fifteen seconds are up, every one of these goes
 straight back to the ordinary shared rule.
 
+### Neela's exchange
+
+Neela is the second car with something on top of the shared lifecycle, and the
+only one with two states inside it rather than one:
+
+- `neelaUltActive(who)` — the fifteen seconds are running. This is what carries
+  the solid-hazard privilege, for the whole of them.
+- `neelaFormActive(who)` — the alternate body, `vtm_neela.PNG`, is the one on
+  the road. This is what carries the single exchange, and it ends at the first
+  racer contact.
+
+They are the same until that contact and different afterwards. Conflating them
+would give Neela either a privilege it has lost or a second exchange it never
+had, so `tools/check.mjs` asserts that `neelaFormActive()` is still built on
+both the ultimate and the form flag.
+
+| While it runs | What happens |
+| --- | --- |
+| First racer contact, in the alternate body | Nobody is wrecked. The two racers exchange world positions: Neela takes the place the other was standing in at the instant of contact, and that racer is put where Neela was when the ultimate started. The alternate body ends there, the meter does not. |
+| Two transformed Neelas | Neither can trade with the other; the contact falls back to the ordinary shunt and barge. |
+| A Neela and an ulting Flann | The exchange, not the ram: the contact spends the form either way, and spending it on a wreck would leave a racer destroyed and an exchange still owed. |
+| Any racer contact after that | Ordinary `BUMP_SLOW` / `SHUNT_TIME` rules. Neela never gains the ability to wreck anybody. |
+| Tumbleweed | Destroyed on contact, before and after the exchange. No `SLOW_TIME`, no `ULT_ON_TRAP`. |
+| Meteor, falling rock or blast | Cannot wreck Neela, and does not end the ultimate. Again, before and after. |
+| Puddle | Unchanged. `BLIND_TIME`, the spray and the Obscured badge all apply — water is liquid and cannot be smashed. |
+| Oil, seekers | Unchanged. These are Mystery Bubble items and are currently unobtainable in any case. |
+
+Unlike the ram, this does have constants of its own. They are Neela's timings
+and nothing else: the shared `ULT_CHARGE`, `ULT_TIME` and `ULT_SPEED` are
+untouched.
+
+| Constant | Value | Means |
+| --- | --- | --- |
+| `NEELA_WHITEOUT` | `0.42` | seconds an involved human's view is white |
+| `NEELA_MORPH` | `0.6` | seconds the white flash on the body burns off |
+| `NEELA_SWAP_GUARD` | `0.05` | seconds a just-exchanged pair is skipped for |
+| `NEELA_TRAIL_LIFE` | `1.8` | seconds a trail node takes to fade out |
+| `NEELA_TRAIL_GAP` | `9` | px of travel between trail nodes |
+| `NEELA_TRAIL_MAX` | `170` | trail nodes kept per racer, hard cap |
+
+The whiteout is a transformation flash and not a blindfold: long enough to hide
+the change of shape, short enough that a car travelling at twice pace is never
+driven blind into anything. It does not pause the race, stop the meter, freeze
+the car or take the controls away — the racer drives itself through all of it,
+as a person or as a bot, and there is no homing or auto-steer anywhere in the
+mechanic. It drives the existing **Obscured** Condition through a timer of its
+own rather than through `blind`, which is puddle water and draws puddle water.
+
+The guard is one step's worth and is not protection. `tools/check.mjs` fails it
+above 0.12s, because anything approaching a second of it would be hidden
+invulnerability rather than a duplicate-contact guard.
+
+Respawn invulnerability and finish protection are again authoritative in both
+directions: a racer `noContact()` refuses cannot be exchanged with, and cannot
+exchange. When the meter reaches zero every one of these privileges goes at
+once, and `endUlt()` leaves no alternate-form state behind.
+
 ## Hazards
 
 | Constant | Value | Means |
@@ -268,30 +325,47 @@ In `js/local.js`:
 | `SPLASH_IMAGE` | `""` | `core.js` | a data URI or a path to replace the built-in mark; empty keeps the mark |
 | `RAINBOW` | | `data.js` | the seven bands of the space track |
 
-### Flann artwork and race size
+### Sprite artwork and race size
 
-`CARS.flann.spriteBounds` fits the visible vehicle to the car box while
-preserving the PNG aspect ratio and padding. `exhaust` stores its two normalized
-source-image anchors. These are visual calibration only: never change `carW`,
-`carH`, collision rules or speed to tune artwork. Plumes pulse by about 7% in
-length and 5% in width; reduced motion disables that pulse.
+A sprite car's `spriteBounds` fits its visible vehicle to the car box while
+preserving the PNG aspect ratio and padding, and `exhaust` stores its normalized
+source-image anchors. Both are measured off that car's own sheet and off nothing
+else. These are visual calibration only: never change `carW`, `carH`, collision
+rules or speed to tune artwork. Plumes pulse by about 7% in length and 5% in
+width; reduced motion disables that pulse but keeps the plume.
+
+| Sheet | Visible body, source px | Emitters, source px |
+| --- | --- | --- |
+| `v_flann.PNG` | (173, 72)–(851, 1409) | (355, 1377), (669, 1377) |
+| `v_neela.PNG` | (220, 25)–(803, 1422) | (352, 1355), (671, 1355) |
+| `vtm_neela.PNG` | (228, 22)–(795, 1506) | (512, 1306) |
 
 | Constant | Value | Means |
 | --- | --- | --- |
 | `CARS.flann.raceScale` | `1.12` | how large Flann is on the road, against the shared car box |
+| `CARS.neela.raceScale` | `1.18` | the same for Neela |
+| `CARS.neela.altForm.scale` | `1.09` | the alternate body, against Neela's own racer box |
 
-This is the one per-car dimension in the game, and it is race-only. Flann read
-undersized against its lane, so it gets a little over a tenth back: the scale is
-uniform, so the aspect ratio, the measured `spriteBounds` and the exhaust
-anchors are all unaffected, and the body occupies about 71% of a lane instead of
-64%. `raceScale()`, `carDims()` and `racerDims()` in `runtime.js` are the only
-readers; the sprite, the hull, the gap a rear-end leaves and the roof a meteor
-lands on all ask them rather than reaching for `carW`/`carH`.
+These are the only per-car dimensions in the game, and they are race-only. Flann
+read undersized against its lane, so it gets a little over a tenth back and the
+body occupies about 71% of a lane instead of 64%. Neela's artwork is narrower
+and longer — at 1:1 its body covers barely half a lane — so it gets a shade
+under a fifth, which brings it to just under the shared car box while keeping
+the hull a car's. The alternate form's 1.09 is measured rather than chosen: it
+is what makes the craft's fuselage and fin span come out the size of the car it
+replaced, so transforming changes the shape on the road and not how much road it
+takes up. Every scale is uniform, so aspect ratios, the measured `spriteBounds`
+and the anchors are all unaffected. `raceScale()`, `carDims()`, `racerModel()`
+and `racerDims()` in `runtime.js` are the only readers; the sprite, the hull, the
+gap a rear-end leaves and the roof a meteor lands on all ask them rather than
+reaching for `carW`/`carH`.
 
-To resize Flann, change this number and nothing else — the hull follows it
+To resize a sprite car, change its number and nothing else — the hull follows it
 automatically. Do **not** raise `carW`/`carH`: that is the lane's car and it
 would resize all six. The garage and select-screen previews size their own
-canvas and are deliberately outside this, so they do not move either.
+canvas and are deliberately outside this, so they do not move either — and they
+paint from `CARS` directly, so a preview is always the car and never its
+alternate form.
 
 The ultimate fire is drawn by `drawFlannUltFire()` from the `FLANN_FIRE` table
 in `render.js` — each row is a tongue's position and length in fractions of the
@@ -299,15 +373,27 @@ car's own width and height, plus a phase offset. It is enabled by `drawCar`'s
 separate `ulting` flag, never by `boosting`, so an ordinary boost and a boost
 can leave the paint alone.
 
+What comes out of a sprite car's pipes is `exhaustStyle`: `drawSpriteFlame` for
+Flann and `drawSpriteEnergy` for Neela's blue energy. Both are the ordinary
+`boosting` flag, so a boost, a boost can and an ultimate's own speed all light
+them and none of them transforms anything. The transformation flash is
+`drawMorphFlash`, drawn from whichever model's own hull, which is why it works
+on any of the six without per-car code.
+
 ### Body hitboxes
 
 `CAR_HIT_RECT` retains the default body half-width 0.40 and half-height 0.42
-in logical car units. `CARS.flann.hitShape` tapers its inset body to exclude empty
-corners in the sprite. `carHit()` rotates both with the vehicle and multiplies
-them up by the racer's own size out of `carDims()`, so Flann's hull carries its
-1.12 race scale and the other five are `carW`/`carH` exactly as before. Neither includes
-shadows, flames or PNG padding. These are gameplay shapes, independent of asset
-loading and display scaling; change them only when intentionally tuning contact.
+in logical car units, and the four procedural cars use it. A sprite car's
+`hitShape` traces its own artwork to exclude empty corners and trailing
+decoration: `CARS.flann.hitShape` is eight points, `CARS.neela.hitShape`
+eighteen, and `CARS.neela.altForm.hitShape` twenty. `carHit()` reads whichever
+belongs to the model `racerModel()` says the racer is wearing, rotates it with
+the vehicle and multiplies it up by that model's size out of `racerDims()` — so
+a hull always carries its own race scale, and Neela's swaps to the alternate
+shape on the same frame the sprite does and back on the same frame it does.
+None of them includes shadows, flames, trails or PNG padding. These are gameplay
+shapes, independent of asset loading and display scaling; change them only when
+intentionally tuning contact.
 
 ### Unused constants
 

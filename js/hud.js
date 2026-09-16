@@ -977,6 +977,13 @@ function paintItemBox(){
 /* ---------------- HUD -------------------------------------------- */
 let lastM = -1;
 function paintHUD(force){
+  /* On one screen the instruments are in the page, over the canvas, so a white
+     rectangle drawn into the canvas would leave them floating on top of it.
+     The shell takes the whole HUD layer out of sight for exactly as long as
+     the view's own whiteout is running. Local play does not come through here:
+     four sets of instruments are painted on the canvas and go white with the
+     column they belong to. */
+  document.body.classList.toggle("whiteout", !G.local && whiteoutActive("me"));
   const m = Math.floor(G.meters);
   if(force || m !== lastM){ lastM = m; $("#hudDist").textContent = m; }
   const f = $("#boostFill");

@@ -122,12 +122,12 @@ never inherit half a custom race by accident.
 Every car has the same mechanical ultimate: a **75-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
 boost, never its strength, duration or charge rate. One car does something else
-with those fifteen seconds as well.
+with those fifteen seconds as well. Two of them do.
 
 | Car | Ultimate effect |
 | --- | --- |
 | **Flann** | 15 seconds at 2× pace, **on fire** — see below |
-| **Phantom** | 15 seconds at 2× pace |
+| **Neela** | 15 seconds at 2× pace, **transformed** — see below |
 | **Bolt** | 15 seconds at 2× pace |
 | **Timestamp** | 15 seconds at 2× pace |
 | **Rose** | 15 seconds at 2× pace |
@@ -156,6 +156,42 @@ and two ulting Flanns cancel each other out and trade an ordinary shunt. The
 moment the fifteen seconds are up, Flann is an ordinary car again. No other car
 gets any of it.
 
+### Neela's exchange
+
+For the whole fifteen seconds, Neela changes shape. It races as a blue craft
+with a long energy trail instead of as a car, and it keeps the ordinary speed
+boost and the ordinary charge clock. What it gains is one exchange and a hazard
+privilege.
+
+- **Racers.** The first racer it touches while transformed is **not wrecked**.
+  The two of you trade places: Neela ends up where that racer was standing at
+  the moment of contact, and that racer is left where Neela was when the button
+  went down — which by then is a long way back down the road. That ends the
+  transformation on the spot, whatever is left of the meter. It is one exchange
+  per ultimate and no more; from there Neela is a boosted ordinary car again,
+  and racer contact goes back to the usual rear-end and barge rules.
+- **Tumbleweed.** Smashed apart on contact, for the whole ultimate — before the
+  exchange and after it. No Slow and no meter cost.
+- **Meteor.** Neither the falling rock nor the blast can destroy it, again for
+  the whole ultimate.
+- **Puddle.** Unchanged. Water is liquid and cannot be smashed, so an ulting
+  Neela still gets the spray over its screen and still wears **Obscured**.
+
+The transformation and the exchange white out the view of each human involved
+for a moment — Neela's own on activation, both racers' on the exchange — and
+both cars flash white as they change place. In local play that white belongs to
+the column it happened in: it never touches the seat next door. The white is
+visual only. The race does not pause, the meter does not stop, the controls
+still answer, and the car is steered by the person or the bot driving it
+throughout. There is no homing and no auto-steer: the exchange happens where
+the cars actually meet.
+
+None of it is invulnerability either. A respawning or finished racer is out of
+reach in both directions, so an exchange cannot spawn-kill or touch a recorded
+result; two transformed Neelas cancel each other out and trade an ordinary
+shunt; and Neela never gains the ability to wreck anybody. The moment the
+fifteen seconds are up, it is an ordinary car again.
+
 ### The ultimate meter
 
 - **75 seconds** from empty to ready, for every car in the field.
@@ -168,17 +204,26 @@ gets any of it.
 
 ### How ultimates interact
 
-For the five cars that are not Flann, ultimates do not change contact rules. An
-active racer simply moves at boosted pace and otherwise interacts normally:
-collisions, barges, wrecks, hazards, oil and seekers still apply. Flann's ram is
-the one exception, and it changes who *loses* a contact rather than whether the
-contact can happen at all — see above.
+For the four cars that are neither Flann nor Neela, ultimates do not change
+contact rules. An active racer simply moves at boosted pace and otherwise
+interacts normally: collisions, barges, wrecks, hazards, oil and seekers still
+apply. Flann's ram and Neela's exchange are the two exceptions, and both change
+what a contact *does* rather than whether it can happen at all — see above. A
+Flann and a Neela meeting is the exchange rather than the kill, because the
+contact spends Neela's transformation either way.
 
 For every car, Slowed and other legitimate debuffs coexist with the speed
 multiplier, and only **Boosted** is added to the Conditions on show, with
 ordinary boost flames and a generic activation burst. Flann adds its body fire
 on top of those, and only for the ultimate: an ordinary boost or a boost can
-lights the exhaust and nothing else.
+lights the exhaust and nothing else. Neela is the same the other way round —
+its blue energy exhaust is the ordinary boost flag every car has, so boosting,
+a boost can and the ultimate's own speed all light the pipes, and none of them
+transforms anything. Only the ultimate does that.
+
+**Obscured** now has two sources rather than one: puddle water on the glass, and
+the white of a Neela transformation or exchange. It is the same Condition, the
+same badge and the same wording either way.
 
 ## Driving
 
@@ -585,12 +630,16 @@ job unchanged. It verifies:
 - the Mystery Bubble reward gate is one named switch rather than a deletion, and
   the roll, the rarities, the artwork, oil, seekers and bubble rows all survive
   behind it
-- Flann's ram is the game's only car-specific ultimate logic and its race size
-  the only per-car dimension: `flannUltActive()` is the one place a racer is
-  compared to Flann, the contact rules, the hazards and the renderer all read it,
-  the shared charge clock, duration and pace are untouched, exactly one car
-  carries a race scale, and `carHit()` takes its hull size from the same helper
-  the sprite is drawn at
+- Flann's ram and Neela's exchange are the game's only car-specific ultimate
+  logic, and the two sprite cars' race sizes the only per-car dimensions:
+  `flannCar()` and `neelaCar()` are the only places a racer is compared to a
+  car, the predicates built on them are read by the contact rules, the hazards
+  and the renderer, `neelaFormActive()` is still demonstrably narrower than
+  `neelaUltActive()` (the alternate body, not the fifteen seconds), the shared
+  charge clock, duration and pace are untouched, Neela's own timings are named
+  constants with the swap guard kept to a single step, only sprite cars carry a
+  race scale and only within a measured band, and `carHit()` takes its hull and
+  its size from the same model the sprite is drawn from
 
 Run it before you commit. It takes well under a second.
 
@@ -598,13 +647,18 @@ Run it before you commit. It takes well under a second.
 DOM/Canvas test doubles, including localization, every Settings preference and
 what it reaches, setup, simulated controllers, car turns and pause/results.
 `node tools/ultimate-check.mjs` runs the ultimate, Condition, hazard, contact and
-Mystery Bubble behaviour for all six cars as player, bot and local seat;
-`node tools/sprite-check.mjs` covers race sizes and the sprite and ultimate-fire
-drawing; `node tools/hitbox-check.mjs` covers contact geometry. Browser visuals
+Mystery Bubble behaviour for all six cars as player, bot and local seat, plus
+Neela's exchange in every ownership direction and the world-position regression
+that says moving player one leaves the rest of the road exactly where it was;
+`node tools/sprite-check.mjs` covers race sizes, both sprite cars' sheets and
+measured emitters, the ultimate fire and the transformation flash;
+`node tools/hitbox-check.mjs` covers contact geometry, including the switch
+between Neela's two measured hulls. Browser visuals
 and hardware still need separate checks; see
 [the redesign QA record](docs/MENU-REDESIGN-QA.md),
-[the ultimate record](docs/ULTIMATE-QA.md) and
-[the Flann record](docs/FLANN-QA.md).
+[the ultimate record](docs/ULTIMATE-QA.md),
+[the Flann record](docs/FLANN-QA.md) and
+[the Neela record](docs/NEELA-QA.md).
 
 ## Project layout
 
@@ -612,6 +666,8 @@ and hardware still need separate checks; see
 index.html          the document shell — screens, canvases, SVG icons, script tags
 css/app.css         the entire stylesheet
 v_flann.PNG         Flann’s image-backed vehicle, shared by menus and races
+v_neela.PNG         Neela’s, likewise
+vtm_neela.PNG       the shape Neela’s ultimate turns it into, races only
 js/                 the game, in load order (see below)
 tools/check.mjs     dependency-free validator for the invariants below
 docs/               ARCHITECTURE.md, TUNING.md and the screenshots

@@ -115,10 +115,10 @@ for(const count of [2,3,4]){
   click('diffMedium');
   f.pads[0].connected=false;run('carPadTick(.016)');assert.equal($('#carPadState').textContent,run('t("padMissing")'));
   f.pads[0].connected=true;run('carPadTick(.016)');assert.equal($('#carPadState').textContent,run('t("padReady")'));
-  run('carStep(1)');assert.equal(run('carCur'),1);assert.ok($('#carPhantom').classList.contains('cursor'));
+  run('carStep(1)');assert.equal(run('carCur'),1);assert.ok($('#carNeela').classList.contains('cursor'));
   // Exercise the actual controller edge handler, not only its helpers.
   f.pads[0].buttons[0].pressed=true;run('carPadTick(.016)');f.pads[0].buttons[0].pressed=false;
-  assert.equal(run('G.picks[0]'),'phantom');
+  assert.equal(run('G.picks[0]'),'neela');
   for(let i=1;i<count;i++)click('carRandom');
   test(count+' picks start the unchanged local race',()=>{assert.equal(run('menuScreen'),'race');assert.equal(run('G.state'),'countdown');assert.equal(run('G.picks.length'),count);assert.equal(new Set(run('G.picks')).size,count);});
   run('pause(true)');assert.ok($('.hud').inert);click('btnResume');assert.equal($('.hud').inert,false);
@@ -139,4 +139,86 @@ $('#btnCloseSettings').dispatch('keydown',{key:'Escape'});
 test('Escape closes settings and restores Home focus',()=>{assert.equal($('#settingsWrap').classList.contains('on'),false);assert.equal(run('menuScreen'),'home');assert.equal(f.document.activeElement.id,'btnSettings');});
 const mobile=fixture(false);mobile.boot();mobile.document.querySelector('[data-lang="fr"]').click();mobile.click('btnStart');
 test('touch capability gates Local with native disabled state',()=>{assert.ok(mobile.$('#modeLocal').disabled);mobile.click('modeLocal');assert.equal(mobile.run('menuScreen'),'modes');});
+
+/* ================================================================
+   NEELA IN THE MENUS
+   ================================================================
+   Neela took the slot the game's second car has always had, rather than being
+   added as a seventh. These say so, say the screens are showing the car's own
+   name and its own ultimate description, and say the alternate body never
+   appears in a preview - the garage and the select screen show what you are
+   about to drive, not what it turns into. */
+test('Neela holds the second slot and is not a seventh car',()=>{
+  const ids=Array.from(f.run('CAR_IDS'));
+  assert.equal(ids.length,6);
+  assert.equal(ids[1],'neela');
+  assert.equal(ids.includes('phantom'),false);
+  assert.ok(f.$('#carNeela'),'the select screen has a Neela button');
+  assert.equal(f.$('#carNeela').querySelector('canvas').getAttribute('data-car'),'neela');
+  /* And the temperament table moved with it rather than being left behind. */
+  assert.equal(f.run('typeof TEMPERS.neela'),'object');
+  assert.equal(f.run('typeof TEMPERS.phantom'),'undefined');
+});
+for(const lang of ['en','fr']){
+  test('Neela is named and described on screen in '+lang,()=>{
+    f.run(`chooseLang(${JSON.stringify(lang)});`);
+    assert.equal(f.run('t("neela")'),'Neela');
+    const power=f.run('t("neelaUlt")');
+    assert.ok(power.length>40,'Neela has a description of its own, not the shared one');
+    assert.notEqual(power,f.run('t("boltUlt")'));
+    /* It says what the ultimate actually does, in the words the road uses. */
+    for(const word of lang==='en'
+        ? ['shape','tumbleweed','meteor','swap','Puddles']
+        : ['forme','virevoltants','météores','échange','flaques']){
+      assert.ok(power.toLowerCase().includes(word.toLowerCase()),
+                lang+' description mentions '+word);
+    }
+    /* And no implementation vocabulary leaked into it. */
+    for(const leak of ['rebase','world pose','coordinate','hitbox','sprite']){
+      assert.equal(power.toLowerCase().includes(leak),false,lang+' description leaks '+leak);
+    }
+    /* The showroom prints both of them through the ordinary preview path. */
+    f.run('previewCar("neela");');
+    assert.equal(f.$('#carHeroName').textContent,f.run('t("neela")'));
+    assert.equal(f.$('#carHeroPower').textContent,power);
+    assert.equal(f.$('#carHero').getAttribute('data-car'),'neela');
+  });
+}
+test('no Phantom string survives anywhere the player can read',()=>{
+  const strings=f.run('JSON.stringify(STR)');
+  assert.equal(/phantom/i.test(strings),false,'STR still carries a Phantom entry');
+  for(const lang of ['en','fr']){
+    f.run(`chooseLang(${JSON.stringify(lang)});`);
+    assert.equal(/phantom/i.test(f.document.body.textContent),false,
+                 'the page still prints Phantom in '+lang);
+  }
+  f.run('chooseLang("en");');
+});
+test('every menu preview is the car model, never the alternate form',()=>{
+  f.run(`globalThis.drawn=[];globalThis.realDrawCar=drawCar;
+         drawCar=function(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white){
+           drawn.push({key:p.key,sprite:p.sprite||null,boost:!!boosting,
+                       ult:!!ulting,white:white||0});
+           return realDrawCar(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white);};`);
+  try{
+    /* Even with an alternate form up on the road, the menus are unmoved: they
+       paint from CARS directly and never ask what a racer is wearing. */
+    f.run(`G.local=false;G.car="neela";G.rules=defaultRules();G.mode="endless";
+           startRace();clearTimers();G.state="running";G.ult=1;startUlt("me");
+           drawn.length=0;paintCarIcons();previewCar("neela");`);
+    const drawn=JSON.parse(f.run('JSON.stringify(drawn)'));
+    assert.ok(drawn.length>=6,'the whole line-up was painted');
+    assert.ok(drawn.some(d=>d.sprite==='v_neela.PNG'),'Neela is in the line-up');
+    for(const d of drawn){
+      assert.notEqual(d.sprite,'vtm_neela.PNG','a menu drew the alternate form');
+      assert.notEqual(d.key,'neelaAlt','a menu drew the alternate model');
+      assert.equal(d.boost,false);
+      assert.equal(d.ult,false);
+      assert.equal(d.white,0);
+    }
+    assert.equal(f.run('neelaFormActive("me")'),true,'the road still has it, though');
+    f.run('endUlt("me");');
+  } finally { f.run('drawCar=realDrawCar;'); }
+});
+
 console.log('\n'+checks+' menu behavior checks passed (DOM/Canvas test doubles; visual and hardware checks separate).');

@@ -69,6 +69,24 @@ const G = {
   car:"flann", ult:0, ultOn:false, ultKey:false, ultArmed:true,
   /* The active meter displays seconds remaining / the fixed duration. */
   ultT:0, ultMax:ULT_TIME,
+  /* ---- Neela's ultimate, on the racer that is holding one -------
+     Every racer carries these, player one and rival alike, so the mechanic
+     never has to ask which kind of object it is looking at.
+
+     `neelaForm` is whether the alternate body is the one on the road right
+     now, and it is deliberately not the same question as "is Neela's ultimate
+     running": after the one swap the form is gone and the ultimate is not.
+     `neelaOrigin` is the world pose the ultimate was fired from, captured
+     before the transformation and handed to whoever gets swapped back to it.
+     `neelaSwapped` is the one swap, spent.
+
+     `whiteT` is this racer's own whiteout - its view, nobody else's - and is
+     separate from `blind`, which is puddle water and draws puddle water.
+     `morphT` is the white flash on the body itself, which any car can wear
+     because any car can be the one teleported. `swapGuard` is a single step's
+     worth of "this contact has already been dealt with". */
+  neelaForm:false, neelaOrigin:null, neelaSwapped:false,
+  whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
   boostLock:false, rivals:[], stepFlash:0, parkWait:0, parkRot:0,
   cdT:0, cdStep:-1, wasCounting:false,
   mode:"endless", diff:"medium",
@@ -136,9 +154,11 @@ function laneCX(i){ return roadX + laneW*(i+0.5); }
 /* ---- how big one racer is on the road ---------------------------
    carW/carH above are the road's car: the size the lane, the grid and five of
    the six racers are built around, and nothing here makes them bigger. What a
-   car may have is a race scale of its own - CARS.<id>.raceScale - and exactly
-   one does: Flann is drawn and collided a little over a tenth larger so it
-   reads properly against the asphalt.
+   car may have is a race scale of its own - CARS.<id>.raceScale - and the two
+   sprite cars do, each measured off its own artwork: Flann is drawn and
+   collided a little over a tenth larger and Neela a shade under a fifth, so
+   both read properly against the asphalt. The four procedural cars are built
+   around the shared box and have none.
 
    These two are the only readers of that number, and everything that genuinely
    needs a racer's physical body - the sprite, the hull in carHit(), the gap a
@@ -156,11 +176,38 @@ function carDims(carId){
   const k = raceScale(carId);
   return { w:carW*k, h:carH*k };
 }
+/* ---- which body a racer is wearing ------------------------------
+   Five cars and a normal Neela are their own entry in CARS. A Neela in its
+   alternate form is the entry nested under Neela, which carries its own
+   sprite, its own measured bounds, its own emitter, its own hull and its own
+   size relative to the racer's box.
+
+   This is the single answer to "which model is this racer?", and the renderer,
+   the hull in carHit() and the size in racerDims() all ask it - so the body
+   being drawn and the body being collided can never be two different shapes.
+   The car itself is unchanged underneath: `car` is still "neela" throughout,
+   which is what the ultimate, the standings and the garage read. */
+function racerModel(who){
+  const o = who === "me" || who === undefined ? G : who;
+  const c = CARS[o && o.car];
+  if(!c) return CARS.flann;
+  /* Asked with the racer itself rather than the argument, so carHit() calling
+     this with nothing at all still means player one. */
+  return c.altForm && neelaFormActive(o) ? c.altForm : c;
+}
+/* A model may be drawn larger or smaller than the racer's own box; only an
+   alternate form uses it, and only to keep the shape it turns into the size
+   of the car it replaced. */
+function modelScale(model){ return model && model.scale > 0 ? model.scale : 1; }
+
 /* The same answer for a racer rather than a car id: "me", a rival, or any
-   object carrying a `car` key. */
+   object carrying a `car` key - and through the model, so a racer wearing an
+   alternate body is measured at that body's size. */
 function racerDims(who){
   const o = who === "me" || who === undefined ? G : who;
-  return carDims(o && o.car);
+  const d = carDims(o && o.car);
+  const k = modelScale(racerModel(who));
+  return k === 1 ? d : { w:d.w*k, h:d.h*k };
 }
 
 /* How much bigger the desktop shell can be drawn than it is laid out. Measured
