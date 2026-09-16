@@ -19,16 +19,72 @@ function rr(x,y,w,h,r){
 }
 function fillRR(x,y,w,h,r,c){ rr(x,y,w,h,r); ctx.fillStyle=c; ctx.fill(); }
 
+/* One image per sprite, shared by showroom, garage and every race view.
+   onload also repaints canvases that were painted before the asset arrived.
+   The Node fixture need only supply Image; no browser decoder is required. */
+const CAR_SPRITES = {};
+CAR_IDS.forEach(function(id){
+  const p = CARS[id];
+  if(!p.sprite || CAR_SPRITES[p.sprite]) return;
+  const img = new Image();
+  CAR_SPRITES[p.sprite] = img;
+  img.onload = function(){ requestAnimationFrame(paintCarIcons); };
+  img.src = p.sprite;
+});
+
+function drawSpriteCar(w, h, p, boosting){
+  const img = CAR_SPRITES[p.sprite];
+  if(!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return;
+  const b = p.spriteBounds;
+  const scale = Math.min(w/(img.naturalWidth*b[2]), h/(img.naturalHeight*b[3]));
+  const sw = img.naturalWidth*scale, sh = img.naturalHeight*scale;
+  const left = -(b[0] + b[2]/2)*sw, top = -(b[1] + b[3]/2)*sh;
+  const vw = b[2]*sw, vh = b[3]*sh;
+  fillRR(-vw/2 + w*0.04, -vh/2 + h*0.04, vw, vh, vw*0.26, "rgba(0,0,0,0.35)");
+  if(boosting) drawSpriteExhaust(p, left, top, sw, sh, vw, vh);
+  /* Full source rectangle: preserve padding and every tire/spoiler detail. */
+  ctx.drawImage(img, left, top, sw, sh);
+}
+
+function drawSpriteExhaust(p, left, top, sw, sh, vw, vh){
+  const reduced = motionReduced();
+  const phase = reduced ? 0 : performance.now()*0.009;
+  ctx.save();
+  for(let i=0;i<p.exhaust.length;i++){
+    const a = p.exhaust[i];
+    const x = left + a[0]*sw, y = top + a[1]*sh;
+    const pulse = reduced ? 0 : Math.sin(phase + i*0.7);
+    const len = vh*(0.23 + pulse*0.016), half = vw*(0.059 + pulse*0.003);
+    const glow = ctx.createLinearGradient(x, y, x, y + len);
+    glow.addColorStop(0, p.flame[1]);
+    glow.addColorStop(0.3, p.flame[0]);
+    glow.addColorStop(1, withA(p.flame[0], 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.moveTo(x - half, y);
+    ctx.bezierCurveTo(x - half*1.2, y + len*0.35, x - half*0.35, y + len*0.82, x, y + len);
+    ctx.bezierCurveTo(x + half*0.35, y + len*0.82, x + half*1.2, y + len*0.35, x + half, y);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = p.flame[1];
+    ctx.beginPath();
+    ctx.moveTo(x - half*0.45, y);
+    ctx.quadraticCurveTo(x - half*0.35, y + len*0.30, x, y + len*0.56);
+    ctx.quadraticCurveTo(x + half*0.35, y + len*0.30, x + half*0.45, y);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawCar(x, y, w, h, p, tilt, isPlayer, boosting){
   ctx.save();
   ctx.translate(x, y);
   if(tilt) ctx.rotate(tilt);
-  if(p.style === "jet") drawJet(w, h, p, isPlayer, boosting);
+  if(p.style === "sprite") drawSpriteCar(w, h, p, boosting);
+  else if(p.style === "jet") drawJet(w, h, p, isPlayer, boosting);
   else if(p.style === "buggy") drawBuggy(w, h, p, isPlayer, boosting);
   else if(p.style === "wedge") drawWedge(w, h, p, isPlayer, boosting);
   else if(p.style === "coupe") drawCoupe(w, h, p, isPlayer, boosting);
   else if(p.style === "cruiser") drawCruiser(w, h, p, isPlayer, boosting);
-  else drawGT(w, h, p, isPlayer, boosting);
   ctx.restore();
 }
 
@@ -42,44 +98,7 @@ function flames(w, h, hot, cool){
   ctx.globalAlpha = 1;
 }
 
-/* Redd and all traffic: a squat, square-shouldered muscle car */
-function drawGT(w, h, p, isPlayer, boosting){
-  fillRR(-w/2+3, -h/2+7, w, h, w*0.26, "rgba(0,0,0,0.42)");
-
-  const ww = w*0.17, wh = h*0.16;
-  fillRR(-w/2-ww*0.30, -h*0.29, ww, wh, ww*0.4, "#0C0D10");
-  fillRR( w/2-ww*0.70, -h*0.29, ww, wh, ww*0.4, "#0C0D10");
-  fillRR(-w/2-ww*0.30,  h*0.13, ww, wh, ww*0.4, "#0C0D10");
-  fillRR( w/2-ww*0.70,  h*0.13, ww, wh, ww*0.4, "#0C0D10");
-
-  fillRR(-w/2, -h/2, w, h, w*0.26, p.body);
-  rr(-w/2, -h/2, w, h, w*0.26);
-  ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = Math.max(1, w*0.03); ctx.stroke();
-
-  fillRR(-w*0.42, -h/2+h*0.012, w*0.84, h*0.062, w*0.08, p.dark);
-  fillRR(-w*0.34, -h/2+h*0.022, w*0.20, h*0.038, w*0.04, "#FFE8C0");
-  fillRR( w*0.14, -h/2+h*0.022, w*0.20, h*0.038, w*0.04, "#FFE8C0");
-
-  fillRR(-w*0.34, -h*0.20, w*0.68, h*0.42, w*0.16, p.dark);
-  fillRR(-w*0.29, -h*0.17, w*0.58, h*0.13, w*0.08, p.glass);
-  fillRR(-w*0.29,  h*0.09, w*0.58, h*0.10, w*0.07, p.glass);
-
-  if(isPlayer){
-    ctx.fillStyle = p.dark;
-    ctx.fillRect(-w*0.16, -h*0.46, w*0.09, h*0.24);
-    ctx.fillRect( w*0.07, -h*0.46, w*0.09, h*0.24);
-    fillRR(-w*0.06, h*0.24, w*0.12, h*0.16, w*0.05, p.dark);
-  }
-
-  fillRR(-w*0.46, h*0.40, w*0.92, h*0.075, w*0.06, p.dark);
-  fillRR(-w*0.36, h*0.415, w*0.22, h*0.036, w*0.03, "#FF4A50");
-  fillRR( w*0.14, h*0.415, w*0.22, h*0.036, w*0.03, "#FF4A50");
-
-  if(boosting) flames(w, h, (p.flame && p.flame[0]) || "#FF7A3A", (p.flame && p.flame[1]) || "#FFD9A0");
-}
-
-/* Phantom: a low, curvy sports car - same road-going shape as Redd,
-   but tapered and swept where Redd is square */
+/* Phantom: a low, curvy sports car with tapered, swept bodywork. */
 function jetBody(w, h){
   ctx.beginPath();
   ctx.moveTo(-w*0.27, -h*0.50);
@@ -582,15 +601,7 @@ function smoothPath(pts){
   }
   ctx.closePath();
 }
-function puddlePath(p, k){
-  const n = 11, pts = [];
-  for(let i=0;i<n;i++){
-    const a = (i/n)*6.2832;
-    const j = 0.68 + ((p.s*131.7 + i*47.31) % 1)*0.56;
-    pts.push({ x:p.x + Math.cos(a)*p.rx*j*k, y:p.y + Math.sin(a)*p.ry*j*k });
-  }
-  smoothPath(pts);
-}
+function puddlePath(p, k){ smoothPath(puddlePoints(p,k)); }
 function drawPuddle(p){
   ctx.save();
   puddlePath(p, 1.0);
@@ -885,12 +896,6 @@ function renderView(dy){
     drawRoadFade();
   }
 
-  for(let i=0;i<G.traffic.length;i++){
-    const t2 = G.traffic[i];
-    if(t2.y < CT-t2.h*1.5 || t2.y > CB+t2.h) continue;
-    drawCar(t2.x, t2.y, t2.w, t2.h, t2.paint, 0, false, false);
-  }
-
   /* Every car that is not this view's owner wears its Conditions beside it;
      the owner's own go in the corner of the view's HUD instead, so nobody has
      badges floating over the car they are actually driving. The badges are
@@ -1032,15 +1037,10 @@ function drawBubbles(){
 }
 
 function slickPath(o, k){
-  const ca = Math.cos(o.rot), sa = Math.sin(o.rot);
-  const n = 30;
+  const pts=slickOutline(o,k);
   ctx.beginPath();
-  for(let i=0;i<=n;i++){
-    const a = i/n*6.2832;
-    const f = slickFactor(o, a)*k;
-    const px = Math.cos(a)*o.rx*f, py = Math.sin(a)*o.ry*f;
-    const x = o.x + px*ca - py*sa, y = o.y + px*sa + py*ca;
-    if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  for(let i=0;i<pts.length;i++){
+    if(i === 0) ctx.moveTo(pts[i].x,pts[i].y); else ctx.lineTo(pts[i].x,pts[i].y);
   }
   ctx.closePath();
 }

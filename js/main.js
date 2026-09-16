@@ -142,7 +142,7 @@ $("#customBody").addEventListener("click", function(e){
   paintCustom();
 });
 
-$("#carRedd").addEventListener("click", function(){ pickCar("redd"); });
+$("#carFlann").addEventListener("click", function(){ pickCar("flann"); });
 $("#carPhantom").addEventListener("click", function(){ pickCar("phantom"); });
 $("#carBolt").addEventListener("click", function(){ pickCar("bolt"); });
 $("#carTimestamp").addEventListener("click", function(){ pickCar("timestamp"); });

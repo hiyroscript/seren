@@ -17,10 +17,6 @@ const SPLASH_IMAGE = "";
 
 const SPLASH_MS = 2600;   // how long the splash stays up
 
-/* Other cars are switched off for now. Flip this to true to bring
-   them back - nothing else needs to change. */
-const TRAFFIC_ENABLED = false;
-
 /* ---------------- storage (falls back to memory if blocked) ------ */
 const mem = {};
 const store = {

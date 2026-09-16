@@ -84,10 +84,18 @@ export function fixture(desktop = true) {
   document.getElementById=id=>document.querySelector('#'+id);
   document.createElement=tag=>new Element(tag);
   const timers=[];const pads=[];const saves=new Map();
-  const sandbox={document,console,Math,Date,performance:{now:()=>0},navigator:{getGamepads:()=>pads},
+  const images=[], frames=[]; let now=0;
+  class FixtureImage {
+    constructor(){this.complete=false;this.naturalWidth=0;this.naturalHeight=0;images.push(this);}
+    load(width=1024,height=1536){
+      this.complete=true;this.naturalWidth=width;this.naturalHeight=height;
+      if(this.onload)this.onload();
+    }
+  }
+  const sandbox={document,console,Math,Date,performance:{now:()=>now},navigator:{getGamepads:()=>pads},
     getComputedStyle:el=>({visibility:el.getClientRects().length?'visible':'hidden'}),
-    requestAnimationFrame:()=>1,cancelAnimationFrame(){},setTimeout:fn=>{timers.push(fn);return timers.length;},clearTimeout(){},setInterval:()=>1,clearInterval(){},
-    localStorage:{getItem:k=>saves.get(k)??null,setItem:(k,v)=>saves.set(k,v)},Image:class{},Path2D:class{}};
+    requestAnimationFrame:fn=>{frames.push(fn);return frames.length;},cancelAnimationFrame(){},setTimeout:fn=>{timers.push(fn);return timers.length;},clearTimeout(){},setInterval:()=>1,clearInterval(){},
+    localStorage:{getItem:k=>saves.get(k)??null,setItem:(k,v)=>saves.set(k,v)},Image:FixtureImage,Path2D:class{}};
   sandbox.window={matchMedia:q=>({matches:q.includes('hover') && desktop}),innerWidth:1000,innerHeight:800,devicePixelRatio:1,addEventListener(){}};
   const context=vm.createContext(sandbox);
   const run=code=>vm.runInContext(code,context);
@@ -95,5 +103,5 @@ export function fixture(desktop = true) {
   const $=s=>document.querySelector(s);
   const click=id=>{assert.ok($('#'+id),'missing '+id);$('#'+id).click();};
   const boot=()=>{timers.shift()();};
-  return {run,$,click,boot,pads,document,timers,saves};
+  return {run,$,click,boot,pads,document,timers,saves,images,frames,ctx,setNow:v=>{now=v;}};
 }

@@ -5,7 +5,7 @@
    allowed to do - every decision below hands off to the same mechanics the
    player's own inputs call. */
 
-/* lanes this car should stay out of: hazards, and traffic it would run into.
+/* lanes this car should stay out of: hazards and other racers it would run into.
    `far` reads the extra distance a difficulty buys; `at` projects the whole
    test forward by that many seconds, which is how the better drivers see a
    hazard arriving rather than a hazard arrived. */
@@ -24,10 +24,6 @@ function laneRisk(R, far, at){
     const ahead = (R.y + roll) - (o.y + (t > 0 ? G.speed*t : 0));
     if(ahead < -40 || ahead > look) continue;
     risk[clamp(Math.floor((o.x - roadX)/laneW), 0, 2)] = 1;
-  }
-  for(let i=0;i<G.traffic.length;i++){
-    const t2 = G.traffic[i], ahead = R.y - t2.y;
-    if(ahead > -60 && ahead < 340) risk[t2.lane] = 1;
   }
   /* Oil is a hazard like any other. It is not read at all below the settings
      that would notice it, which is why an easy bot drives straight through

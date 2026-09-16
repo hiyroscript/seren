@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {fixture} from './game-fixture.mjs';
 let checks = 0;
 const f = fixture(), {run} = f;
+f.images.forEach(image => image.load());
 f.boot();
 function test(name, fn){fn();checks++;console.log('  ok  ' + name);}
 function equal(code, expected){assert.equal(run(code), expected, code);}
@@ -14,7 +15,7 @@ function setup(car, kind, active = true){
   run(`G.local = false; G.car = ${JSON.stringify(car)}; G.rules = defaultRules();
        G.rules.bots = 1; G.rules.boost = false; G.rules.bubbles = false;
        G.mode = 'endless'; startRace(); G.state = 'running';
-       G.nextTrap = 1e9; G.nextGap = 1e9; G.nextRow = 1e9;
+       G.nextTrap = 1e9; G.nextRow = 1e9;
        G.rivals[0].car = G.car; G.rivals[0].human = ${kind === 'local'};
        G.rivals[0].lane = 0; G.rivals[0].x = laneCX(0); G.rivals[0].y = playerY - 2000;
        G.rivals[0].changeT = 1e6;
@@ -141,7 +142,7 @@ test('every Condition is derived from the state that owns it',()=>{
   const cases = [['slowT','slowed'],['blind','obscured'],['slipT','skidded'],
                  ['canT','boosted'],['invuln','invulnerable']];
   for(const [field,id] of cases){
-    setup('redd','player',false);
+    setup('flann','player',false);
     run(`G.slowT=G.blind=G.slipT=G.canT=G.invuln=G.shuntT=0;G.boosting=false;G.${field}=2;`);
     equal(`activeConditions('me').indexOf(${JSON.stringify(id)}) >= 0`,true);
     equal(`conditionOn('me',${JSON.stringify(id)})`,true);
@@ -150,7 +151,7 @@ test('every Condition is derived from the state that owns it',()=>{
   }
   /* Rivals answer the identical question off their own fields, bot or human. */
   for(const human of [false,true]){
-    setup('redd','bot',false);
+    setup('flann','bot',false);
     run(`globalThis.r=G.rivals[0];r.human=${human};
          r.slow=r.blind=r.slip=r.canT=r.invuln=r.shuntT=0;r.boosting=false;
          r.invuln=2;r.slow=2;r.blind=2;r.slip=2;`);
@@ -162,7 +163,7 @@ test('every Condition is derived from the state that owns it',()=>{
 /* Crossing the line takes a racer off every target list and out of every
    collision, and it is never presented as a Condition. */
 test('a finished racer is out of play and wears no badge',()=>{
-  setup('redd','player',false);
+  setup('flann','player',false);
   run(`globalThis.r=G.rivals[0];r.y=playerY;r.lane=G.lane;r.x=G.x;
        r.slow=2;r.blind=2;r.slip=2;r.invuln=0;r.finished=1;r.parkM=G.meters;`);
   equal('JSON.stringify(activeConditions(r))','[]');

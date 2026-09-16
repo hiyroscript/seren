@@ -125,7 +125,7 @@ when a bot spends the boost, never its strength, duration or charge rate.
 
 | Car | Ultimate effect |
 | --- | --- |
-| **Redd** | 15 seconds at 2× pace |
+| **Flann** | 15 seconds at 2× pace |
 | **Phantom** | 15 seconds at 2× pace |
 | **Bolt** | 15 seconds at 2× pace |
 | **Timestamp** | 15 seconds at 2× pace |
@@ -312,7 +312,7 @@ wrecks you if it can.
 
 On top of difficulty, each car has a **temperament** — nerve, spite, patience
 and guard — that is jittered at the start of every race, so five bots on one
-setting are not the same bot five times, and the Redd you raced last time is not
+setting are not the same bot five times, and the Flann you raced last time is not
 quite this one.
 
 Bots only ever *decide*. The doing is handed straight back to the same functions
@@ -550,6 +550,7 @@ checks; see [the redesign QA record](docs/MENU-REDESIGN-QA.md).
 ```
 index.html          the document shell — screens, canvases, SVG icons, script tags
 css/app.css         the entire stylesheet
+v_flann.PNG         Flann’s image-backed vehicle, shared by menus and races
 js/                 the game, in load order (see below)
 tools/check.mjs     dependency-free validator for the invariants below
 docs/               ARCHITECTURE.md, TUNING.md and the screenshots
@@ -589,16 +590,12 @@ place.
 It is a plain static site with relative asset paths, so it works under any base
 path. This repository is served by GitHub Pages from `main` — push, and the
 `pages-build-deployment` workflow republishes it. Any static host works the same
-way: copy `index.html`, `css/` and `js/` and you are done.
+way: copy `index.html`, `v_flann.PNG`, `css/` and `js/` and you are done.
 
 ## Known quirks
 
-- **There is no traffic.** `TRAFFIC_ENABLED` in `js/core.js` is `false`, which
-  switches off the civilian cars. Endless mode's description still mentions dense
-  traffic, and the "You clipped traffic" race-over panel is the wreck path that
-  traffic used to trigger — with traffic off, endless has five bots instead and
-  runs until you leave. Flipping the flag back to `true` brings the traffic
-  system back; nothing else needs to change.
+- **Endless runs until you leave.** The road contains your car and five racer bots,
+  with hazards and items providing the obstacles.
 - **The internals are reachable from the console.** The game runs as ordered
   classic scripts rather than inside a closure, so `G`, `CARS`, `startUlt` and the
   rest are global. Handy for debugging, and it means a determined player can poke
