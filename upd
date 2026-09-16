@@ -1,414 +1,709 @@
-You are modifying the GitHub repository `hiyroscript/seren`.
+You are modifying the GitHub repository hiyroscript/seren.
 
-Use `hiyroscript/ponu` only as a visual/reference repository. Do not modify Ponu. The actual implementation belongs entirely in Seren.
+Work against the latest main branch of Seren. Do not make superficial text-only changes. This is a focused rendering/data cleanup that changes one racer’s identity and visual model, deletes an entire dormant civilian-traffic subsystem, and correctly integrates Flann’s tailpipe boost effect while preserving the rest of Seren’s gameplay.
 
-This is a careful gameplay-system refactor, not a cosmetic text replacement. Before editing anything, inspect the current latest Seren source and trace every reference related to the airborne launch mechanic, gameplay status effects, temporary immunity, finish-line protection, HUD status presentation, rival rendering, local split-screen rendering, AI decisions, input mappings, localization, documentation, and tests. Do not assume line numbers remain unchanged. Preserve unrelated gameplay.
+The new vehicle artwork already exists in the repository root as:
 
-# Core objective
+v_flann.PNG
 
-Completely remove Seren’s airborne **launch mechanic**: the mechanic where a racer brakes, winds up, leaves the road, rises into the air, gains speed/height based on charge, becomes separated from grounded contact, and later lands.
+Use that exact filename and case. GitHub Pages and other hosts may be case-sensitive.
 
-At the same time, replace the game’s current “effects” terminology and presentation with a proper **Conditions** system.
+Primary objectives
 
-The resulting active Conditions are exactly:
+Replace the existing racer Redd completely with Flann.
 
-| ID             | Display name | Type   | Color                                                            | Icon concept                                          |
-| -------------- | ------------ | ------ | ---------------------------------------------------------------- | ----------------------------------------------------- |
-| `boosted`      | Boosted      | Buff   | `#FF9A4A`                                                        | forward double-chevron or lightning/acceleration mark |
-| `invulnerable` | Invulnerable | Buff   | `#FFD86B`                                                        | shield                                                |
-| `slowed`       | Slowed       | Debuff | `#8A9099`                                                        | downward speed arrow / reduced-speed mark             |
-| `obscured`     | Obscured     | Debuff | `#B07A4A`                                                        | crossed/covered eye or visibility-obscured mark       |
-| `skidded`      | Skidded      | Debuff | preserve the existing dark Slippery family, preferably `#0B0B0C` | curved skid/tire marks                                |
+Flann must use v_flann.PNG as the actual in-game vehicle sprite instead of Redd’s current procedurally drawn Canvas GT model.
 
-There must be no `Launched` condition.
+Rename Redd to Flann everywhere, including the internal car ID. This is not merely a display-name change. The final current source tree must use flann, not redd, as the canonical identifier for this car.
 
-There must be no `Winner` condition.
+Completely delete Seren’s civilian/NPC traffic system and all of its dormant code. Do not confuse civilian traffic with the six racing cars. Rival bots and local-player racers are core gameplay and must remain.
 
-A racer crossing the finish line must still become permanently out of play for the remainder of that race, with all existing result/placement/run-out behavior preserved. This finish protection is a race lifecycle state, not a Condition, and it must never be presented as `Winner`, `Invulnerable`, or any other condition.
+Finally, replace the generic boost-flame positioning on Flann with an exhaust effect that is anchored to the actual tailpipes in v_flann.PNG, rotates with the sprite, scales with it, and animates smoothly without jitter.
 
-# Critical distinction: do not remove the rear-contact speed shove
+Repository architecture you must respect
 
-Seren currently uses confusing launch-related names for two different mechanics.
+Seren is deliberately build-free. It consists of index.html, css/app.css, and fifteen classic deferred JavaScript files sharing one global script scope.
 
-The airborne launch mechanic must be deleted.
+The current load order is:
 
-However, rear-ending another car currently gives the victim a short forward shove using identifiers such as `LAUNCH_TIME`, `LAUNCH_BOOST`, `G.launchT`, and the rival `launch` field. That shove is not the airborne mechanic. Preserve its exact gameplay behavior and tuning, but rename it so the source no longer conflates it with the removed launch system.
+core → i18n → data → audio → runtime → ui → settings → local → ai → mechanics → race → render → hud → input → main
 
-Use a clear term such as `SHUNT_TIME`, `SHUNT_BOOST`, `G.shuntT`, and `R.shuntT`. Preserve the existing numerical timing/multiplier unless another dependency genuinely requires adjustment. Boosted should continue to be active while this forward shove is active, just as the old HUD treated that short speed increase as part of Boosted.
+Do not introduce a bundler, framework, package dependency, module system, or build step.
 
-Do not accidentally remove rear-end collisions, lane barging, shunts, ordinary boost, boost cans, ultimates, items, traps, seekers, wrecking, respawning, or finish-line run-out.
+Every top-level JavaScript name must remain unique across all scripts. Do not introduce duplicate const, let, var, or function names.
 
-# Remove the airborne launch mechanic completely
+Keep "use strict"; at the top of every existing JavaScript source file.
 
-Delete the full brake/wind-up/airborne subsystem, rather than merely disabling its input.
+Preserve the current Canvas 2D architecture.
 
-This includes the player-side and rival-side launch lifecycle: brake engagement, launch arming threshold, wind-up, launch power calculation, launch cooldown, airborne timer, air height/power/max duration, jumping clear of grounded cars or hazards, airborne contact immunity, airborne movement/speed multipliers, landing attacks, landing collision logic, launch particles, launch shadows, launch squat animation, and any AI strategy for launching.
+Do not rewrite unrelated systems.
 
-Remove obsolete launch constants such as the `AIR_*` family used by this mechanic. Remove launch-only state including player and rival fields equivalent to `brakeOn`, `brakeKey`, `brakePtr`, `brakeSpent`, `brakeHeld`, `airMeter`, `airWind`, `airT`, `airMax`, `airPow`, `launchCD`, `airAim`, `airHold`, and `airWhy`.
+First: inspect before editing
 
-Remove functions whose purpose is the airborne system, including the equivalents of `airPower`, `airborne`, `overhead`, `canBrake`, `airArmed`, `brakeHeld`, `brakeEngage`, `brakeOff`, `launchCar`, `landCar`, `killLaunch`, `updateLaunch`, `releaseBrake`, and all rival versions such as `rivalAirPower`, `rivalAirborne`, `canBrakeRival`, `rivalBrakeOff`, `launchRival`, `landRival`, `killLaunchRival`, and `updateRivalLaunch`.
+Before changing anything, perform a repository-wide inspection for every occurrence and dependency involving:
 
-After this work there should not be dormant air/launch state sitting at zero merely because the UI no longer reaches it. The mechanic itself must be gone.
+redd
+Redd
+carRedd
+reddUlt
+CARS
+CAR_IDS
+TEMPERS
+G.car
+drawCar
+drawGT
+paintCarIcon
+paintCarIcons
+previewCar
+traffic
+TRAFFIC_ENABLED
+TRAFFIC_PAINT
+G.traffic
+relGap
+nextGap
+spawnWave
+breakWalls
+crash
+overLead
+laneRisk
+flames
+boosting
+ultOn
 
-Where functions such as `noContact`, `safeCar`, collision detection, hazard handling, or targeting currently contain an airborne exception, remove only the airborne part. Preserve the protection arising from respawn invulnerability, destruction/dead state, and being finished.
+Also search all documentation and tests, not only runtime JavaScript.
 
-Remove the launch meter from both the normal DOM HUD and the split-screen canvas HUD. The bottom meter area should contain only the ordinary boost meter after this change. Reflow it deliberately rather than leaving a blank track where the launch meter used to be.
+Do not assume the references described in this prompt are exhaustive. Follow dependencies in the current source.
 
-Remove the car lift, enlarged airborne rendering, launch shadow, wind-up squat, airborne flames, and any functions such as `airHop`, `rivalHop`, or launch-specific shadow rendering that become dead.
+Flann must fully replace Redd as an identity
 
-# Remove launch controls
+In js/data.js, replace the existing CARS.redd definition with a canonical CARS.flann definition.
 
-The down-arrow / `S` brake-and-launch control must disappear. Do not silently remap it to another action.
+Its identity must use:
 
-Remove the corresponding keyboard down/up launch handling, touch swipe-down brake/launch handling, pointer brake state, controller down-stick/down-D-pad brake/launch handling, `humanBrake`, `padBrake`, and the launch-related `brake` snapshot in `newPadKeys` if it has no remaining purpose.
+key: "flann"
 
-Update all help text and control legends so launch is no longer advertised. The home-screen control guide must not contain a Launch action.
+and the sprite source must resolve to:
 
-Pointer/touch lane steering, swipe-up Boost, items, ultimates, pause, keyboard lane movement, ordinary Boost, and controller mappings unrelated to launch must continue to work.
+v_flann.PNG
 
-Controller-disconnect cleanup should no longer try to release a nonexistent brake.
+Use a clean sprite-oriented model rather than pretending the image is another procedural "gt" body.
 
-# Remove launch intelligence from the AI
+For example, the data model may use a dedicated style: "sprite" and/or a sprite: "v_flann.PNG" property. Choose whichever integrates most cleanly with the existing renderer, but the end result must make it unambiguous that Flann uses image artwork.
 
-The AI must stop reasoning about an action that no longer exists.
+Retain any Flann properties still needed by shared gameplay, such as accent and flame, because shared mechanics use car colors for particles, ultimate bursts, collisions, etc.
 
-Remove the launch-specific difficulty dimensions currently represented by things such as `air` and `wind` if they have no remaining use. Remove launch-specific temperament properties such as `flair` if repository-wide inspection confirms they were only used for airborne launch decisions.
+Do not retain obsolete body, glass, dark, or other procedural-GT properties merely because Redd previously needed them unless another live consumer genuinely still reads those values.
 
-Delete launch decision functions such as `botAirWant` and all launch-related branches in `rivalThink`.
+Change:
 
-Remove `air` from AI field/sense representations. Remove airborne-only lane planning. Remove launch/brake penalties such as references to `R.brakeOn` from unrelated scoring functions.
+CAR_IDS = ["redd", ...]
 
-Do not replace launch strategy with arbitrary compensating buffs. The AI should simply continue driving with its remaining lane choice, boost, item, collision, defensive, targeting, and ultimate systems.
+to use:
 
-All difficulty settings must remain functional after these fields disappear.
+"flann"
 
-# Rename gameplay Effects to Conditions
+in the same roster position.
 
-This rename must be semantic and structural for the gameplay status system, not a dangerous global replacement of the English word “effect.”
+Flann must remain one of the six normal selectable/raceable cars and must behave mechanically exactly as Redd behaved unless this prompt explicitly says otherwise.
 
-Do not rename particle effects, `addFx`, VFX, audio effects, CSS animation effects, screen effects, visual effects, or other uses where “effect” has its normal graphics/audio/programming meaning.
+Preserve Redd’s existing temperament values, but move them to:
 
-Rename the gameplay-status data model from `EFFECTS` to `CONDITIONS`.
+TEMPERS.flann
 
-Rename gameplay-status functions, variables, comments, IDs, and UI concepts accordingly. For example, `effLog`, `effEls`, `effHost`, `logEffect`, `dropEffect`, `clearEffects`, `syncEffects`, `hudEffects`, `#effList`, `--eff`, and effect-specific CSS class names should become condition-oriented names or, where appropriate, be replaced entirely by the new derived icon system.
+Update the fallback in makeTemper() from TEMPERS.redd to TEMPERS.flann.
 
-Prefer a single canonical condition definition table instead of scattering names, colors, category information, and icons around multiple renderers.
+Update comments such as the existing statement that Redd is the brawler so that they refer to Flann.
 
-Each condition definition should contain at least its localization key, color, `buff`/`debuff` classification, and icon identifier. Include icon foreground/ink metadata if necessary for contrast.
+In js/runtime.js, change the default selected car from:
 
-The condition system should derive what is active from authoritative racer state. Do not create a second mutable condition truth that can drift out of sync with `slowT`, `blind`, `slipT`, Boost state, invulnerability timers, etc.
+car: "redd"
 
-A helper conceptually equivalent to `activeConditions(who)` should be the canonical way both world badges and HUD badges ask, “Which Conditions does this racer have right now?”
+to:
 
-The order returned by that helper must be deterministic so stacked icons do not randomly reorder between frames. A reasonable priority is Invulnerable, Boosted, Slowed, Obscured, Skidded.
+car: "flann"
 
-Finished racers should return no active Conditions for presentation, because they are no longer participating in the race.
+Search for every other hard-coded "redd" reference in gameplay code and replace it appropriately.
 
-# Rename Immune to Invulnerable properly
+There must be no compatibility alias such as redd: flann, no duplicate Redd entry, and no hidden old ID left behind. The current game should have Flann, not “Redd renamed only on screen.”
 
-Change the user-facing condition `Immune` to `Invulnerable`.
+Rename all UI and localization surfaces
 
-Also rename the underlying temporary gameplay terminology where practical so the code and UI agree. This should include the temporary racer timer/state currently called `immune`, `IMMUNE_TIME`, helpers like `immuneCar`, `immuneMe`, `immuneWho`, `immuneScrub`, dedicated DOM/CSS names such as `#immuneTag` or `.immune`, relevant comments, and localization keys.
+In js/i18n.js, replace the localization keys:
 
-Prefer names such as `invulnerable`, `INVULNERABLE_TIME`, and suitable `invulnerable...` helpers.
+redd
+reddUlt
 
-Do not conflate temporary Invulnerable with finish protection.
+with:
 
-Architecturally, keep these concepts separate:
+flann
+flannUlt
 
-Temporary Invulnerable means an active positive Condition, normally coming from respawn protection or whatever existing gameplay grants that timer.
+The English and French visible car name should both be:
 
-Finished means the racer has crossed the finish line and is permanently out of play for this race.
+Flann
 
-A shared internal helper may decide whether something is touchable/targetable, but `activeConditions()` must only return `invulnerable` when the actual temporary invulnerability state is active. It must not display Invulnerable simply because the racer has finished.
+Preserve the existing ultimate description unless another current dependency requires a wording correction. Flann’s ultimate is mechanically unchanged.
 
-Rename the cleanup terminology from vague “bad effects” language to Conditions language, such as clearing debuffs.
+Remove the old redd and reddUlt translation keys completely once nothing references them.
 
-Invulnerable must continue refusing/clearing negative Conditions exactly as the existing protection intends.
+In index.html, replace the first car’s DOM identity.
 
-# Rename Cluttered to Obscured
+The current elements using concepts such as:
 
-Replace the gameplay condition identifier `cluttered` with `obscured`.
+id="carRedd"
+data-car="redd"
+data-i18n="redd"
+visible text Redd
 
-Update its localization key, info text, Conditions-tab entry, HUD/world badge lookup, comments, and every gameplay-status reference.
+must become their Flann equivalents:
 
-The underlying water/puddle visual behavior may continue to use an internal field such as `blind` if that field describes a rendering timer and changing it would create unnecessary risk, but no player-facing condition or gameplay status API should still call the condition Cluttered.
+id="carFlann"
+data-car="flann"
+data-i18n="flann"
+visible fallback text Flann
 
-Update puddle descriptions so they say the racer becomes Obscured rather than Cluttered.
+The showroom hero’s default data-car must also become flann.
 
-# Rename Slippery to Skidded
+In js/main.js, replace the current direct click wiring for #carRedd / pickCar("redd") with #carFlann / pickCar("flann").
 
-Replace the gameplay condition identifier `slippery` with `skidded`.
+Because ui.js derives selectors through:
 
-Update its localization key, description, Conditions tab, icon, state-to-condition mapping, comments, and all player-facing uses.
+carEl(id) => "#car" + cap(id)
 
-The underlying steering timer may remain `slipT`/`slip` if renaming that physical mechanic introduces unnecessary unrelated churn, but the Condition presented by that state must be Skidded everywhere.
+the new flann ID and carFlann DOM ID must agree exactly.
 
-The existing meaning remains unchanged: steering is reversed while this debuff is active.
+Update any hard-coded Redd references in tests.
 
-# Completely remove Winner as a Condition while preserving finished-racer protection
+Examples that currently need attention include tools/menu-check.mjs and tools/ultimate-check.mjs, where tests select carRedd or explicitly call setup with "redd".
 
-Delete `winner` from the condition definition table.
+Do not weaken or remove tests simply to make the rename pass. Update them to exercise Flann instead.
 
-Delete `efWinner`, `winnerInfo`, Winner condition rendering, Winner condition logging, Winner condition cards, and any other presentation of Winner as a status/condition.
+Replace Redd’s procedural GT renderer with v_flann.PNG
 
-Do not replace it with a condition called Finished.
+The current drawCar() dispatches car definitions into hand-written procedural Canvas models.
 
-Do not add a finish icon.
+Flann must no longer be drawn by drawGT().
 
-Keep `G.finished`, `R.finished`, finishing place assignment, `G.results`, parking/run-out, final placement, finish order, and results behavior.
+Create a dedicated Flann image-sprite rendering path.
 
-Once a racer crosses the line, that racer must immediately become out of play and remain out of play. Nothing may select it as an offensive target. Nothing may track it. Nothing may collide with it. Nothing may apply damage, wreck it, slow it, obscure it, skid it, hit it with an item, hit it with a hazard, hit it with a seeker, or otherwise alter its finished result. Existing offensive target selection and collision systems must consistently exclude finished racers.
+The sprite must be loaded once and reused. Never construct a new Image() every frame.
 
-Audit seeker targeting in particular. A finished racer must never be selected. If a seeker or other tracking object was already locked to a racer at the exact moment that racer finishes, it must lose that target harmlessly, fade/despawn, or otherwise be guaranteed incapable of interacting with that racer.
+The asset must be ready for all places where the common drawCar() path is used:
 
-Audit AI targeting and threat evaluation as well. Finished racers should be out of the actionable field, not merely immune when the eventual hit occurs.
+the live race,
+rival rendering,
+local split-screen,
+the car selection screen,
+the showroom hero,
+and the Cars & more / garage reference cards.
 
-Finished cars should not themselves continue firing items, using ultimates, barging, or otherwise participating after crossing. Preserve the current run-out/parking animation only.
+The existing UI intentionally uses the same drawCar() path for menu artwork and in-race artwork. Preserve that architectural property. Do not create a separate HTML <img> representation that visually diverges from the actual race sprite.
 
-Remove comments that call this protection “Winner.” Use terms such as “finished racer,” “finisher,” “out of play,” or “finish protection.”
+A clean implementation would give drawCar() a Flann/sprite branch and leave the other five procedural cars on their existing renderers.
 
-# Replace in-race condition text with colored icon circles
+Load the sprite early enough that menus do not permanently paint a blank canvas before the asset arrives.
 
-Use Ponu as the visual inspiration: compact colored circular markers with a strong, simple icon/device inside them. The icon should be recognizable from shape as well as color.
+If the initial menu paint occurs before image decode completes, the image load callback must trigger a repaint of car canvases. The continuously rendered race will naturally pick it up on subsequent frames.
 
-For Seren, these are condition badges, not copies of Ponu’s marble bodies.
+Do not perform asynchronous image work per frame.
 
-Each badge should be a small filled circle using that Condition’s canonical color, with a high-contrast icon centered inside. Use the same icon artwork everywhere the Condition appears. Do not use emoji, text letters, or externally loaded image files. Draw icons using Canvas paths for canvas rendering and equivalent inline SVG/CSS geometry for DOM rendering, or establish one compact reusable icon representation that both presentation paths can consume reliably.
+Use the image’s real naturalWidth and naturalHeight to preserve its aspect ratio. Do not squash or stretch v_flann.PNG into the old procedural Redd proportions.
 
-Bright backgrounds such as Invulnerable gold and Boosted orange may use dark icon ink. Dark backgrounds such as Skidded must use a white/light icon and a visible light outline so the badge does not vanish against Seren’s dark HUD or road.
+The visible Flann sprite must remain centered on the same logical car position used by all mechanics:
 
-The badge must remain legible at Seren’s smallest supported scene scale and in split-screen.
+x, y
 
-# Rival-car condition badges
+The image must rotate around the car center when tilt is applied.
 
-Every visible car that is not the owner of the current camera/view must show its active Conditions as small circular icon badges adjacent to the car.
+The vehicle’s nose must point in the same direction as every other Seren car: toward negative local Y / the top of the screen.
 
-This applies equally to AI racers and human-controlled rival racers.
+Do not rotate the source incorrectly or mirror it.
 
-Do not special-case AI versus human. The source of input is irrelevant; the racer’s state determines its Conditions.
+The entire vehicle should remain visible. Do not clip its nose, rear, spoiler, tires, or other sprite details.
 
-In normal single-player play, the local/client car is the view owner and therefore receives no condition circles beside the physical car. Its Conditions appear in the bottom-left HUD instead.
+Keep collision/gameplay geometry independent from artwork. carW, carH, lane collision rules, rear-ending, barging, hazards, finish behavior, AI, etc. should not change merely because the visible drawing became an image.
 
-In local split-screen, evaluate this independently for every viewport using the existing view owner concept such as `VOWN`. In Player 2’s viewport, Player 2 is the owner and therefore gets no beside-car condition badges there; Player 1, Player 3, Player 4, and bots may receive them if visible. In another player’s viewport, Player 2 is a rival and therefore does receive world-space badges.
+Tune a visual sprite scale if necessary so Flann occupies approximately the same gameplay footprint as the other racers without changing the logical collision dimensions.
 
-This distinction is essential.
+If the PNG contains transparent padding, account for it deliberately when choosing the display scale rather than distorting the sprite or changing collision mechanics.
 
-Anchor the rival badge stack just outside the car silhouette, preferably beside the upper/right side. If that would cross the current viewport boundary, flip it to the other side or clamp it so it remains visible. It must not be positioned in global full-canvas coordinates that cause one split-screen column’s badges to leak into another.
+Remove the old procedural GT model when it becomes dead
 
-When the racer has several Conditions, stack the circular badges vertically above one another in a compact column. The stack must be stable and deterministic. Do not overlap the car’s player-number/seat marker unnecessarily; adjust the anchor sufficiently to keep both readable.
+The existing drawGT() is currently described as the model for “Redd and all traffic.”
 
-Only show these beside-car badges for racers actually visible in the current viewport. Do not invent new condition badges on the existing off-screen racer arrows/markers unless necessary to prevent a regression.
+After this task:
 
-Badges should follow the car’s rendered location during ordinary lane interpolation and camera movement.
+Redd no longer exists,
+Flann uses v_flann.PNG,
+civilian traffic no longer exists.
 
-Finished racers get no badges.
+Therefore, verify whether anything still calls drawGT().
 
-# View-owner/player condition HUD
+If nothing does, delete drawGT() completely.
 
-The view owner must not have condition icons floating beside their own car.
+Do not leave a large unused Redd/traffic procedural model hidden in render.js.
 
-Instead, replace the current bottom-left text-based effect notifications with the same circular Condition badges.
+Update drawCar() so its dispatch has no fallback that accidentally turns an unknown car into the obsolete GT/Redd model. Unknown models should not silently become Redd.
 
-Remove the old text pills entirely.
+Preserve the procedural renderers for Phantom, Bolt, Timestamp, Rose, and Siren.
 
-The bottom-left condition area should use the same canonical colors and icons as rival badges. Do not display the condition names during active racing.
+Flann shadow and sprite layering
 
-If several Conditions are active simultaneously, stack their icons vertically upward from the current bottom-left effect-notification position. Keep the order deterministic.
+Flann should still visually belong on the road.
 
-The Invulnerable condition must also use this bottom-left badge system. Remove the separate text `immuneTag`.
+Render a subtle vehicle shadow beneath the sprite using the same general visual weight as the other cars.
 
-If Seren’s existing gold screen-edge feedback for temporary immunity is retained as secondary feedback, rename it to Invulnerable terminology and keep the condition icon as the canonical HUD indicator. There must be no Immune text left.
+The shadow must not replace or obscure the image.
 
-In local split-screen, each canvas HUD must render the Conditions of that viewport’s owner in its own bottom-left corner. The page-level DOM condition host should remain hidden in local mode just as the old page HUD was, because each split-screen view paints its own instruments.
+The recommended local layering inside Flann’s translated/rotated coordinate system is:
 
-# One canonical icon renderer
+shadow,
+boost exhaust,
+Flann sprite,
+then any externally rendered race overlays such as player seat markers or Condition badges.
 
-Avoid implementing five icons separately in three different places.
+The exhaust should appear to originate underneath/behind the rear of the vehicle rather than being painted over the bodywork.
 
-Introduce an authoritative icon definition/renderer layer. A function such as `drawConditionIcon(ctx, id, cx, cy, radius)` can render canvas badges for rivals and split-screen HUDs.
+All Canvas state modifications must be safely contained with ctx.save() / ctx.restore() or equivalent restoration.
 
-For the DOM garage/HUD, use the same icon identifiers and equivalent vector shapes. If a clean helper can generate inline SVG safely, use that. Do not duplicate condition classification, names, or colors in HTML-generation functions.
+Do not leak globalAlpha, globalCompositeOperation, shadows, transforms, filters, or gradients into the next renderer.
 
-The icon artwork should remain intentionally simple: Shield for Invulnerable; forward chevrons/lightning for Boosted; reduced-speed/downward mark for Slowed; obscured/crossed-eye or water-blocked visibility symbol for Obscured; curved paired skid marks for Skidded.
+Correct Flann’s tailpipe boost effect
 
-# Rename the Garage Effects tab to Conditions
+The current generic flames(w, h, ...) routine uses fixed rectangular exhaust locations based on the abstract car box.
 
-Rename the main `Effects` tab to `Conditions`.
+That positioning is not sufficient for the PNG.
 
-Rename the DOM ID from `tabEffects` to `tabConditions`, the garage internal key from `"effects"` to `"conditions"`, tab keyboard-navigation arrays, event wiring in `main.js`, ARIA links, localization keys, and any associated comments.
+Flann needs sprite-specific tailpipe/exhaust anchors based on the actual artwork in v_flann.PNG.
 
-The main garage tab order should remain Cars, Tracks/traps, Mystery bubbles, Conditions unless there is a strong existing layout reason not to.
+Inspect the sprite itself and locate the visible rear exhaust/tailpipe positions.
 
-Inside Conditions, add a secondary two-tab switcher:
+Do not guess from Redd’s old geometry.
 
-`Buff`
+Store the two exhaust anchors in one authoritative location, preferably as normalized coordinates associated with Flann’s rendering data or in clearly named Flann-render constants.
 
-`Debuff`
+For example, an anchor representation can conceptually be expressed relative to the sprite’s local visual rectangle rather than hard-coded absolute screen pixels.
 
-The Conditions page should default to Buff whenever appropriate, while preserving a user’s current Buff/Debuff selection during simple rebuilds if that fits the existing garage architecture.
+Both exhaust points must scale automatically when the sprite scales.
 
-Buff contains exactly Boosted and Invulnerable.
+They must move automatically when Flann changes lane.
 
-Debuff contains exactly Slowed, Obscured, and Skidded.
+They must rotate automatically when Flann tilts.
 
-Launched must not appear.
+They must work identically for player Flann and rival/bot Flann.
 
-Winner/Finished must not appear.
+They must also stay correct in every local split-screen column.
 
-Each Conditions reference card must show the same colored circular icon directly next to the condition name, followed by the existing style of explanatory text.
+The exhaust direction is toward the rear of the vehicle, which in Flann’s unrotated local space means positive Y / downward on screen.
 
-The Buff/Debuff split should be generated from `CONDITIONS[id].type` rather than maintaining a separate hard-coded list that can drift from the data model.
+The flame roots should disappear slightly underneath the tailpipe/rear body so there is no visible gap between car and plume.
 
-Give the secondary tabs proper button/tab semantics, visible selected state, keyboard focus, and sensible arrow-key behavior consistent with the existing main garage tabs.
+The exhaust must not originate from the centre of the bumper unless the actual image tailpipes are located there.
 
-# Localization
+Do not draw the flame over Flann’s cabin, rear glass, spoiler, lights, or body.
 
-Update both English and French; do not leave one language with stale names.
+Smooth exhaust animation
 
-Replace `tabEffects` with a Conditions localization key.
+Do not simply reuse the current four static rounded rectangles for Flann.
 
-Add localization for Buff and Debuff.
+Create a dedicated Flann exhaust drawing routine.
 
-Replace the old `ef*` gameplay-status naming scheme with condition-oriented keys if practical, for example `condBoosted`, `condInvulnerable`, `condSlowed`, `condObscured`, and `condSkidded`.
+It should produce two small, clean arcade-racing plumes with a tapered shape rather than two rigid blocks.
 
-Remove launched strings and launched help text.
+Use the existing car flame palette as the basis so shared color data remains meaningful.
 
-Remove Winner condition strings and Winner condition description.
+The effect may use a layered hot/cool core, alpha falloff, Canvas gradients, or similarly lightweight Canvas 2D techniques.
 
-Rename Immune strings/descriptions to Invulnerable.
+Animation must be smooth and deterministic enough that it does not buzz or jump.
 
-Rename Cluttered strings/descriptions to Obscured.
+Do not call Math.random() independently on every rendered frame to reposition the entire flame, because that produces visual jitter.
 
-Rename Slippery strings/descriptions to Skidded.
+Use a smooth periodic pulse, interpolation, sine-based variation, or another continuous visual phase.
 
-Update any sentences in item, puddle, trap, settings, controls, help, or garage descriptions that use old terminology.
+The effect can vary flame length and width modestly over time while the root remains pinned to the exhaust.
 
-Change the custom rule label currently equivalent to `Boost and launch` to simply `Boost`, and rewrite its description so it describes only the Boost meter/mechanic.
+If motionReduced() is active, suppress or substantially reduce the pulsing/flicker while keeping a readable static boost plume.
 
-Remove the Launch control label.
+The visual animation must not mutate gameplay state.
 
-Preserve correct French grammar and terminology rather than simply leaving English words in the French table.
+Boost activation semantics
 
-# HUD and custom-race cleanup
+Preserve Seren’s existing gameplay mechanics.
 
-The existing custom rule key `boost` may remain the switch governing ordinary boost. It must no longer imply or reference airborne launch.
+The current race renderer supplies the visual boost flag using the existing boost/ultimate state for player and rivals.
 
-The standard boost meter must continue functioning exactly as before.
+Do not alter charge drain, refill rates, speed multipliers, ultimate timing, AI decisions, or Conditions merely to implement the visual.
 
-Ordinary Boost, boost cans, ultimate speed, and the rear-contact shunt should all still map to the Boosted Condition when they make the racer faster, matching Seren’s existing “anything that makes you faster” concept.
+Flann’s exhaust should turn on and off from the same authoritative visual boost state that the other vehicle renderers currently receive.
 
-The removed airborne mechanic must not leave a second empty meter, a blank HUD slot, hidden keyboard action, unused controller state, dead custom-setting copy, or stale localized text.
+When no boost effect is active, there must be no residual exhaust plume.
 
-# Source files to inspect carefully
+When the effect activates or deactivates, it should remain visually stable and correctly anchored.
 
-Do not limit edits to these files, but explicitly inspect `js/data.js`, `js/runtime.js`, `js/mechanics.js`, `js/race.js`, `js/ai.js`, `js/input.js`, `js/local.js`, `js/render.js`, `js/hud.js`, `js/ui.js`, `js/i18n.js`, `js/main.js`, `index.html`, and `css/app.css`.
+Do not add exhaust flames to menu/garage previews, because those canvases call the shared renderer with boost inactive.
 
-Also inspect `README.md`, `docs/ARCHITECTURE.md`, `docs/TUNING.md`, other QA documentation, `upd` if it is maintained as release/update documentation, and the scripts under `tools/`.
+Completely remove civilian NPC traffic
 
-Search the entire Seren repository before declaring the work complete.
+This means deleting the subsystem, not disabling it.
 
-Be especially careful because Seren uses classic shared-scope scripts. Do not introduce duplicate top-level declarations or change script dependency order casually.
+Civilian traffic is separate from Seren’s racer field.
 
-# Architecture requirement
+Do NOT remove:
 
-The final implementation should have one authoritative `CONDITIONS` table and one authoritative active-condition derivation path.
+G.rivals,
+bot racers,
+bot AI,
+local multiplayer opponents,
+the six-car field,
+racer-to-racer barging,
+rear-end collisions between racers,
+racer targeting,
+standings,
+or finish logic.
 
-World rendering, normal HUD rendering, split-screen HUD rendering, and the Conditions reference page should all read from the same condition definitions rather than duplicating colors or categories.
+Remove only the non-racer civilian road traffic system.
 
-Do not make the DOM notification system maintain timers merely to decide whether a Condition exists. The gameplay timer/state should remain authoritative. UI should reflect that state.
+Currently this subsystem is dormant because TRAFFIC_ENABLED is false, but its implementation is still distributed through the project.
 
-Where transitions/fades are desirable, animation state may exist for presentation only, but it must never keep a Condition visible after the gameplay state has ended or hide a Condition that is active.
+Delete TRAFFIC_ENABLED from js/core.js.
 
-# Accessibility and visual quality
+Delete its comments explaining that “other cars” can be switched back on.
 
-Conditions must never rely on color alone. The icon shape is mandatory.
+Delete TRAFFIC_PAINT and all civilian-paint definitions from js/data.js.
 
-The Garage Conditions page supplies the text/name/description key for learning what the symbols mean.
+Delete civilian-traffic runtime state from G in js/runtime.js, including traffic and any counters that exist only to spawn civilian traffic, such as relGap and nextGap, after verifying they have no unrelated use.
 
-DOM condition badges should have useful accessible labels even though their visible in-race form is icon-only.
+Delete corresponding startRace() resets such as:
 
-Honor the existing reduced-motion setting. Condition badges do not need constant pulsing/animation. If appearing/disappearing is animated, reduced-motion should make it effectively immediate/static.
+G.traffic = []
+G.relGap = ...
+G.nextGap = ...
 
-Do not introduce dependencies, external icon libraries, image downloads, web fonts, or build tooling.
+Delete spawnWave() from js/mechanics.js.
 
-Match Seren’s existing visual style rather than importing Ponu’s entire aesthetic. Ponu is the reference for the compact colored-circle-with-distinct-icon concept only.
+Delete breakWalls() from js/mechanics.js.
 
-# Regression requirements
+Before deleting neighboring helpers such as onScreen(), search whether they are used by traps, particles, missiles, wrecking, or any other surviving mechanic. Remove a helper only if it genuinely becomes dead.
 
-Normal steering must still work.
+Delete the complete civilian traffic update block from update() in js/race.js, including:
 
-Boost must still work.
+traffic movement,
+lane interpolation,
+offscreen removal,
+the civilian overtake/passed logic,
+the extra-distance/tone reward,
+civilian collision tests,
+calls to crash(),
+traffic spawning,
+traffic spawn-gap accumulation,
+spawnWave(),
+and breakWalls().
 
-Boost depletion/recharge must still work.
+Delete the civilian traffic draw loop from js/render.js.
 
-Ultimates must still work.
+Delete the G.traffic loop from laneRisk() in js/ai.js.
 
-Items must still work.
+Bot racers must still evaluate hazards and actual racers normally.
 
-Oil must still reverse steering and now display Skidded.
+Rewrite the laneRisk() comments so they no longer claim bots are avoiding civilian traffic.
 
-Puddles must still impair visibility and now display Obscured.
+Remove traffic-only dead code
 
-Slowdowns must still display Slowed.
+After deleting civilian traffic, trace crash().
 
-Respawn protection must still function and display Invulnerable while the actual temporary timer is active.
+The current civilian collision path appears to be the caller of the traffic-specific crash() race-over behavior.
 
-Rear-end shunts must still provide their existing short forward speed effect under their newly renamed shunt identifiers and display Boosted.
+If repository-wide inspection confirms crash() has no remaining legitimate caller, delete it completely.
 
-Finished racers must remain permanently excluded from interactions with no visible Condition badge.
+Do not leave an unreachable special race-over function behind.
 
-AI and human rivals must use identical Condition detection.
+Similarly trace the localized overLead copy currently saying:
 
-Single-player and every supported local split-screen player count must render condition icons correctly.
+“You clipped traffic.”
 
-# Repository cleanup and verification
+If the removed crash flow was its only meaningful use, remove that localization entry and any reset/assignment such as:
 
-Perform a case-sensitive and case-insensitive repository search after implementation.
+$("#ovLead").textContent = t("overLead")
 
-There should be no remaining gameplay condition named `launched`, no launch mechanic functions/fields/constants, no launch meter, no launch control instruction, and no launch AI.
+that exists solely to support this dead path.
 
-There should be no gameplay condition named `winner`.
+Do not break normal race result copy. Finish/result flows for Race against bots and Local play must continue to set and display their existing result text.
 
-There should be no gameplay-status identifier or user-facing label named `immune`, `cluttered`, or `slippery` where it refers to these renamed Conditions.
+The over lifecycle state itself may still be used by legitimate finishing/result behavior, so do not delete a broader lifecycle concept just because the traffic crash path disappears.
 
-There should be no main Garage tab named Effects.
+Remove obsolete traffic text from the UI
 
-There should be no old `EFFECTS` gameplay-status table.
+The current Endless description still says:
 
-Do not treat legitimate phrases such as particle effects, visual effects, sound effects, or a missile being “launched” in ordinary English as errors. The goal is removing the airborne launch mechanic and renaming the gameplay status/effect concept, not blindly banning English words from unrelated systems.
+“Three lanes, dense traffic, no finish line. Go as far as you can.”
 
-After editing, run Seren’s existing validation tooling. At minimum run `node tools/check.mjs`. Also run the repository’s menu and gameplay/ultimate QA scripts using their normal invocation and fix regressions rather than weakening the tests.
+That is already inaccurate while TRAFFIC_ENABLED is false and must be corrected now that civilian traffic is actually gone.
 
-Update/add regression coverage so the checks catch the new Conditions tab and its two sub-tabs, all five condition definitions, Buff/Debuff classification, the absence of Launched/Winner conditions, removal of obsolete launch DOM IDs, correct localization keys, finished-racer target exclusion, and the new condition icon rendering/state helpers where feasible.
+Use copy equivalent to:
 
-Do not delete a failing assertion merely because it describes old launch behavior; replace obsolete launch-specific tests with assertions proving the launch system is actually absent and the remaining mechanics still function.
+English:
+“Three lanes, no finish line. Go as far as you can.”
 
-# Completion standard
+Provide an accurate natural French equivalent as well.
 
-Do not consider this task complete merely because the UI looks right.
+Update both the STR translation and the static fallback text in index.html so there is no flash/stale fallback mentioning dense traffic before localization runs.
 
-It is complete only when all of the following are true:
+Search the rest of index.html and js/i18n.js for traffic-specific text and remove or rewrite it as appropriate.
 
-1. The airborne brake/wind-up/jump/landing mechanic is genuinely removed from player gameplay, rival gameplay, AI, runtime state, input, rendering, HUD, configuration, documentation, localization, and tests.
-2. The unrelated rear-impact forward shove still works and has been renamed away from launch terminology so it cannot be confused with the deleted mechanic.
-3. `EFFECTS` has become an authoritative `CONDITIONS` model containing exactly Boosted, Invulnerable, Slowed, Obscured, and Skidded.
-4. Boosted and Invulnerable are Buffs; Slowed, Obscured, and Skidded are Debuffs.
-5. Launched no longer exists as a Condition.
-6. Winner no longer exists as a Condition.
-7. Crossing the finish line still immediately and permanently removes a racer from all targeting, tracking, collision, hazard, attack, debuff, and damage interactions while preserving placement/run-out/results.
-8. Finish protection is never shown as a Condition and is not called Winner.
-9. Temporary Immune has become Invulnerable throughout the appropriate gameplay/status code and UI without accidentally conflating it with finished-racer protection.
-10. Cluttered is now Obscured and Slippery is now Skidded throughout the gameplay-status presentation.
-11. The Garage tab is Conditions, with accessible Buff and Debuff secondary tabs and the correct entries under each.
-12. Every Condition has exactly one canonical color and one canonical recognizable icon.
-13. Every non-view-owner visible racer, AI or human, receives adjacent world-space condition circles, with multiple conditions stacked vertically.
-14. The current view-owner racer never receives those circles beside its own car; its conditions instead appear as icon-only circles in the bottom-left HUD where the old effect text lived.
-15. Local split-screen evaluates “view owner” separately per viewport, so another human is treated as a rival in views they do not own.
-16. No old text effect pills or separate Immune text tag remain.
-17. No blank launch meter, dead launch control, dormant launch state, or launch-specific AI tuning remains.
-18. All existing non-launch gameplay continues functioning and all repository checks pass.
-19. English and French remain complete and consistent.
-20. The implementation contains no duplicated condition metadata or brittle special cases that will immediately drift apart.
+Do not remove descriptions of racer bots merely because they are computer-controlled. They are racers, not civilian traffic.
 
-Work carefully, inspect the entire dependency chain before deleting anything, and favor a coherent small refactor over patches that merely hide the old systems.
+Clean documentation thoroughly
+
+Update README.md.
+
+Replace Redd with Flann in the car table and any other prose.
+
+Document that Flann uses the sprite asset v_flann.PNG if that level of rendering detail belongs in the existing project-layout/rendering documentation.
+
+Remove or rewrite any gameplay statement implying civilian traffic is present.
+
+Do not inaccurately describe Endless as containing civilian traffic after this change.
+
+Update docs/ARCHITECTURE.md.
+
+Remove traffic from the documented G world fields.
+
+Remove the documentation of TRAFFIC_ENABLED from core.js.
+
+Update rendering documentation if appropriate to explain that Flann is the image-backed car while the remaining cars use Canvas models.
+
+Keep the important invariant that showroom/reference artwork still comes through the same drawCar() path as race artwork.
+
+Update docs/TUNING.md.
+
+Delete the TRAFFIC_ENABLED entry.
+
+Delete the TRAFFIC_PAINT entry.
+
+Delete the entire obsolete Traffic section describing how flipping the flag brings civilian cars back.
+
+Remove traffic spawn/tuning discussion.
+
+Update any Redd references to Flann.
+
+Search all remaining Markdown files under docs/ for Redd and civilian-traffic assumptions, including QA documentation. Update anything that describes current behavior.
+
+Do not edit historical Git commit history; only current tracked files matter.
+
+Tests and fixtures
+
+Update all automated tests and fixtures affected by the internal rename.
+
+At minimum, inspect:
+
+tools/check.mjs
+tools/game-fixture.mjs
+tools/menu-check.mjs
+tools/ultimate-check.mjs
+
+tools/menu-check.mjs currently contains explicit interactions with carRedd. Those should test carFlann.
+
+tools/ultimate-check.mjs iterates CAR_IDS, which should naturally pick up Flann, but it also contains explicit "redd" setup cases. Change those explicit cases to "flann" so Conditions, finish protection, rendering, and other regression coverage remain intact.
+
+Do not special-case Flann out of any all-cars test.
+
+The rendering smoke tests must continue to invoke render() successfully for all six cars.
+
+Because the test Canvas is a lightweight proxy, make image loading code test-safe. Do not make the Node fixture require a real browser image decoder merely to load the source files.
+
+The fixture already supplies an Image test double. Design the loader so that loading the browser image does not throw in this environment.
+
+Important cleanup invariant
+
+After the implementation, run repository-wide searches.
+
+There should be no current source reference to Redd or the old Redd ID.
+
+A search equivalent to:
+
+rg -ni '\bredd\b' .
+
+should return no legitimate current-game references.
+
+Likewise, these civilian-traffic implementation identifiers should be completely absent after cleanup:
+
+TRAFFIC_ENABLED
+TRAFFIC_PAINT
+G.traffic
+spawnWave
+breakWalls
+
+Search for relGap and nextGap; if their only use was civilian traffic, they must also be gone.
+
+Search for "traffic" case-insensitively and manually inspect every result. Remove stale civilian-traffic descriptions/comments while preserving only genuinely unrelated uses, if any.
+
+Search for drawGT. It should be gone if nothing survives that needs it.
+
+Search for crash() and overLead; they should be gone if the removed civilian collision path was their only purpose.
+
+Do not leave commented-out code for any of these systems.
+
+Preserve unrelated gameplay exactly
+
+Do not change the six-racer field.
+
+Do not reduce the number of racer bots.
+
+Do not alter bot difficulty or temperament beyond changing the temperament map key from redd to flann.
+
+Do not alter Flann’s performance relative to Redd.
+
+Do not alter base speed.
+
+Do not alter boost drain/refill.
+
+Do not alter the ×1.5 ordinary boost multiplier.
+
+Do not alter the ×2 ultimate multiplier or its 15-second duration.
+
+Do not alter ultimate charge rate.
+
+Do not alter Boosted/Invulnerable/Slowed/Obscured/Skidded Conditions.
+
+Do not change hazards.
+
+Do not change mystery bubbles or items.
+
+Do not change oil, seekers, boost cans, traps, wrecking, respawns, finish protection, lane barging, racer rear-ending, standings, local multiplayer, split-screen behavior, input, audio, settings, saved best distance, or race structure except where a stale civilian-traffic description must be corrected.
+
+Do not rename Flann’s sprite file unless absolutely necessary. Prefer using the existing exact v_flann.PNG.
+
+Rendering acceptance criteria
+
+Flann appears in the first roster slot where Redd previously appeared.
+
+Every user-visible name says Flann.
+
+There is no Redd entry.
+
+Selecting Flann starts the race with Flann.
+
+Bot Flann also uses the exact PNG sprite.
+
+The same sprite appears in the car selection card, showroom hero, garage/reference page, normal race, and split-screen race.
+
+The image is not stretched.
+
+The entire vehicle is visible.
+
+The vehicle is centered correctly in its lane.
+
+The front points up-road.
+
+Lane-change tilt rotates the sprite naturally around its center.
+
+Invulnerability blinking still works because the outer race renderer controls visibility, not the model.
+
+Condition stacks and player markers still render correctly relative to Flann.
+
+The boost exhaust originates from the two actual tailpipes.
+
+The plume roots stay attached while the car tilts.
+
+The exhaust stays attached at different canvas sizes and DPRs.
+
+The exhaust stays attached in 2-, 3-, and 4-player split screen.
+
+Flames never float below the car with a visible gap.
+
+Flames never originate from an obviously wrong part of the bumper.
+
+Flames do not draw across the sprite body.
+
+Animation is smooth rather than random/jittery.
+
+Reduced-motion mode produces a stable lower-motion effect.
+
+No exhaust is visible while boost is inactive.
+
+No civilian traffic vehicle is ever spawned, updated, collision-tested, rendered, or considered by AI because the subsystem no longer exists.
+
+Behavioral acceptance criteria
+
+Endless continues running until the player leaves or another legitimate existing lifecycle rule ends it; there is no hidden civilian-traffic crash path.
+
+Race against bots still contains the player plus the normal racing field.
+
+Local play still contains humans plus racer bots filling the remaining seats.
+
+Bot lane selection still avoids hazards and other actual racers.
+
+All racer-vs-racer collision mechanics remain.
+
+Flann’s temperament remains equivalent to old Redd’s temperament.
+
+Random car selection can select Flann.
+
+Taken-car handling in local multiplayer works for Flann.
+
+The garage displays six cars.
+
+All localization keys resolve.
+
+No selector references a removed #carRedd.
+
+Validation
+
+Run the existing automated checks after implementation:
+
+node tools/check.mjs
+
+node tools/menu-check.mjs
+
+node tools/ultimate-check.mjs
+
+Fix actual failures rather than weakening assertions.
+
+Then manually exercise at least:
+
+single-player Endless with Flann,
+Race against bots with Flann as player,
+Flann as a rival bot while driving another car,
+ordinary boost on Flann,
+Flann ultimate,
+Flann changing lanes while boosting,
+Flann invulnerability blink,
+Flann Condition rendering,
+car selection/showroom artwork,
+garage artwork,
+2-player split screen with Flann,
+and a long enough run to confirm civilian traffic never appears and no traffic-specific crash behavior remains.
+
+Also test at narrow portrait size and desktop size.
+
+Implementation quality
+
+Prefer a small coherent sprite abstraction over scattering if (car === "flann") checks throughout unrelated code.
+
+Keep the sprite source, render dimensions/scaling, and tailpipe anchors authoritative rather than duplicated.
+
+Keep rendering code render-only.
+
+Keep gameplay collision geometry separate from sprite pixel geometry.
+
+Do not mutate race state from the Flann visual animation.
+
+Do not use per-frame DOM elements for flames.
+
+Do not create per-frame Image objects.
+
+Do not introduce external assets, libraries, CSS frameworks, dependencies, or network requests.
+
+Do not leave dead Redd code.
+
+Do not leave dead civilian traffic code.
+
+Do not leave compatibility shims for systems intentionally being removed.
+
+Final deliverable
+
+Implement the change completely rather than stopping after the first visible success.
+
+When finished, provide a concise implementation report containing the files changed, how Flann’s sprite loading/rendering works, how the exhaust anchors were calibrated to v_flann.PNG, which civilian-traffic components were removed, which old Redd identifiers were eliminated, and the exact test commands/results.
+
+The finished Seren should contain Flann as a first-class racer backed by v_flann.PNG, with correctly anchored smooth tailpipe boost exhaust, while the civilian NPC traffic subsystem and Redd identity are completely gone.
