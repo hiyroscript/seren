@@ -1,27 +1,526 @@
-Flann sprite integration
+You are working directly in the current hiyroscript/seren repository on main.
 
-The first roster slot uses the canonical flann ID and the exact v_flann.PNG asset.
-The shared Canvas drawCar path renders the same artwork in the showroom, garage,
-normal races and local split screen. Keep the other five procedural car models.
+Before editing anything, inspect the existing architecture and preserve its current style: plain JavaScript, Canvas 2D rendering, shared player/bot/local-player mechanics, no new framework, no new dependency, no build system, and no duplicate player-only implementation where the game already has shared helpers.
 
-Load the image once; repaint previews when it loads. Use natural image dimensions,
-normalized visible bounds and one uniform scale. Draw shadow, anchored exhaust,
-then the full image. Tailpipe anchors are normalized source coordinates, shared
-by every view; pulse smoothly and stay static with reduced motion enabled.
+IMPORTANT NAMING NOTE:
+The car I am referring to as Flarr is currently named/keyed Flann in the repository:
 
-Only the six-racer field belongs on the road. Keep racer AI, collision consequences, hazards,
-items, Conditions, finish/results, local play, saved distance and all performance
-tuning unchanged. Remove the dormant non-racer road-vehicle subsystem entirely.
+* car ID: flann
+* sprite: v_flann.PNG
+* car definition: CARS.flann
 
-Validation commands:
+Do NOT rename flann, the asset, localization keys, save data, or the visible Flann name as part of this task. Treat “Flarr” in this request as referring to the existing Flann racer.
+
+Goal
+
+Make four focused gameplay changes:
+
+1. Make Flann slightly larger on the actual race track so its sprite feels properly proportioned to the road and the other cars.
+2. Give Flann a unique ultimate power: while its ultimate is active, Flann becomes a flaming offensive ram that destroys normal racers and destructible environmental hazards on contact instead of being harmed or slowed by those contacts.
+3. Keep puddles as the explicit environmental exception: water still affects Flann during the ultimate because it is liquid and cannot be smashed.
+4. Temporarily disable all usable rewards granted by Mystery Bubbles. Preserve the system in code so it can be re-enabled later instead of deleting it.
+
+Do not redesign unrelated mechanics.
+
+1. Make Flann larger on the race track
+
+Flann currently uses the full v_flann.PNG through drawSpriteCar(), with the visible sprite bounds defined in CARS.flann.spriteBounds. The image geometry itself is already correctly centered and should not be recropped, stretched, distorted, or replaced.
+
+The problem is simply that the car reads too small relative to the lane/road during gameplay.
+
+Increase Flann’s on-road race size only by roughly 10–15%. A starting target of approximately 1.12× the current logical race size is appropriate. Visually, Flann’s body should occupy roughly 70–72% of a lane’s width instead of reading noticeably undersized.
+
+Implement this in a clean, data-driven way rather than scattering * 1.12 throughout the code. For example, add a Flann-specific race scale to its CARS.flann data and centralize obtaining the race dimensions for a given racer.
+
+Important:
+
+* Scale both width and height uniformly.
+* Preserve the sprite’s existing aspect ratio.
+* Preserve the full source image and the existing measured spriteBounds.
+* Preserve the exhaust anchors.
+* Do not enlarge the garage/menu/select preview unless necessary. The request is specifically about how Flann looks on the road during gameplay.
+* Do not globally increase carW or carH, because that would enlarge all six cars.
+* Phantom, Bolt, Timestamp, Rose, and Siren must retain their existing size.
+
+The physical collision geometry should scale with Flann’s new race size. Do not create a visibly larger car with the old smaller collision hull.
+
+carHit(who) currently derives its polygon from CARS[o.car].hitShape || CAR_HIT_RECT and multiplies those normalized points by global carW / carH. Update this so Flann’s world-space hull uses the same Flann-specific race dimensions as its rendered sprite.
+
+The existing custom eight-point Flann hull must remain tapered and inset relative to the artwork; simply scale that hull with the rendered car. Do not revert it to a rectangle.
+
+Any code that genuinely needs a racer’s physical body dimensions should use a common helper rather than independently guessing Flann’s scale.
+
+Do not unnecessarily alter grid spacing, road width, lane width, camera scale, or the dimensions of every other racer just because Flann is larger.
+
+2. Flann’s ultimate becomes an offensive fire/ram ultimate
+
+The existing shared ultimate lifecycle must remain intact:
+
+* charge time stays 75 seconds;
+* duration stays 15 seconds;
+* active ultimate meter still counts down from the full duration;
+* current 2× ultimate speed benefit remains;
+* activation/input behavior remains unchanged;
+* repeated activation while already active still does nothing;
+* ultimate expiry returns Flann to normal immediately;
+* bots and local human players must get the same Flann-specific power when they are driving Flann.
+
+Do NOT make this a new separate ultimate state machine. Extend the existing ultOn lifecycle with a Flann-specific effect.
+
+Create a clear helper along the lines of:
+
+flannUltActive(who)
+
+It should answer true only when:
+
+* the racer exists,
+* its car is flann,
+* and its existing ultOn state is active.
+
+Use one shared predicate everywhere rather than repeating car === "flann" && ultOn.
+
+Do not turn Flann’s ultimate into the existing Invulnerable Condition. Do not set invuln. Do not make noContact() globally return true for an ulting Flann.
+
+That would be the wrong abstraction because Flann still needs to physically contact racers/hazards in order to destroy them, and puddles must still affect it.
+
+This is collision priority/offensive armor, not ordinary respawn invulnerability.
+
+3. Racer collision behavior during Flann’s ultimate
+
+While Flann’s ultimate is active, any ordinary physical collision between Flann and another active racer should wreck/destroy the other racer and leave Flann driving normally.
+
+This applies regardless of which racer initiated the contact.
+
+Examples that must work:
+
+* Flann drives into the back of another racer → the other racer is wrecked; Flann is not slowed.
+* Another racer rear-ends an ulting Flann → the attacker is wrecked; Flann is not shunted or slowed.
+* Flann changes lane into another racer → the other racer is wrecked instead of being barged sideways.
+* Another racer tries to barge into an ulting Flann → the attacker is wrecked; Flann is not pushed into another lane.
+* A bot-controlled Flann behaves identically.
+* A human-controlled Flann in local multiplayer behaves identically.
+* The main player being Flann is not a special case.
+
+Integrate this into the existing shared contact system, especially:
+
+* rearContact()
+* rearEnd()
+* bumpTarget()
+* move()
+* rivalLaneTo()
+
+Be careful with lane-change control flow.
+
+For example, if bumpTarget() destroys the attacking racer because the victim is an ulting Flann, the caller must not then continue and move the newly wrecked attacker into the destination lane as though nothing happened.
+
+Return or communicate an explicit collision outcome if needed so move() / rivalLaneTo() can correctly stop or continue.
+
+When Flann destroys another racer:
+
+* use the existing wreck/destruction lifecycle;
+* preserve botBlame() / killer attribution where appropriate;
+* preserve existing wreck particles/audio/shake where possible;
+* preserve ultimate charge rewards/penalties according to the existing wreckRival() / destroyCar() semantics;
+* do not create a second incompatible wreck implementation.
+
+Flann itself must NOT receive the normal rear-contact slow, side-barge slow, shunt, or wreck consequence from a racer it destroys during its active ultimate.
+
+Existing lifecycle protection must remain authoritative:
+
+* finished racers remain out of play;
+* already wrecked racers remain out of play;
+* temporary respawn-invulnerable racers remain protected by the existing contact rules.
+
+Do not introduce spawn-killing or allow the ultimate to alter an already-recorded race result.
+
+Once Flann’s ultimate expires, all racer collisions must immediately return to the ordinary shared Seren behavior.
+
+4. Desert hazard: Flann destroys it during ultimate
+
+The desert environmental hazard is currently the weed / tumbleweed.
+
+Normally it slows the racer through hitWeed().
+
+When an active Flann ultimate physically collides with a tumbleweed:
+
+* Flann receives no Slow;
+* Flann is not otherwise penalized by that contact;
+* the tumbleweed is destroyed/removed immediately;
+* play an appropriate impact/destruction effect using the existing smashFx() or equivalent existing debris system;
+* the effect should visually communicate that Flann smashed straight through it;
+* the same behavior must work for player Flann, bot Flann, and local-human Flann.
+
+Do not treat the tumbleweed as having merely “missed.” It should visibly be destroyed by the collision.
+
+Do not give this immunity to the other five cars.
+
+5. Meteors: Flann is protected during ultimate
+
+While Flann’s ultimate is active, meteors must not wreck Flann.
+
+Handle both relevant cases:
+
+Direct falling-rock contact
+If the falling meteor/rock physically intersects active Flann before its normal ground impact, treat Flann as smashing through the meteor:
+
+* remove/consume the meteor appropriately;
+* show destruction/debris FX;
+* do not wreck Flann;
+* do not end Flann’s ultimate.
+
+Meteor explosion/blast
+If a meteor reaches the ground and detonates while active Flann is within the blast radius:
+
+* the explosion may still visually happen;
+* other racers inside the blast continue to use normal rules;
+* active Flann must not be destroyed by that blast;
+* Flann’s ultimate continues.
+
+This meteor protection must also work when Flann is a rival/bot/local-human racer, not just the main player.
+
+Do not globally change safeCar(), noContact(), or Invulnerable just to accomplish this. Add the Flann-ultimate exception at the hazard consequence layer.
+
+After the ultimate expires, meteors must wreck Flann normally again.
+
+6. Puddles are the explicit exception
+
+Puddles MUST continue affecting Flann even while its ultimate is active.
+
+Do not destroy puddles.
+
+Do not make the ultimate refuse the puddle debuff.
+
+If an active Flann drives through a puddle:
+
+* the puddle contact occurs normally;
+* Obscured / blind is applied normally;
+* the water spray remains;
+* existing puddle sound/shake/VFX remain;
+* Flann’s ultimate does not end;
+* Flann retains its ultimate speed/power while also being obscured.
+
+This is intentional: fire/impact can smash solid hazards, but the puddle is liquid and cannot be destroyed by ramming it.
+
+Do not accidentally make a generic “ultimate immunity” helper that also blocks puddles.
+
+A clean active-ultimate Flann should therefore be capable of simultaneously showing:
+
+* Boosted from the ultimate;
+* Obscured after hitting a puddle.
+
+7. Do not accidentally extend this to mystery-item hazards
+
+Mystery Bubble rewards are being disabled in this task, so oil and seekers should no longer be obtainable during normal play.
+
+Do not spend time inventing a complicated Flann-vs-oil or Flann-vs-seeker ultimate interaction unless needed to keep existing dormant code safe.
+
+The environmental behavior required here is specifically:
+
+* tumbleweed/desert hazard: smash it;
+* meteor: cannot hurt Flann during ultimate;
+* puddle: still affects Flann.
+
+8. Add a real “car on fire” ultimate visual
+
+Flann needs a clearly visible on-fire effect for the entire time its ultimate is active.
+
+The current sprite renderer already displays rear exhaust flames whenever boosting || ultOn, but that is not enough. I want the vehicle itself to visibly appear engulfed/surrounded by controlled racing flames during its ultimate.
+
+Create a distinct Flann ultimate-fire rendering effect.
+
+Requirements:
+
+* Only Flann gets this effect.
+* Only while ultOn === true.
+* Ordinary boost must NOT trigger it.
+* A boost can must NOT trigger it.
+* The existing rear exhaust may continue.
+* Fire should visually wrap around or trail along the body, especially the sides/rear, without covering the entire sprite so heavily that the car becomes unreadable.
+* Use Flann’s existing orange/golden flame palette where appropriate.
+* It should read immediately as “this car is on fire / powered up.”
+* It must move/rotate with the car during lane-change tilt.
+* It must render correctly for the player, bots, and every local multiplayer viewport.
+* It must disappear immediately when the ultimate ends or the racer is wrecked.
+* Rendering must remain state-pure; drawing the effect must not mutate race state.
+
+Do not pass only one combined boosting || ultOn boolean into the renderer if that makes it impossible to distinguish ordinary exhaust from the new ultimate fire.
+
+Extend the renderer interface cleanly so it can distinguish:
+
+* normal boost/exhaust;
+* active ultimate;
+* Flann-specific ultimate fire.
+
+A reasonable rendering approach is a dedicated helper such as drawFlannUltFire(w, h, p) invoked inside the same translated/rotated car-local coordinate system as the sprite.
+
+Use several restrained flame tongues/glows around the body rather than a giant opaque overlay.
+
+Animation should use a stable time-based phase such as the existing exhaust implementation.
+
+Respect motionReduced():
+
+* full motion: subtle continuous flame flicker;
+* reduced motion: a static flame/glow treatment with no rapid flickering.
+
+Do not alter the actual v_flann.PNG file.
+
+9. Mystery Bubble rewards are temporarily disabled
+
+Mystery Bubbles currently grant:
+
+* can
+* oil
+* seeker
+
+Temporarily disable all of those gameplay rewards.
+
+Do NOT delete the Mystery Bubble/item implementation. This is intended to be easy to restore later.
+
+Prefer one centralized feature gate such as:
+
+MYSTERY_ITEMS_ENABLED = false
+
+or another clearly named equivalent.
+
+When this gate is false:
+
+* collecting a Mystery Bubble must not assign holder.item;
+* it must not replace an existing item;
+* it must not start/update a bot’s item-use timer;
+* it must not create a boost-can effect;
+* it must not create oil;
+* it must not launch a seeker;
+* the player’s item HUD remains empty;
+* bots cannot acquire or use Mystery Bubble items;
+* local human racers cannot acquire them either.
+
+At the start of a race the existing item state is already reset; preserve that behavior.
+
+For defense in depth, useItem() should also refuse to execute Mystery Bubble items while the feature is disabled. This ensures stale/manual state cannot accidentally re-enable the mechanic.
+
+Do not remove rollItem(), fireSeeker(), oil rendering, seeker rendering, rarity data, localization, or item assets merely because they are temporarily disabled.
+
+The Bubble rows themselves may remain visible and collectible if that is the least invasive approach. If retained:
+
+* collection can still consume that bubble;
+* a neutral/pop pickup VFX is fine;
+* but absolutely no usable item/reward may be granted.
+
+Do not display misleading rarity/item feedback that implies a Can/Oil/Seeker was actually awarded when rewards are disabled.
+
+Keep the existing rules.bubbles custom-race switch meaningful for whether Bubble rows spawn. The new reward gate is separate from the existing race-rule switch.
+
+10. Preserve everything unrelated
+
+Do not change the behavior of Phantom, Bolt, Timestamp, Rose, or Siren ultimates.
+
+They should remain the existing shared:
+
+* 15 second duration;
+* 2× speed;
+* no special collision immunity;
+* ordinary hazard vulnerability;
+* ordinary racer collision behavior.
+
+Do not make all ultimates invincible.
+
+Do not make every car destroy racers.
+
+Do not change the ultimate charge clock.
+
+Do not change finish protection or respawn invulnerability.
+
+Do not change road dimensions, biome timing, difficulty, AI competence, standings, finishing, save data, controls, or localization unless necessary for the exact requested behavior.
+
+Do not rename Flann or flann.
+
+Do not modify the source PNG.
+
+11. Automated tests must be updated, not bypassed
+
+The existing test suite currently contains explicit assumptions that:
+
+* every ultimate has no secondary effect;
+* all active ultimate users remain vulnerable to puddles, tumbleweeds, meteors, oil, and seekers;
+* ordinary contact applies while ultimate is active;
+* there is no car-dependent ultimate logic.
+
+Those assertions are now intentionally outdated for Flann only.
+
+Update the tests so they protect the new design rather than deleting coverage.
+
+tools/ultimate-check.mjs should explicitly test at minimum:
+
+Flann, as:
+
+* main player;
+* bot;
+* local human rival.
+
+During ultimate:
+
+* still receives the existing 2× speed;
+* still lasts exactly 15 seconds;
+* still uses the shared charge lifecycle;
+* repeat activation does not reset duration;
+* tumbleweed collision destroys the weed and does not Slow Flann;
+* meteor direct contact does not wreck Flann;
+* meteor blast does not wreck Flann;
+* puddle still applies Obscured/blind;
+* rear-ending another racer wrecks the other racer;
+* being rear-ended by another racer wrecks the attacker;
+* lane-barging another racer wrecks the other racer;
+* an attempted barge into Flann wrecks the attacker rather than moving Flann;
+* Flann does not receive ordinary contact Slow/Shunt for a collision it wins;
+* finish protection remains intact;
+* respawn invulnerability remains intact;
+* ultimate expiry restores ordinary tumbleweed/meteor/racer-collision vulnerability.
+
+Also explicitly test at least one non-Flann racer to prove:
+
+* tumbleweed still slows it during ultimate;
+* meteor still wrecks it during ultimate;
+* racer contact remains ordinary during ultimate;
+* puddle still works as before.
+
+Update tools/sprite-check.mjs to cover:
+
+* Flann’s on-road race render is larger than its old/base race dimensions;
+* the other five cars remain their original size;
+* direct/menu sprite drawing retains the original image geometry;
+* Flann ultimate fire appears when Flann ultOn is active;
+* ordinary Flann boost produces exhaust but NOT the body-fire ultimate effect;
+* reduced-motion rendering is stable/static;
+* player, rival, and local viewport rendering all support the effect;
+* drawing remains state-pure.
+
+Update tools/hitbox-check.mjs to verify:
+
+* Flann’s tapered hull scales consistently with its larger race render;
+* transparent sprite padding remains excluded;
+* rotated collision geometry remains correct;
+* player and rival Flann still use identical geometry;
+* other cars’ hit geometry is unchanged.
+
+Add Mystery Bubble regression coverage proving that with the temporary reward gate disabled:
+
+* player collection leaves G.item === null;
+* bot collection leaves R.item === null;
+* local human collection leaves its item null;
+* repeated bubble collection still never grants an item;
+* useItem() cannot activate a manually/stale-set Can/Oil/Seeker while the gate is false;
+* no canT boost is created;
+* no slick is spawned;
+* no missile is spawned.
+
+Do not simply weaken broad tests until they pass. Replace stale assumptions with precise Flann-specific and non-Flann regression checks.
+
+12. Update stale documentation/comments
+
+Search the repository for comments/docs that state things such as:
+
+* all six ultimates have no secondary effect;
+* there is no car-dependent ultimate logic;
+* puddles/tumbleweeds/meteors affect every active ultimate;
+* all logical racer dimensions are unchanged;
+* Flann’s ultimate only controls exhaust visibility.
+
+Update only statements made false by this task.
+
+Pay particular attention to:
+
+* docs/ULTIMATE-QA.md
+* docs/FLANN-QA.md
+* docs/ARCHITECTURE.md
+* docs/TUNING.md
+* relevant comments in js/data.js
+* relevant comments in js/mechanics.js
+* relevant comments in js/render.js
+* relevant static checks in tools/check.mjs
+
+Comments should describe the new distinction clearly:
+the base ultimate lifecycle remains shared, but Flann adds a car-specific collision/hazard power while active.
+
+13. Likely files to inspect/change
+
+The implementation should naturally center around the current ownership boundaries:
+
+js/data.js
+Flann race-scale tuning and the temporary Mystery reward feature gate if appropriate.
+
+js/runtime.js
+Only if a shared dimension/helper or feature state genuinely belongs here. Do not make the global base carW/carH larger.
+
+js/mechanics.js
+Flann-ultimate predicate, racer collision priority, bubble reward gate, player hazard behavior, meteor behavior, destruction FX.
+
+js/race.js
+Rival/bot/local-human hazard consequences and any racer update path required for identical Flann behavior across every driver type.
+
+js/render.js
+Per-racer race dimensions and Flann’s body-fire ultimate effect.
+
+tools/ultimate-check.mjs
+New Flann-specific ultimate behavior plus non-Flann regression coverage.
+
+tools/sprite-check.mjs
+Larger race sprite and ultimate-fire rendering.
+
+tools/hitbox-check.mjs
+Scaled Flann physical hull.
+
+tools/check.mjs
+Remove/update static assumptions that prohibit the now-intentional car-specific ultimate behavior and add Bubble-disable coverage where appropriate.
+
+Relevant docs as described above.
+
+Keep ownership sensible; do not force changes into every file if a cleaner shared helper makes some unnecessary.
+
+14. Definition of done
+
+The task is complete when the game feels like this:
+
+Flann is visibly a little larger and more substantial on the asphalt, but still fits naturally inside a lane and does not look comically oversized.
+
+When Flann activates its ultimate, it retains the familiar speed boost but now visibly catches fire. It becomes an aggressive battering ram for the entire 15-second window.
+
+It can plow directly through the desert tumbleweed, smashing it apart.
+
+A meteor cannot destroy it during that window.
+
+It can ram another active racer from behind or from the side and wreck that racer without taking the ordinary collision penalty itself.
+
+A racer foolish enough to crash into the ulting Flann is the one that gets wrecked.
+
+But driving through a city puddle still splashes the screen and obscures Flann exactly as it does normally.
+
+When the 15 seconds end, the fire disappears and Flann immediately goes back to being vulnerable to ordinary collisions, tumbleweeds, and meteors.
+
+No other car receives these powers.
+
+Mystery Bubbles can no longer give anybody a Can, Oil, or Seeker for now.
+
+15. Validation
+
+From the repository root, run all relevant existing checks after implementation:
+
 node tools/check.mjs
+
 node tools/menu-check.mjs
+
 node tools/ultimate-check.mjs
+
 node tools/sprite-check.mjs
+
 node tools/hitbox-check.mjs
 
-Follow-up: use precise shared body hitboxes for players and bots. Exclude image
-padding, shadows and exhaust; rotate with the car. Rear contacts require actual
-body overlap, and hazard contact must follow the visible hazard shape.
+Then run:
 
-Implementation and validation details: docs/FLANN-QA.md.
+git diff --check
+
+Do not consider the task finished merely because static checks pass. Inspect the final diff for accidental changes to the five other cars, shared road dimensions, finish protection, invulnerability, controls, localization, save data, or unrelated AI behavior.
+
+If browser/manual visual testing is available, also verify:
+Flann’s size in a normal race, its ultimate body-fire visibility, puddle visibility while ulting, smashing a tumbleweed, surviving a meteor, ramming racers from front/rear/side contact situations, and 2/3/4-player local columns.
+
+Implement the complete change, including tests and any documentation made stale by the new behavior. Do not stop after producing a plan.
