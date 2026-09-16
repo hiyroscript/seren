@@ -486,66 +486,118 @@ head("Mystery Bubble rewards");
     : fail("the rules.bubbles custom-race switch is gone from defaultRules()");
 }
 
-/* Flann's ultimate is the game's one car-specific power, and its race size is
-   the game's one per-car dimension. Both are deliberate, and both are meant to
-   stay exactly one: this is what says a second has not crept in. */
-head("Flann's ultimate and race size");
+/* Two cars do something with their fifteen seconds beyond running fast, and
+   two carry a race size of their own. Both are deliberate and both are meant
+   to stay countable: this is what says a third has not crept in, that neither
+   is spelled out ad hoc instead of being asked for, and that the shared
+   lifecycle underneath them is still shared. */
+head("The car-specific ultimates and race sizes");
 {
   const mech = strip(sources.mechanics || "");
-  /^function flannUltActive\(/m.test(mech)
-    ? pass("flannUltActive() is the one predicate for the car-specific power")
-    : fail("flannUltActive() is not declared in js/mechanics.js");
-  /* One predicate, used everywhere, rather than the car spelled out again in
-     each caller. Comments are stripped but string bodies are kept, because the
-     literal is exactly what is being looked for. Only the declaration of
-     flannUltActive() itself may compare a racer's car to "flann"; the model
-     dispatch in drawCar reads p.key and is a different question. */
+  /* The predicates, and what each of them is for. flannUltActive() is Flann's
+     ram. neelaUltActive() is "Neela's fifteen seconds are running", which is
+     what carries the solid-hazard privilege for the whole of them.
+     neelaFormActive() is "the alternate body is the one on the road", which is
+     what carries the single swap and what the renderer and the hull read.
+     The last two are not the same question after the first racer contact, and
+     a build that collapses them into one gives Neela either a privilege it has
+     lost or a second swap it never had. */
+  const predicates = ["flannCar", "flannUltActive", "neelaCar", "neelaUltActive",
+                      "neelaFormActive", "clearsSolidHazards", "neelaCanSwap"];
+  const gone = predicates.filter((n) => !new RegExp(`^function ${n}\\(`, "m").test(mech));
+  gone.length
+    ? gone.forEach((n) => fail(`${n}() is not declared in js/mechanics.js`))
+    : pass(`the car-power predicates are all declared (${predicates.join(", ")})`);
+  /* Kept apart, and provably so: neelaFormActive() has to be built on the
+     ultimate predicate and on the form flag, not be an alias for either. */
+  /function neelaFormActive\([^)]*\)\s*\{[^}]*neelaUltActive\([^}]*neelaForm/.test(mech)
+    ? pass("neelaFormActive() is the ultimate AND the alternate body, not either alone")
+    : fail("neelaFormActive() no longer distinguishes the alternate form from the ultimate");
+  /* One predicate each, used everywhere, rather than the car spelled out again
+     in every caller. Comments are stripped but string bodies are kept, because
+     the literal is exactly what is being looked for. Only the two car identity
+     predicates may name a car; the model dispatch in drawCar reads p.key and
+     is a different question. */
   const adhoc = [];
   for (const n of ORDER) {
     if (!sources[n]) continue;
-    for (const m of sources[n].matchAll(/\.car\s*===?\s*["']flann["']/g)) {
+    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela)["']/g)) {
       const before = sources[n].slice(0, m.index);
-      const inPredicate = /function flannUltActive\([^)]*\)\s*\{[^}]*$/.test(before);
+      const inPredicate = /function (flannCar|neelaCar)\([^)]*\)\s*\{[^}]*$/.test(before);
       if (!inPredicate) adhoc.push(`js/${n}.js`);
     }
   }
   adhoc.length
-    ? [...new Set(adhoc)].forEach((f) => fail(`${f} compares a racer's car to "flann" itself instead of asking flannUltActive()`))
-    : pass("flannUltActive() is the only place a racer is compared to Flann");
-  /* And it is genuinely read where the power lives: the contact rules and the
-     player's hazards in mechanics, the rivals' hazards in race, the fire in
-     render. A predicate nobody asks is a power nobody has. */
-  const wanted = ["mechanics", "race", "render"];
-  const absent = wanted.filter((n) => !strip(sources[n] || "").includes("flannUltActive("));
+    ? [...new Set(adhoc)].forEach((f) => fail(`${f} names a car itself instead of asking flannCar()/neelaCar()`))
+    : pass("flannCar() and neelaCar() are the only places a racer is named");
+  /* And they are genuinely read where the powers live: the contact rules and
+     the player's hazards in mechanics, the rivals' hazards in race, the fire
+     and the alternate body in render. A predicate nobody asks is a power
+     nobody has. */
+  const asks = { mechanics: ["flannUltActive(", "neelaCanSwap(", "clearsSolidHazards("],
+                 race: ["clearsSolidHazards("],
+                 render: ["flannUltActive(", "racerModel("] };
+  const absent = [];
+  for (const [n, needles] of Object.entries(asks))
+    for (const needle of needles)
+      if (!strip(sources[n] || "").includes(needle)) absent.push(`js/${n}.js never asks ${needle}`);
   absent.length
-    ? absent.forEach((n) => fail(`js/${n}.js never asks flannUltActive()`))
-    : pass(`contact, hazards and drawing all read it (${wanted.join(", ")})`);
-  /* The shared lifecycle is untouched: same clock, same duration, same pace. */
+    ? absent.forEach((m) => fail(m))
+    : pass("contact, hazards, the hull and drawing all read them");
+  /* The hull and the sprite come out of the same model, so a racer cannot be
+     drawn as one body and collided as another. */
+  /racerModel\(who\)\.hitShape/.test(mech) && /racerDims\(who\)/.test(mech)
+    ? pass("carHit() takes its hull and its size from the model being drawn")
+    : fail("carHit() no longer reads racerModel()/racerDims()");
+  /* Neela's own numbers exist and are one named constant each rather than
+     magic numbers scattered through the mechanic. */
   const data = strip(sources.data || "");
+  for (const k of ["NEELA_WHITEOUT", "NEELA_MORPH", "NEELA_SWAP_GUARD",
+                   "NEELA_TRAIL_LIFE", "NEELA_TRAIL_GAP", "NEELA_TRAIL_MAX"]) {
+    new RegExp(`const\\s+${k}\\s*=`).test(data)
+      ? pass(`${k} is a named constant in js/data.js`)
+      : fail(`${k} is not declared in js/data.js`);
+  }
+  /* The guard is one step's worth. Anything approaching a second of it would
+     be hidden invulnerability rather than a duplicate-contact guard. */
+  const guard = Number((data.match(/const\s+NEELA_SWAP_GUARD\s*=\s*([0-9.]+)/) || [])[1]);
+  guard > 0 && guard <= 0.12
+    ? pass(`the swap guard is ${guard}s: one step, not a shield`)
+    : fail(`NEELA_SWAP_GUARD is ${guard}, which is long enough to be protection`);
+  /* The shared lifecycle is untouched: same clock, same duration, same pace. */
   for (const [k, v] of [["ULT_CHARGE", "75"], ["ULT_TIME", "15"], ["ULT_SPEED", "2.0"]]) {
     new RegExp(`const\\s+${k}\\s*=\\s*${v.replace(".", "\\.")}\\b`).test(data)
       ? pass(`${k} is still ${v} for every car`)
       : fail(`${k} is no longer ${v}`);
   }
-  /* Exactly one car carries a race scale, and the shared car box is untouched. */
+  /* A race scale belongs to measured artwork and to nothing else: only the
+     sprite cars may carry one, each has to be a real adjustment rather than a
+     rounding error, and none of them may grow into a different class of
+     vehicle. The shared car box the other four are built on is untouched. */
   if (CARS) {
     const scaled = Object.entries(CARS).filter(([, c]) => c.raceScale !== undefined);
-    scaled.length === 1 && scaled[0][0] === "flann"
-      ? pass(`only Flann has a race scale (${scaled[0][1].raceScale}x)`)
-      : fail(`cars with a race scale: ${scaled.map(([id]) => id).join(", ") || "none"}`);
-    const k = (CARS.flann || {}).raceScale;
-    k > 1.09 && k < 1.16
-      ? pass("Flann's race scale is the intended 10-15% and no more")
-      : fail(`Flann's race scale is ${k}, outside the intended 10-15%`);
+    const procedural = scaled.filter(([, c]) => c.style !== "sprite");
+    procedural.length
+      ? procedural.forEach(([id]) => fail(`car ${id} is procedural and must not carry a race scale`))
+      : pass(`only the sprite cars carry a race scale (${scaled.map(([id]) => id).join(", ") || "none"})`);
+    for (const [id, c] of scaled) {
+      c.raceScale > 1.05 && c.raceScale < 1.25
+        ? pass(`${id}'s race scale is the intended 5-25% and no more (${c.raceScale}x)`)
+        : fail(`${id}'s race scale is ${c.raceScale}, outside the intended 5-25%`);
+    }
+    /* An alternate form is sized against its racer's own box, never against
+       the road's - so it cannot quietly become a bigger vehicle either. */
+    for (const [id, c] of Object.entries(CARS)) {
+      if (!c.altForm) continue;
+      const k = c.altForm.scale;
+      k === undefined || (k > 0.8 && k < 1.25)
+        ? pass(`${id}'s alternate form is sized from its own racer box (${k}x)`)
+        : fail(`${id}'s alternate form scale is ${k}, outside the intended range`);
+    }
   }
   /^\s*carW\s*=\s*Math\.min\(laneW\*0\.64/m.test(strip(sources.runtime || ""))
-    ? pass("the shared carW/carH the other five are built on is unchanged")
+    ? pass("the shared carW/carH the other four are built on is unchanged")
     : fail("the shared carW in layout() has moved");
-  /* The hull and the sprite read the same size out of the same helper, so a
-     car cannot be drawn larger than it is collided. */
-  /carDims\(o\.car\)/.test(mech)
-    ? pass("carHit() scales its hull from the shared carDims() helper")
-    : fail("carHit() no longer reads carDims()");
 }
 
 head(failures ? `${failures} failure${failures === 1 ? "" : "s"}` +

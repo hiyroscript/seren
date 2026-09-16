@@ -774,6 +774,13 @@ body.no-hints .keys{display:none}
 
 #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:3}
 
+/* A Neela transformation or teleport whites out the view it belongs to. The
+   road goes white on the canvas; this is the other half of it, because on one
+   screen the instruments are page elements sitting over that canvas and would
+   otherwise be left hanging in the white. Local play never sets this: there
+   the instruments are painted into each column and go with it. */
+body.whiteout .hud{opacity:0}
+
 /* Four sets of instruments are painted on the canvas in local play, so the
    page's single set has to get out of the way completely. */
 body.local .hud .readout,body.local #hudActions,body.local #meterRail,

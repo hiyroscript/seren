@@ -44,8 +44,14 @@ const STR = {
      the only one whose description says more than the other five. */
   flannUlt: {en:"Fifteen seconds at double pace, and on fire: it wrecks any racer it touches and smashes straight through tumbleweeds and meteors. Puddles still get you.",
              fr:"Quinze secondes à double allure, et en feu : elle détruit tout concurrent qu'elle touche et fracasse virevoltants et météores. Les flaques vous atteignent toujours."},
-  phantom:      {en:"Phantom",                     fr:"Phantom"},
-  phantomUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
+  neela:        {en:"Neela",                       fr:"Neela"},
+  /* The second car whose ultimate is more than the shared speed boost. It says
+     what the fifteen seconds do, in the words the road uses: the change of
+     shape, the hazards it goes through, the one it still does not, and the
+     exchange - which is the part a player has to understand before pressing
+     the button, because where Neela ends up is decided the moment it starts. */
+  neelaUlt: {en:"Fifteen seconds at double pace, and it changes shape: it smashes straight through tumbleweeds and meteors for the whole fifteen. The first racer it touches while transformed is not wrecked — the two of you swap places, and that racer is left where Neela was when you pressed the button. One swap, then Neela drives on as itself. Puddles still get you.",
+             fr:"Quinze secondes à double allure, et elle change de forme : elle fracasse virevoltants et météores pendant les quinze secondes. Le premier concurrent qu'elle touche sous cette forme n'est pas détruit — vous échangez vos places, et il se retrouve là où Neela était au moment où vous avez appuyé. Un seul échange, puis Neela reprend sa forme. Les flaques vous atteignent toujours."},
   randomCar:    {en:"Surprise me",                 fr:"Au hasard"},
   bots:         {en:"Race against bots",           fr:"Course contre des bots"},
   botsDesc:     {en:"Two rivals, five minutes, then three tracks to the flag.",
@@ -143,8 +149,8 @@ const STR = {
                  fr:"Affich\u00e9 par tout ce qui vous ralentit, quelle qu'en soit la cause."},
   invulnerableInfo:{en:"Nothing can reach you: no debuff, hazard, trap or attack. You pass through everything, and any debuff still on you is cleared at once. Respawning after a wreck is what grants it, and it lasts two seconds.",
                  fr:"Plus rien ne vous atteint\u00a0: aucun malus, danger, pi\u00e8ge ni attaque. Vous traversez tout, et les malus en cours sont effac\u00e9s aussit\u00f4t. C'est la r\u00e9apparition apr\u00e8s une destruction qui l'accorde, pour deux secondes."},
-  obscuredInfo: {en:"Water from a puddle is thrown over your screen, hiding the road for a few seconds.",
-                 fr:"L'eau d'une flaque vous asperge l'\u00e9cran et masque la route pendant quelques secondes."},
+  obscuredInfo: {en:"Your view of the road is gone for a moment: water from a puddle thrown over your screen, or the white flash of a Neela transformation. You keep driving throughout.",
+                 fr:"Vous perdez la route des yeux un instant\u00a0: l'eau d'une flaque sur votre \u00e9cran, ou l'\u00e9clair blanc d'une transformation de Neela. Vous continuez \u00e0 conduire pendant ce temps."},
   boostedInfo:  {en:"Shown by anything that makes you go faster, whatever put it there: the boost meter, a boost can, an ultimate, or the shove a rear-end gives you.",
                  fr:"Affich\u00e9 par tout ce qui vous acc\u00e9l\u00e8re, quelle qu'en soit la cause\u00a0: la jauge de turbo, un bidon de boost, un ultime, ou la pouss\u00e9e re\u00e7ue d'un choc arri\u00e8re."},
   itemCan:      {en:"Boost can",   fr:"Bidon de boost"},

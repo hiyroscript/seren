@@ -75,7 +75,11 @@ function conditionOn(who, id){
            (me ? G.shuntT : o.shuntT || 0) > 0;
   }
   if(id === "slowed") return (me ? G.slowT : o.slow || 0) > 0;
-  if(id === "obscured") return (o.blind || 0) > 0;
+  /* Two things put a screen out of use, and the Condition is the same
+     Condition either way: puddle water on the glass, or the white a Neela
+     transformation or teleport puts over the view it belongs to. Derived from
+     both timers rather than from a flag somebody has to remember to set. */
+  if(id === "obscured") return (o.blind || 0) > 0 || (o.whiteT || 0) > 0;
   if(id === "skidded") return (me ? G.slipT : o.slip || 0) > 0;
   return false;
 }
@@ -128,24 +132,324 @@ function rearContact(who){
   return front;
 }
 
-/* ---------------- Flann's ultimate -------------------------------
+/* ---------------- the two car-specific ultimates -----------------
    Every car runs the same ultimate: seventy-five seconds to charge, fifteen
    seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
-   below is shared by all six. Flann is the one car that adds something on top
-   of it, and only while that shared lifecycle is running - it catches fire and
-   becomes a ram, so solid things it hits come apart instead of it.
+   below is shared by all six. Two of them add something on top of it, and only
+   while that shared lifecycle is running.
 
-   This is the one predicate that says so. Nothing else anywhere spells out the
-   car and the flag, so there is no second copy of the rule to drift.
+   These are the predicates that say which car is which, and they are the only
+   place in the game a racer's `car` is compared to a name. Everything else -
+   contact, hazards, the hull, the sprite - asks one of the questions built on
+   them, so there is no second copy of the rule anywhere to drift out of step.
 
-   It is deliberately NOT the Invulnerable Condition and it does not go through
+   None of it is the Invulnerable Condition and none of it goes through
    noContact(): an ulting Flann still has to physically meet a racer or a
-   hazard in order to break it, and the puddle must still get through. What it
-   is, is collision priority - which is applied at the consequence, by the
-   three helpers below and by the hazard code in this file and in race.js. */
+   hazard in order to break it, an ulting Neela still has to physically meet a
+   racer in order to trade places with it, and the puddle must still get
+   through to both. What they are is collision priority, applied at the
+   consequence. */
+function flannCar(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.car === "flann";
+}
+function neelaCar(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.car === "neela";
+}
+/* Flann catches fire and becomes a ram, so solid things it hits come apart
+   instead of it - and so do racers. */
 function flannUltActive(who){
   const o = who === "me" ? G : who;
-  return !!o && o.car === "flann" && !!o.ultOn;
+  return flannCar(who) && !!o.ultOn;
+}
+/* Neela's, and the one distinction that matters most in this file.
+
+   neelaUltActive() is "the fifteen seconds are running", which is what buys
+   the solid-hazard priority and keeps it for the whole of the ultimate.
+
+   neelaFormActive() is "the alternate body is the one on the road", which is
+   what buys the one swap and what the renderer and the hull read.
+
+   They are the same thing until the first racer Neela touches, and different
+   from then until the meter runs out. Anything that conflates them gives Neela
+   either a hazard privilege it has lost or a second swap it never had. */
+function neelaUltActive(who){
+  const o = who === "me" ? G : who;
+  return neelaCar(who) && !!o.ultOn;
+}
+function neelaFormActive(who){
+  const o = who === "me" ? G : who;
+  return neelaUltActive(who) && !!o.neelaForm;
+}
+/* Whether this racer's ultimate lets it clear Seren's solid road hazards - the
+   tumbleweed and the meteor - rather than being stopped by them. Water is not
+   solid and is deliberately not here. One question, asked by the player's
+   hazards in this file and the rivals' in race.js. */
+function clearsSolidHazards(who){
+  return flannUltActive(who) || neelaUltActive(who);
+}
+/* And whether this racer is a Neela that still has its one exchange to spend.
+   The form has to be up, the swap has to be unspent, and the contact must not
+   be one already dealt with in this step. */
+function neelaCanSwap(who){
+  const o = who === "me" ? G : who;
+  return neelaFormActive(who) && !o.neelaSwapped && !(o.swapGuard > 0);
+}
+function swapGuarded(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.swapGuard > 0;
+}
+
+/* ================================================================
+   WHERE A RACER ACTUALLY IS
+   ================================================================
+   Player one has no race `y` of its own. It is held at playerY while the road
+   runs past underneath, and every rival's position is a screen offset from
+   that camera which metersOf() turns into a distance along the road. So there
+   is no pair of coordinates that means the same thing for both kinds of racer,
+   and anything that reads one racer's place in order to put another racer
+   there has to go through here.
+
+   A pose is the honest answer: how far down the road, which lane, and where
+   across that lane. It does not move when the camera does, so it is still
+   correct several seconds and several hundred metres later - which is exactly
+   what Neela's swap needs, because the pose it hands back was taken before the
+   ultimate started. */
+function racerWorldPose(who){
+  const me = who === "me";
+  const o = me ? G : who;
+  if(!o) return null;
+  return { m: me ? G.meters : metersOf(o), lane:o.lane, x:o.x };
+}
+
+/* Move the whole world past player one by dy screen pixels.
+
+   This is the one place player one's position can change, and it is not a
+   special case so much as a single frame of scrolling done in one step: a
+   frame adds d to G.scroll, d*0.075 to G.meters and d to the y of every object
+   on the road, and so does this. Which is why nothing that was not asked to
+   move changes place: every rival, hazard, bubble, slick, seeker, spark,
+   building, trail node and the track seam all travel with the metre count, so
+   metersOf() gives every one of them exactly the answer it gave before. Marks
+   that are already distances - the finish line, a finisher's parking mark -
+   are absolute and are not touched at all. */
+function rebaseWorld(dy){
+  if(!dy) return;
+  G.scroll += dy;
+  G.meters += dy*0.075;
+  for(let i=0;i<G.rivals.length;i++){
+    G.rivals[i].y += dy;
+    shiftTrail(G.rivals[i], dy);
+  }
+  shiftTrail(G, dy);
+  for(let s=0;s<2;s++){
+    const a = G.build[s];
+    for(let i=0;i<a.length;i++) a[i].y += dy;
+  }
+  for(let i=0;i<G.props.length;i++) G.props[i].y += dy;
+  for(let i=0;i<G.walks.length;i++) G.walks[i].y += dy;
+  for(let i=0;i<G.traps.length;i++) G.traps[i].y += dy;
+  for(let i=0;i<G.boxes.length;i++) G.boxes[i].y += dy;
+  for(let i=0;i<G.slicks.length;i++) G.slicks[i].y += dy;
+  for(let i=0;i<G.missiles.length;i++) G.missiles[i].y += dy;
+  for(let i=0;i<G.fx.length;i++) G.fx[i].y += dy;
+  if(G.seam !== null) G.seam += dy;
+}
+
+/* Put a racer on a pose. A rival is simply placed: its y is whatever screen
+   offset puts it at that distance right now. Player one cannot be placed, so
+   the world is moved instead - handled here and nowhere else, so nothing that
+   uses a pose has to know that the two kinds of racer are stored differently. */
+function teleportRacerToPose(who, pose){
+  if(!pose) return;
+  if(who === "me"){
+    rebaseWorld((pose.m - G.meters)/0.075);
+    G.lane = pose.lane;
+    G.x = pose.x;
+  } else if(who){
+    who.y = playerY - (pose.m - G.meters)/0.075;
+    who.lane = pose.lane;
+    who.x = pose.x;
+  }
+}
+
+/* ================================================================
+   NEELA'S ULTIMATE
+   ================================================================
+   The shared lifecycle starts and ends it; everything here is what Neela does
+   inside those fifteen seconds. All of it is advanced from update code and
+   only read by the renderer, so drawing the same frame twice draws the same
+   frame. */
+
+/* ---- the white transition ----
+   Belongs to one racer and covers one view: the racer's own. In local play
+   every human is drawn their own column, so whiting out the person who was
+   swapped must not touch the person in the next seat. A bot has no view to
+   cover, but it still carries the timer, because the Condition beside its car
+   is derived from the same state and a bot mid-transformation is Obscured like
+   anybody else. */
+function startWhiteout(who){
+  const o = who === "me" ? G : who;
+  if(o) o.whiteT = NEELA_WHITEOUT;
+}
+function whiteoutActive(who){
+  const o = who === "me" ? G : who;
+  return !!o && (o.whiteT || 0) > 0;
+}
+/* ---- the flash on the body ----
+   Cosmetic, and generic: it is played on whichever car was transformed or
+   teleported, and the victim of a swap can be any of the six. It changes no
+   hitbox and no race state. */
+function startMorph(who){
+  const o = who === "me" ? G : who;
+  if(o) o.morphT = NEELA_MORPH;
+}
+/* How white that car is right now, 0 to 1, for the renderer to read. */
+function morphFlash(who){
+  const o = who === "me" ? G : who;
+  if(!o || !(o.morphT > 0)) return 0;
+  return clamp(o.morphT/NEELA_MORPH, 0, 1);
+}
+
+/* ---- the alternate form ----
+   Entering it is the whole of the activation sequence past the shared
+   lifecycle: the pose is taken first, before anything about the racer changes,
+   because that pose is what a swapped racer is sent back to a quarter of a
+   minute later. Nothing here pauses the race, freezes the car or touches the
+   controls - the racer drives itself through the whole of it, at the ordinary
+   double pace, as a person or as a bot. */
+function beginNeelaForm(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.neelaOrigin = racerWorldPose(who);
+  o.neelaForm = true;
+  o.neelaSwapped = false;
+  o.swapGuard = 0;
+  o.trailGap = 0;
+  startWhiteout(who);
+  startMorph(who);
+}
+/* Leaving it with the flash: the meter ran out, or a racer was just swapped.
+   New trail stops here; what is already behind the car is in the world and
+   fades where it was laid. */
+function leaveNeelaForm(who){
+  const o = who === "me" ? G : who;
+  if(!o || !o.neelaForm) return;
+  o.neelaForm = false;
+  startMorph(who);
+}
+/* And leaving it without one, because the car was wrecked or has crossed the
+   line. Called before the ultimate is ended in both cases, so endUlt() finds
+   nothing left to flash. The trail is again left to fade on its own. */
+function clearNeelaState(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.neelaForm = false; o.neelaOrigin = null; o.neelaSwapped = false;
+  o.swapGuard = 0; o.whiteT = 0; o.morphT = 0; o.trailGap = 0;
+}
+
+/* ---- the swap ----
+   One exchange per ultimate, and only while the alternate form is up. Neela
+   takes the place the other racer was standing in at the instant of contact,
+   and that racer takes the place Neela fired the ultimate from. Neither is
+   destroyed; the ultimate is not cut short and its meter is not reset.
+
+   Both poses are read before anything moves. Both are absolute, so the order
+   the two teleports are applied in cannot change where either racer lands -
+   moving player one moves the world, and a pose in metres does not care. */
+function neelaSwap(mover, other){
+  const m = mover === "me" ? G : mover;
+  const v = other === "me" ? G : other;
+  if(!m || !v) return;
+  const hit = racerWorldPose(other);
+  const origin = m.neelaOrigin || racerWorldPose(mover);
+  m.neelaSwapped = true;
+  m.swapGuard = NEELA_SWAP_GUARD;
+  v.swapGuard = NEELA_SWAP_GUARD;
+  leaveNeelaForm(mover);                 /* back to the car, and the flash */
+  startWhiteout(mover);
+  startWhiteout(other);
+  startMorph(other);
+  swapFx(mover); swapFx(other);           /* sparks where each of them left */
+  teleportRacerToPose(mover, hit);
+  teleportRacerToPose(other, origin);
+  swapFx(mover); swapFx(other);           /* and where each of them arrived */
+  G.shake = Math.max(G.shake, 10);
+  tone(880, .18, "sine", .09);
+  later(function(){ tone(1320, .22, "sine", .07); }, 90);
+}
+/* White sparks where a car left and where it arrived, so the exchange reads as
+   two events on the road rather than one car blinking out. */
+function swapFx(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  const x = who === "me" ? G.x : o.x, y = who === "me" ? playerY : o.y;
+  const d = racerDims(who);
+  for(let i=0;i<16;i++){
+    const a = (i/16)*6.2832;
+    addFx(x + Math.cos(a)*d.w*0.45, y + Math.sin(a)*d.h*0.30,
+          Math.cos(a)*190, Math.sin(a)*190, rand(.25,.55), rand(2,5),
+          i % 2 ? "#FFFFFF" : "#8FD8FF");
+  }
+}
+/* Which of two racers in contact is the one that trades places, or null for
+   the ordinary rules. Two of them cancel, exactly as two ramming Flanns do:
+   neither can take the other's place, so the contact falls back to the shunt
+   and the barge like any other pair. */
+function swapMover(a, b){
+  const sa = neelaCanSwap(a), sb = neelaCanSwap(b);
+  if(sa === sb) return null;
+  return sa ? a : b;
+}
+
+/* ---- the long trail ----
+   Nodes are world positions with an age, dropped behind the alternate form as
+   it drives and scrolled with the road like everything else on it. Sampled by
+   distance rather than per frame, so the line is as smooth through a fast lane
+   change as it is down a straight, and capped so it can never grow without
+   bound. */
+function shiftTrail(o, dy){
+  const t = o && o.trail;
+  if(!t) return;
+  for(let i=0;i<t.length;i++) t[i].y += dy;
+}
+function addTrailNode(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  const at = racerTailPoint(who);
+  if(!at) return;
+  if(!o.trail) o.trail = [];
+  o.trail.push({ x:at.x, y:at.y, life:NEELA_TRAIL_LIFE, max:NEELA_TRAIL_LIFE });
+  while(o.trail.length > NEELA_TRAIL_MAX) o.trail.shift();
+}
+/* One racer's trail, one frame: everything already laid scrolls and ages, and
+   a new node is dropped only while the alternate form is actually up. Ageing
+   is unconditional, which is what lets a trail finish fading after the form
+   has ended, after a swap and after a wreck. */
+function updateTrail(who, dt, d){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  const t = o.trail;
+  if(t && t.length){
+    for(let i=t.length-1;i>=0;i--){
+      t[i].y += d;
+      t[i].life -= dt;
+      if(t[i].life <= 0) t.splice(i, 1);
+    }
+  }
+  if(!neelaFormActive(who) || (who === "me" ? G.dead > 0 : o.dead > 0)){
+    o.trailGap = 0;
+    return;
+  }
+  /* How far this car has travelled over the road since the last node: its own
+     pace against the road's, which is the distance the trail has to cover. */
+  const own = who === "me" ? G.speed*dt : (o.abs || 0)*dt;
+  o.trailGap = (o.trailGap || 0) + Math.abs(own);
+  if(!t || !t.length || o.trailGap >= NEELA_TRAIL_GAP){
+    o.trailGap = 0;
+    addTrailNode(who);
+  }
 }
 /* Which of two racers in contact wins it outright, or null for the ordinary
    rules. Two ulting Flanns cancel: neither can smash the other, so the contact
@@ -170,6 +474,17 @@ function rearEnd(who, victim){
   if(meB ? finishedMe() : finishedCar(who)) return;      /* out of play: no contact */
   if(victim.me ? finishedMe() : finishedCar(victim.obj)) return;
   if(noContact(who) || noContact(vWho)) return;
+  /* A contact already dealt with this step - the two bodies a swap has just
+     put down - is not a second contact. One step's worth, and no more. */
+  if(swapGuarded(who) || swapGuarded(vWho)) return;
+
+  /* Neela in its alternate form trades places with the first racer it meets,
+     and that is the whole of the consequence: nobody is wrecked, nobody is
+     slowed, nobody is shunted, and there is no second swap in this ultimate.
+     Ahead of the ram on purpose - a Neela and a Flann meeting is an exchange,
+     not a kill, because the form is spent by the contact either way. */
+  const mover = swapMover(who, vWho);
+  if(mover){ neelaSwap(mover, mover === who ? vWho : who); return; }
 
   /* A ram settles it before the ordinary rules get a look in, and it does not
      matter which of the two did the running into: the loser is wrecked where
@@ -208,12 +523,22 @@ function rearEnd(who, victim){
    - "rammed"   an ulting Flann destroyed it outright and takes the lane
    - "stopped"  the barger wrecked itself on an ulting Flann, and the lane
                 change dies with it
+   - "swapped"  an alternate-form Neela was involved and the two cars traded
+                places; both are elsewhere, so the lane change dies too
 
-   Only "stopped" stops the caller; everything else leaves the lane to the car
-   that asked for it, exactly as it always did. */
+   "stopped" and "swapped" stop the caller; everything else leaves the lane to
+   the car that asked for it, exactly as it always did. */
 function bumpTarget(victim, dir, by){
   const vWho = victim.me ? "me" : victim.obj;
   if(noContact(by) || noContact(vWho)) return "none";
+  if(swapGuarded(by) || swapGuarded(vWho)) return "none";
+
+  /* An alternate-form Neela on either side of the barge trades places instead
+     of taking or losing the lane, and both cars are somewhere else by the time
+     this returns - so the lane change the caller was in the middle of has
+     nothing left to finish. */
+  const mover = swapMover(by, vWho);
+  if(mover){ neelaSwap(mover, mover === by ? vWho : by); return "swapped"; }
 
   /* Flann's ultimate takes the lane by destroying whatever is in it, and a car
      that barges into an ulting Flann destroys itself instead of moving it. */
@@ -254,7 +579,7 @@ function move(dir){
      in it was an ulting Flann, in which case the barge wrecked you and there
      is nobody left to finish the lane change. */
   const victim = carAt(n, playerY, "me");
-  if(victim && bumpTarget(victim, dir, "me") === "stopped") return;
+  if(victim && laneChangeDied(bumpTarget(victim, dir, "me"))) return;
   G.lane = n;
 }
 
@@ -264,11 +589,14 @@ function rivalSteer(R, lane){
   rivalLaneTo(R, lane);
 }
 
+/* Wrecked on an ulting Flann, or traded away by an alternate-form Neela:
+   either way there is no lane change left to make. */
+function laneChangeDied(out){ return out === "stopped" || out === "swapped"; }
+
 function rivalLaneTo(R, lane){
   const dir = lane > R.lane ? 1 : -1;
   const victim = carAt(lane, R.y, R);
-  /* Wrecked on an ulting Flann: there is no lane change left to make. */
-  if(victim && bumpTarget(victim, dir, R) === "stopped") return;
+  if(victim && laneChangeDied(bumpTarget(victim, dir, R))) return;
   R.lane = lane;
   R.changeT = 0.7;
 }
@@ -303,9 +631,18 @@ function startUlt(who){
   o.ult = 1;
   const at = ultPos(who);
   ultBurst(ultOwnerCar(who), at.x, at.y);
+  /* The shared lifecycle is running by here; this is only what Neela adds on
+     top of it, and the pose it takes is the car's from a moment ago. */
+  if(neelaCar(who)) beginNeelaForm(who);
 }
 function endUlt(who){
   const o = who === "me" ? G : who;
+  /* Coming out of the alternate form because the meter ran out is a
+     transformation and gets the flash. Coming out of it because the car was
+     wrecked or has finished is not, and those callers have already cleared the
+     form before getting here, so there is nothing left for this to flash. */
+  if(o.neelaForm) leaveNeelaForm(who);
+  o.neelaOrigin = null; o.neelaSwapped = false; o.swapGuard = 0;
   o.ultOn = false; o.ultT = 0; o.ultMax = ULT_TIME;
   o.ult = 0;
 }
@@ -371,6 +708,7 @@ function wreckRival(R, by, force){
   ultDelta(R, ULT_ON_WRECK);
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
   R.dead = DEAD_TIME;
+  clearNeelaState(R);                          /* no alternate form on a wreck */
   if(R.ultOn) endUlt(R);                       /* a running ultimate is lost outright */
   /* The meter itself survives, exactly as the player's does: destroyCar takes
      ULT_ON_WRECK off the top and no more. Wiping it here contradicted the
@@ -897,8 +1235,13 @@ function carHit(who, xAt, yAt, tiltAt){
   const x = xAt === undefined ? o.x : xAt;
   const y = yAt === undefined ? (me ? playerY : o.y) : yAt;
   const tilt = tiltAt === undefined ? (o.tilt || 0) : tiltAt;
-  const shape = CARS[o.car].hitShape || CAR_HIT_RECT;
-  const dim = carDims(o.car);
+  /* The body this racer is wearing right now, which for a Neela in its
+     alternate form is the alternate hull at the alternate size. Both come out
+     of racerModel()/racerDims(), which is what the renderer is drawing from,
+     so the hull switches on the same frame the sprite does and back on the
+     same frame it does. */
+  const shape = racerModel(who).hitShape || CAR_HIT_RECT;
+  const dim = racerDims(who);
   const ca = Math.cos(tilt), sa = Math.sin(tilt);
   const points = shape.map(function(p){
     const px = p[0]*dim.w, py = p[1]*dim.h;
@@ -1044,10 +1387,11 @@ function updateTraps(dt, d, st){
             const p2 = nearestOnCar(c, o.x, my);
             const dx = p2.x - o.x, dy = p2.y - my;
             if(dx*dx + dy*dy <= o.mr*o.mr){
-              /* An ulting Flann goes through the rock rather than under it: it
-                 is taken off the road here and now, so it never reaches the
-                 ground and never detonates. The ultimate is untouched. */
-              if(flannUltActive("me")){
+              /* An ultimate with the solid-hazard privilege goes through the
+                 rock rather than under it: it is taken off the road here and
+                 now, so it never reaches the ground and never detonates. The
+                 ultimate itself is untouched. */
+              if(clearsSolidHazards("me")){
                 smashFx(o.x, my, o.mr, "#C6482A", G.car);
                 G.traps.splice(i,1); continue;
               }
@@ -1085,10 +1429,10 @@ function detonate(o, live){
   for(let i=0;i<8;i++)
     addFx(o.x, o.y, rand(-70,70), rand(-130,-20), rand(.6,1.1), rand(4,8), "#2E2A34");
   noise(.5, .5); tone(70, .4, "sawtooth", .16);
-  /* The blast still happens and still looks like one; what an ulting Flann
-     does not do is die in it. Everybody else inside the radius is destroyed on
-     exactly the terms they always were. */
-  if(live && !flannUltActive("me")){
+  /* The blast still happens and still looks like one; what a car with the
+     solid-hazard privilege does not do is die in it. Everybody else inside the
+     radius is destroyed on exactly the terms they always were. */
+  if(live && !clearsSolidHazards("me")){
     const c2 = carHit();
     const p3 = nearestOnCar(c2, o.x, o.y);
     const dx = p3.x - o.x, dy = p3.y - o.y;
@@ -1096,7 +1440,7 @@ function detonate(o, live){
   }
   for(let n=0;n<G.rivals.length;n++){
     const R = G.rivals[n];
-    if(safeCar(R) || flannUltActive(R)) continue;
+    if(safeCar(R) || clearsSolidHazards(R)) continue;
     const rc = carHit(R);
     const p4 = nearestOnCar(rc, o.x, o.y);
     const rx = p4.x - o.x, ry = p4.y - o.y;
@@ -1132,6 +1476,7 @@ function clearMyUlt(){
   G.ult = 0;
 }
 function destroyCar(by){
+  clearNeelaState("me");                       /* no alternate form on a wreck */
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
   clearDebuffs("me");
   ultDelta("me", ULT_ON_WRECK);
@@ -1149,10 +1494,10 @@ function destroyCar(by){
 }
 
 function hitWeed(o){
-  /* Flann's ultimate goes straight through it. No Slow, no meter penalty, and
-     the weed comes apart on the bonnet rather than being politely missed - the
-     caller removes it either way. */
-  if(flannUltActive("me")){ smashWeed(o, G.car); return; }
+  /* An ultimate with the solid-hazard privilege goes straight through it. No
+     Slow, no meter penalty, and the weed comes apart on the bonnet rather than
+     being politely missed - the caller removes it either way. */
+  if(clearsSolidHazards("me")){ smashWeed(o, G.car); return; }
   ultDelta("me", ULT_ON_TRAP);
   if(refusesDebuffs("me")) return;
   G.slowT = SLOW_TIME;
@@ -1165,7 +1510,7 @@ function hitWeed(o){
   noise(.24, .24); tone(170, .13, "square", .07);
 }
 
-/* A tumbleweed broken apart by an ulting Flann rather than survived. It throws
+/* A tumbleweed broken apart by an ultimate rather than survived. It throws
    the same debris the seeker's clear-out does - one destruction effect for
    "this was smashed", asked for by a car now instead of a missile - tinted with
    the weed's own colour. Player, bot and local human all come here. */

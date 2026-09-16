@@ -19,31 +19,81 @@ function rr(x,y,w,h,r){
 }
 function fillRR(x,y,w,h,r,c){ rr(x,y,w,h,r); ctx.fillStyle=c; ctx.fill(); }
 
-/* One image per sprite, shared by showroom, garage and every race view.
+/* One image per sprite, shared by showroom, garage and every race view. A car
+   with an alternate form contributes both of its sheets, so vtm_neela.PNG is
+   fetched, decoded and cached exactly once alongside v_neela.PNG rather than
+   being built the first time an ultimate is pressed.
    onload also repaints canvases that were painted before the asset arrived.
    The Node fixture need only supply Image; no browser decoder is required. */
 const CAR_SPRITES = {};
-CAR_IDS.forEach(function(id){
-  const p = CARS[id];
-  if(!p.sprite || CAR_SPRITES[p.sprite]) return;
-  const img = new Image();
-  CAR_SPRITES[p.sprite] = img;
-  img.onload = function(){ requestAnimationFrame(paintCarIcons); };
-  img.src = p.sprite;
-});
+(function(){
+  const models = [];
+  CAR_IDS.forEach(function(id){
+    const p = CARS[id];
+    if(!p) return;
+    models.push(p);
+    if(p.altForm) models.push(p.altForm);
+  });
+  models.forEach(function(p){
+    if(!p.sprite || CAR_SPRITES[p.sprite]) return;
+    const img = new Image();
+    CAR_SPRITES[p.sprite] = img;
+    img.onload = function(){ requestAnimationFrame(paintCarIcons); };
+    img.src = p.sprite;
+  });
+})();
 
-function drawSpriteCar(w, h, p, boosting, ulting){
-  const img = CAR_SPRITES[p.sprite];
-  if(!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return;
-  const b = p.spriteBounds;
+/* ---- where the artwork sits inside a car box --------------------
+   The full PNG is drawn, padding and all, scaled and centred so its measured
+   visible bounds fill the w x h box. This is that placement, worked out once
+   and returned rather than recomputed by everything that needs a point on the
+   artwork - which is what keeps an effect pinned to a tailpipe instead of
+   drifting off it at another size.
+
+   Null until the image has arrived, because none of it can be known without
+   the source dimensions. */
+function spriteFrame(model, w, h){
+  const img = model && model.sprite ? CAR_SPRITES[model.sprite] : null;
+  if(!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return null;
+  const b = model.spriteBounds;
   const scale = Math.min(w/(img.naturalWidth*b[2]), h/(img.naturalHeight*b[3]));
   const sw = img.naturalWidth*scale, sh = img.naturalHeight*scale;
-  const left = -(b[0] + b[2]/2)*sw, top = -(b[1] + b[3]/2)*sh;
-  const vw = b[2]*sw, vh = b[3]*sh;
-  fillRR(-vw/2 + w*0.04, -vh/2 + h*0.04, vw, vh, vw*0.26, "rgba(0,0,0,0.35)");
-  if(boosting) drawSpriteExhaust(p, left, top, sw, sh, vw, vh);
+  return { img:img, sw:sw, sh:sh,
+           left:-(b[0] + b[2]/2)*sw, top:-(b[1] + b[3]/2)*sh,
+           vw:b[2]*sw, vh:b[3]*sh };
+}
+/* An image-space anchor as a point in the car's own unrotated space. */
+function spriteAnchor(fr, a){
+  return { x:fr.left + a[0]*fr.sw, y:fr.top + a[1]*fr.sh };
+}
+/* And the same anchor as a point in the world, for a racer that is actually on
+   the road: its own model, its own size, its own tilt. Effects that have to be
+   laid down in the world rather than drawn in the car's space - the alternate
+   form's trail - come through here, so a node is dropped exactly where the
+   renderer would have drawn the emitter. Read-only; it is called from update
+   code and changes nothing. */
+function racerTailPoint(who){
+  const model = racerModel(who);
+  const root = model.trailRoot || (model.exhaust && model.exhaust[0]);
+  if(!root) return null;
+  const d = racerDims(who);
+  const fr = spriteFrame(model, d.w, d.h);
+  if(!fr) return null;
+  const a = spriteAnchor(fr, root);
+  const o = who === "me" ? G : who;
+  if(!o) return null;
+  const cx = who === "me" ? G.x : o.x, cy = who === "me" ? playerY : o.y;
+  const t = o.tilt || 0, ca = Math.cos(t), sa = Math.sin(t);
+  return { x:cx + a.x*ca - a.y*sa, y:cy + a.x*sa + a.y*ca };
+}
+
+function drawSpriteCar(w, h, p, boosting, ulting){
+  const fr = spriteFrame(p, w, h);
+  if(!fr) return;
+  fillRR(-fr.vw/2 + w*0.04, -fr.vh/2 + h*0.04, fr.vw, fr.vh, fr.vw*0.26, "rgba(0,0,0,0.35)");
+  if(boosting) drawSpriteExhaust(p, fr);
   /* Full source rectangle: preserve padding and every tire/spoiler detail. */
-  ctx.drawImage(img, left, top, sw, sh);
+  ctx.drawImage(fr.img, fr.left, fr.top, fr.sw, fr.sh);
   /* Over the body, not under it: the fire wraps the car rather than glowing
      behind it. `ulting` is its own flag and never the boost one, so an
      ordinary boost and a boost can leave the paint alone. */
@@ -118,15 +168,28 @@ function drawFlannUltFire(w, h, p){
   ctx.restore();
 }
 
-function drawSpriteExhaust(p, left, top, sw, sh, vw, vh){
+/* ---- what comes out of the pipes --------------------------------
+   Both plumes are built in image space and drawn in the car's own translated
+   and rotated space: the root is the measured anchor put through the same
+   placement the artwork was, so resizing the car, tilting it through a lane
+   change, scaling it for the race or drawing it into one column of four can
+   never slide the effect off the outlet it belongs to.
+
+   Which one a car gets is data, not a name: CARS.<id>.exhaustStyle. */
+function drawSpriteExhaust(p, fr){
+  if(p.exhaustStyle === "energy") drawSpriteEnergy(p, fr);
+  else drawSpriteFlame(p, fr);
+}
+
+function drawSpriteFlame(p, fr){
   const reduced = motionReduced();
   const phase = reduced ? 0 : performance.now()*0.009;
   ctx.save();
   for(let i=0;i<p.exhaust.length;i++){
-    const a = p.exhaust[i];
-    const x = left + a[0]*sw, y = top + a[1]*sh;
+    const a = spriteAnchor(fr, p.exhaust[i]);
+    const x = a.x, y = a.y;
     const pulse = reduced ? 0 : Math.sin(phase + i*0.7);
-    const len = vh*(0.23 + pulse*0.016), half = vw*(0.059 + pulse*0.003);
+    const len = fr.vh*(0.23 + pulse*0.016), half = fr.vw*(0.059 + pulse*0.003);
     const glow = ctx.createLinearGradient(x, y, x, y + len);
     glow.addColorStop(0, p.flame[1]);
     glow.addColorStop(0.3, p.flame[0]);
@@ -147,23 +210,135 @@ function drawSpriteExhaust(p, left, top, sw, sh, vw, vh){
   ctx.restore();
 }
 
+/* Neela's, and not a flame. Concentrated blue energy: white-hot where it
+   leaves the outlet, electric blue through the body of it, and drawn out into
+   a clean transparent streak rather than tapering to an orange point. Drawn
+   lightened, so two of them crossing brighten instead of stacking up muddy.
+
+   Every gradient is linear, exactly as the flame's is, so nothing here can be
+   mistaken for the radial body fire that belongs to Flann's ultimate alone.
+   Reduced motion takes the pulse out and leaves the energy: the plume is what
+   says the car is going faster, and that has to stay visible. */
+function drawSpriteEnergy(p, fr){
+  const reduced = motionReduced();
+  const phase = reduced ? 0 : performance.now()*0.009;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for(let i=0;i<p.exhaust.length;i++){
+    const a = spriteAnchor(fr, p.exhaust[i]);
+    const x = a.x, y = a.y;
+    const pulse = reduced ? 0 : Math.sin(phase + i*0.7);
+    const len = fr.vh*(0.30 + pulse*0.020), half = fr.vw*(0.052 + pulse*0.002);
+
+    /* Every gradient starts on the anchor itself rather than a little above or
+       below it, so the root of the effect is the measured outlet exactly, at
+       every size, every tilt and every point of the pulse. */
+    /* the soft outer glow the streak sits in */
+    const haze = ctx.createLinearGradient(x, y, x, y + len);
+    haze.addColorStop(0,    withA(p.flame[0], 0.42));
+    haze.addColorStop(0.35, withA(p.flame[0], 0.26));
+    haze.addColorStop(1,    withA(p.flame[0], 0));
+    ctx.fillStyle = haze;
+    ctx.beginPath();
+    ctx.moveTo(x - half*1.9, y - len*0.06);
+    ctx.quadraticCurveTo(x - half*1.5, y + len*0.55, x, y + len);
+    ctx.quadraticCurveTo(x + half*1.5, y + len*0.55, x + half*1.9, y - len*0.06);
+    ctx.closePath(); ctx.fill();
+
+    /* the streak itself: parallel-sided for most of its length, then gone */
+    const body = ctx.createLinearGradient(x, y, x, y + len);
+    body.addColorStop(0,    withA(p.flame[1], 0.95));
+    body.addColorStop(0.18, withA(p.flame[0], 0.90));
+    body.addColorStop(0.60, withA(p.flame[0], 0.45));
+    body.addColorStop(1,    withA(p.flame[0], 0));
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(x - half, y);
+    ctx.lineTo(x - half*0.72, y + len*0.62);
+    ctx.quadraticCurveTo(x - half*0.30, y + len*0.90, x, y + len);
+    ctx.quadraticCurveTo(x + half*0.30, y + len*0.90, x + half*0.72, y + len*0.62);
+    ctx.lineTo(x + half, y);
+    ctx.closePath(); ctx.fill();
+
+    /* and a white core right at the outlet, which is what reads as heat */
+    const core = ctx.createLinearGradient(x, y, x, y + len*0.52);
+    core.addColorStop(0,   "rgba(255,255,255,0.95)");
+    core.addColorStop(0.4, withA(p.flame[1], 0.70));
+    core.addColorStop(1,   withA(p.flame[1], 0));
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.moveTo(x - half*0.40, y - len*0.04);
+    ctx.lineTo(x - half*0.26, y + len*0.34);
+    ctx.quadraticCurveTo(x, y + len*0.52, x + half*0.26, y + len*0.34);
+    ctx.lineTo(x + half*0.40, y - len*0.04);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---- the transformation flash -----------------------------------
+   A car turning into something else, or arriving somewhere it was not a moment
+   ago, fades through white. It is drawn from the model's own hull, so it is
+   the car's silhouette that goes white rather than a disc over the top of it -
+   and because every model has a hull, the same code does it for whichever of
+   the six was the one teleported.
+
+   Purely cosmetic: it reads morphT and changes nothing. There is no clock in
+   it and no oscillation to take away, so reduced motion gets the same clean
+   ramp everybody else does. */
+function drawMorphFlash(w, h, p, k){
+  if(!(k > 0)) return;
+  const shape = p.hitShape || CAR_HIT_RECT;
+  /* A halo around the body, then the body itself. Flat fills rather than
+     gradients on purpose: a gradient here would be indistinguishable from an
+     exhaust plume or a body fire to anything watching what the renderer asks
+     the canvas for, and this is neither of those things. */
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.16*k;
+  ctx.fillStyle = "#BFE6FF";
+  ctx.fillRect(-w*0.72, -h*0.62, w*1.44, h*1.24);
+  ctx.globalAlpha = 0.20*k;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(-w*0.46, -h*0.54, w*0.92, h*1.08);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = clamp(k, 0, 1);
+  ctx.beginPath();
+  for(let i=0;i<shape.length;i++){
+    const px = shape[i][0]*w, py = shape[i][1]*h;
+    if(i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fill();
+  ctx.restore();
+}
+
 /* `boosting` is the ordinary exhaust flag every model has always had - the
    boost meter, a boost can or a running ultimate, anything that makes the car
    faster. `ulting` is separate and narrower: this racer's ultimate is running
    right now. Keeping them apart is what lets Flann's body fire appear for the
-   ultimate alone while an ordinary boost still only lights the pipes. Menus
-   pass neither, so a preview is never on fire. */
-function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting){
+   ultimate alone while an ordinary boost still only lights the pipes - and it
+   is why Neela's boost plume never transforms anything: the plume is the boost
+   flag, the alternate body is its own state, and they are not the same
+   question. `white` is the transformation flash, 0 unless this car has just
+   changed shape or been put down somewhere else.
+
+   Menus pass none of the three, so a preview is never on fire, never white,
+   and always wearing its own car model. */
+function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white){
   ctx.save();
   ctx.translate(x, y);
   if(tilt) ctx.rotate(tilt);
   /* One car has a fire of its own; the other five have the shared models. */
   if(p.style === "sprite") drawSpriteCar(w, h, p, boosting, !!ulting && p.key === "flann");
-  else if(p.style === "jet") drawJet(w, h, p, isPlayer, boosting);
   else if(p.style === "buggy") drawBuggy(w, h, p, isPlayer, boosting);
   else if(p.style === "wedge") drawWedge(w, h, p, isPlayer, boosting);
   else if(p.style === "coupe") drawCoupe(w, h, p, isPlayer, boosting);
   else if(p.style === "cruiser") drawCruiser(w, h, p, isPlayer, boosting);
+  if(white) drawMorphFlash(w, h, p, white);
   ctx.restore();
 }
 
@@ -175,73 +350,6 @@ function flames(w, h, hot, cool){
   fillRR(-w*0.26, h*0.50, w*0.10, h*0.46, w*0.05, cool);
   fillRR( w*0.16, h*0.50, w*0.10, h*0.46, w*0.05, cool);
   ctx.globalAlpha = 1;
-}
-
-/* Phantom: a low, curvy sports car with tapered, swept bodywork. */
-function jetBody(w, h){
-  ctx.beginPath();
-  ctx.moveTo(-w*0.27, -h*0.50);
-  ctx.quadraticCurveTo(-w*0.46, -h*0.45, -w*0.48, -h*0.24);
-  ctx.lineTo(-w*0.50, h*0.14);
-  ctx.quadraticCurveTo(-w*0.50, h*0.45, -w*0.35, h*0.50);
-  ctx.lineTo( w*0.35, h*0.50);
-  ctx.quadraticCurveTo( w*0.50, h*0.45,  w*0.50, h*0.14);
-  ctx.lineTo( w*0.48, -h*0.24);
-  ctx.quadraticCurveTo( w*0.46, -h*0.45,  w*0.27, -h*0.50);
-  ctx.quadraticCurveTo(0, -h*0.56, -w*0.27, -h*0.50);
-  ctx.closePath();
-}
-function drawJet(w, h, p, isPlayer, boosting){
-  ctx.save(); ctx.translate(3, 7);
-  jetBody(w, h); ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fill();
-  ctx.restore();
-
-  const ww = w*0.155, wh = h*0.155;                    /* four wheels, wide stance */
-  fillRR(-w/2-ww*0.26, -h*0.30, ww, wh, ww*0.4, "#0C0D10");
-  fillRR( w/2-ww*0.74, -h*0.30, ww, wh, ww*0.4, "#0C0D10");
-  fillRR(-w/2-ww*0.26,  h*0.15, ww, wh, ww*0.4, "#0C0D10");
-  fillRR( w/2-ww*0.74,  h*0.15, ww, wh, ww*0.4, "#0C0D10");
-
-  jetBody(w, h);
-  ctx.fillStyle = p.body; ctx.fill();
-  ctx.strokeStyle = "rgba(12,32,64,0.42)"; ctx.lineWidth = Math.max(1, w*0.03); ctx.stroke();
-
-  ctx.save();
-  jetBody(w, h); ctx.clip();
-  ctx.fillStyle = p.trim;                              /* blue nose and sills */
-  ctx.beginPath();
-  ctx.moveTo(0, -h*0.56); ctx.lineTo(w*0.34, -h*0.16); ctx.lineTo(-w*0.34, -h*0.16);
-  ctx.closePath(); ctx.fill();
-  ctx.fillRect(-w*0.52, -h*0.10, w*0.09, h*0.46);
-  ctx.fillRect( w*0.43, -h*0.10, w*0.09, h*0.46);
-  if(isPlayer){                                        /* twin stripes over the spine */
-    ctx.fillRect(-w*0.135, -h*0.50, w*0.085, h);
-    ctx.fillRect( w*0.05,  -h*0.50, w*0.085, h);
-  }
-  ctx.restore();
-
-  fillRR(-w*0.30, -h*0.455, w*0.20, h*0.032, w*0.02, "#8FE3FF");   /* light bar */
-  fillRR( w*0.10, -h*0.455, w*0.20, h*0.032, w*0.02, "#8FE3FF");
-
-  fillRR(-w*0.32, -h*0.15, w*0.64, h*0.40, w*0.15, p.dark);        /* cabin */
-  ctx.beginPath();                                                  /* windshield */
-  ctx.moveTo(-w*0.26, -h*0.05); ctx.lineTo(w*0.26, -h*0.05);
-  ctx.lineTo(w*0.20, -h*0.13);  ctx.lineTo(-w*0.20, -h*0.13);
-  ctx.closePath(); ctx.fillStyle = p.glass; ctx.fill();
-  ctx.beginPath();                                                  /* rear glass */
-  ctx.moveTo(-w*0.23, h*0.13); ctx.lineTo(w*0.23, h*0.13);
-  ctx.lineTo(w*0.19, h*0.21);  ctx.lineTo(-w*0.19, h*0.21);
-  ctx.closePath(); ctx.fill();
-
-  fillRR(-w*0.44, h*0.37, w*0.88, h*0.062, w*0.05, p.trim);        /* ducktail spoiler */
-  fillRR(-w*0.34, h*0.385, w*0.20, h*0.032, w*0.02, "#8FE3FF");    /* tail lights */
-  fillRR( w*0.14, h*0.385, w*0.20, h*0.032, w*0.02, "#8FE3FF");
-  [-w*0.15, w*0.15].forEach(function(tx){                          /* exhaust tips */
-    ctx.beginPath(); ctx.arc(tx, h*0.455, w*0.062, 0, 6.2832);
-    ctx.fillStyle = p.dark; ctx.fill();
-  });
-
-  if(boosting) flames(w, h, p.flame[0], p.flame[1]);
 }
 
 /* Bolt: a short, wide, high-clearance buggy with an exposed roll cage */
@@ -926,6 +1034,92 @@ function drawRoadFade(){
   ctx.fillStyle = up; ctx.fillRect(roadX, y - d, roadW, d);
 }
 
+
+/* ---- the alternate form's trail ---------------------------------
+   Nodes are world positions dropped behind the craft by update code and aged
+   there; this only looks at them. The line is drawn oldest-first so newer
+   sections lie over older ones, and each segment is faded and narrowed by the
+   age of the node it ends at - so what is left behind thins out and goes
+   rather than being cut off at a hard edge.
+
+   Drawn lightened, in three passes from a wide soft cyan haze down to a
+   white-hot core, which is what makes it read as energy rather than as paint.
+   Nothing here is on a clock, so reduced motion keeps the whole trail: it is
+   where the car has been, and that is information, not decoration. */
+const TRAIL_PASSES = [
+  { w:2.30, a:0.22, c:2 },     /* outer haze, in the car's own cyan */
+  { w:1.00, a:0.60, c:0 },     /* the electric blue body of it */
+  { w:0.34, a:0.85, c:1 }      /* and the white-hot core */
+];
+function drawRacerTrail(who){
+  const o = who === "me" ? G : who;
+  const t = o && o.trail;
+  if(!t || t.length < 2) return;
+  const model = CARS[o.car];
+  if(!model) return;
+  const cool = model.flame ? model.flame[0] : "#2E9BFF";
+  const hot = model.flame ? model.flame[1] : "#FFFFFF";
+  const wide = racerDims(who).w*0.17;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for(let pass=0;pass<TRAIL_PASSES.length;pass++){
+    const P = TRAIL_PASSES[pass];
+    const col = P.c === 1 ? hot : (P.c === 2 ? withA(cool, 1) : cool);
+    for(let i=1;i<t.length;i++){
+      const a = t[i-1], b = t[i];
+      if((a.y < CT - 120 && b.y < CT - 120) || (a.y > CB + 120 && b.y > CB + 120)) continue;
+      /* age of the newer end: 1 straight out of the emitter, 0 as it goes */
+      const k = clamp(b.life/b.max, 0, 1);
+      /* and how far down the trail it is, which is what tapers it */
+      const along = i/t.length;
+      const wk = (0.35 + along*0.65)*k;
+      if(wk <= 0.02) continue;
+      ctx.globalAlpha = P.a*k*k;
+      ctx.lineWidth = Math.max(0.6, wide*P.w*wk);
+      ctx.strokeStyle = P.c === 1 ? hot : col;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+/* Every trail on the road, under the cars that are laying them. */
+function drawTrails(){
+  drawRacerTrail("me");
+  for(let i=0;i<G.rivals.length;i++) drawRacerTrail(G.rivals[i]);
+}
+
+/* ---- the white transition ---------------------------------------
+   Belongs to a view, not to the canvas: it is drawn over one column, after
+   that column's road and after that column's instruments, so the whole of one
+   person's game disappears and nobody else's does. On one screen the
+   instruments are in the page rather than on the canvas, so the shell hides
+   them for as long as this is running - see paintHUD().
+
+   It comes up fast and goes out over the tail of the timer, which reads as a
+   flash rather than as a curtain. */
+function whiteoutAlpha(who){
+  const o = who === "me" ? G : who;
+  if(!o || !(o.whiteT > 0)) return 0;
+  const k = clamp(o.whiteT/NEELA_WHITEOUT, 0, 1);
+  /* full white for the first half, then out */
+  return k > 0.5 ? 1 : k*2;
+}
+function drawWhiteout(who){
+  const a = whiteoutAlpha(who);
+  if(a <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
 /* One frame. In a normal game that is one view of the world; in local play it
    is one view per person, cut into equal columns and each shifted so its own
    car sits where player one's sits in theirs. */
@@ -940,6 +1134,9 @@ function render(){
   if(!G.local || G.humans.length < 2){
     VOWN = "me";
     renderView(0);
+    /* One screen, one owner: the white goes over the road here and the page's
+       own instruments are taken out of the way by paintHUD(). */
+    drawWhiteout("me");
     return;
   }
   for(let i=0;i<G.humans.length;i++){
@@ -950,6 +1147,10 @@ function render(){
     VOWN = who;
     renderView(camDy(who));
     drawSeatHud(who, i);
+    /* After this column's road AND this column's instruments, so the whole of
+       one person's game goes white - and inside the clip, so nobody else's
+       column is touched by it. */
+    drawWhiteout(who);
     ctx.restore();
   }
   VOWN = "me"; CAMDY = 0; CT = 0; CB = H;
@@ -975,6 +1176,10 @@ function renderView(dy){
     drawRoadFade();
   }
 
+  /* Laid on the road and under everything that is standing on it, so a car
+     is never drawn behind its own trail. */
+  drawTrails();
+
   /* Every car that is not this view's owner wears its Conditions beside it;
      the owner's own go in the corner of the view's HUD instead, so nobody has
      badges floating over the car they are actually driving. The badges are
@@ -983,12 +1188,12 @@ function renderView(dy){
   for(let n=0;n<G.rivals.length;n++){
     const RV = G.rivals[n];
     if(G.state === "idle" || RV.dead > 0) continue;
-    const rc = CARS[RV.car];
+    const rc = racerModel(RV);
     const rblink = RV.invuln > 0 && Math.floor(RV.invuln*9) % 2 === 0;
     if(!rblink){
-      const rd = carDims(RV.car);
+      const rd = racerDims(RV);
       drawCar(RV.x, RV.y, rd.w, rd.h, rc, RV.tilt, true,
-              RV.boosting || RV.ultOn, flannUltActive(RV));
+              RV.boosting || RV.ultOn, flannUltActive(RV), morphFlash(RV));
       ctx.globalAlpha = 1;
       if(G.local && RV.human) drawSeatMark(RV, RV.x, RV.y);
     }
@@ -998,11 +1203,11 @@ function renderView(dy){
   const blink = G.invuln > 0 && Math.floor(G.invuln*9) % 2 === 0;
   const meSeen = !G.local || (playerY >= CT - carH*2 && playerY <= CB + carH*2);
   if(G.state !== "idle" && G.dead <= 0 && meSeen){
-    const car = CARS[G.car];
+    const car = racerModel("me");
     if(!blink){
-      const cd = carDims(G.car);
+      const cd = racerDims("me");
       drawCar(G.x, playerY, cd.w, cd.h, car, G.tilt, true,
-              G.boosting || G.ultOn, flannUltActive("me"));
+              G.boosting || G.ultOn, flannUltActive("me"), morphFlash("me"));
       ctx.globalAlpha = 1;
       if(G.local) drawSeatMark("me", G.x, playerY);
     }

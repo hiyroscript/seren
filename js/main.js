@@ -143,7 +143,7 @@ $("#customBody").addEventListener("click", function(e){
 });
 
 $("#carFlann").addEventListener("click", function(){ pickCar("flann"); });
-$("#carPhantom").addEventListener("click", function(){ pickCar("phantom"); });
+$("#carNeela").addEventListener("click", function(){ pickCar("neela"); });
 $("#carBolt").addEventListener("click", function(){ pickCar("bolt"); });
 $("#carTimestamp").addEventListener("click", function(){ pickCar("timestamp"); });
 $("#carRose").addEventListener("click", function(){ pickCar("rose"); });

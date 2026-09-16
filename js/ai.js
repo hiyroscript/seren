@@ -246,6 +246,32 @@ function laneScore(R, l, s){
 }
 
 /* Value the opportunity to gain distance with the shared speed boost. */
+/* What the fifteen seconds are worth beyond the pace, for the two cars that
+   get something beyond the pace. Everything above is the shared read of the
+   road and applies to all six; this is an adjustment on top of it, and it is
+   nothing for the four cars that have no power to value. Neither branch
+   assumes the other does not exist. */
+function botUltExtra(R, s){
+  const M = s.M, D = s.D;
+  if(flannCar(R)){
+    /* A ram is worth exactly what there is to ram, which is traffic in front -
+       and a driver that would rather hurt somebody wants it sooner. */
+    let v = s.front ? 0.25 + (0.30 - Math.min(0.30, s.frontGap/(carH*14))) : 0;
+    if(s.place > 1) v += 0.10;
+    return v*(0.5 + M.spite*0.8 + D.hunt*0.3);
+  }
+  if(neelaCar(R)){
+    /* The exchange does not carry Neela up the road: it throws whoever it
+       catches back to where Neela was when the button went down. So what it is
+       worth is having somebody to catch and somewhere far behind to send them,
+       and out in front of an empty road it is worth nothing at all - which is
+       a different judgement from the ram's, not a copy of it. */
+    let v = s.front ? 0.30 + (0.30 - Math.min(0.30, s.frontGap/(carH*16))) : 0;
+    if(s.place > 1) v += 0.15;
+    return v*(0.5 + M.spite*0.6 + D.hunt*0.4);
+  }
+  return 0;
+}
 function botUltValue(R, s){
   let value = 0.3;
   if(s.losing || s.place > 1) value += 0.3;
@@ -255,7 +281,7 @@ function botUltValue(R, s){
   else if(s.frontGap < carH*2) value -= 0.4;
   if(s.now[R.lane] || s.boxed) value -= 0.35;
   if(R.slow > 0) value -= 0.3;
-  return value;
+  return value + botUltExtra(R, s);
 }
 
 /* Press it, hold it, or leave it. Judgement only: the meter fills off the
