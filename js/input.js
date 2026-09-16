@@ -21,7 +21,11 @@ function humanSteer(who, dir){
   const n = clamp(R.lane + d, 0, 2);
   if(n === R.lane) return;
   const victim = carAt(n, R.y, R);           /* barge whoever is in the lane you want */
-  if(victim) bumpTarget(victim, d, R);
+  /* A forced collision result owns the rest of this steering tick. That is
+     normally an ulting Flann wrecking the barger, and Neela's missile-form
+     position swap uses the same result so the teleport cannot be overwritten
+     by the lane assignment immediately below. */
+  if(victim && bumpTarget(victim, d, R) === "stopped") return;
   R.lane = n;
   R.changeT = 0;
 }
