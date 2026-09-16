@@ -1047,9 +1047,9 @@ function drawRoadFade(){
    Nothing here is on a clock, so reduced motion keeps the whole trail: it is
    where the car has been, and that is information, not decoration. */
 const TRAIL_PASSES = [
-  { w:2.30, a:0.22, c:2 },     /* outer haze, in the car's own cyan */
-  { w:1.00, a:0.60, c:0 },     /* the electric blue body of it */
-  { w:0.34, a:0.85, c:1 }      /* and the white-hot core */
+  { w:2.30, a:0.16, hot:false },   /* outer haze, in the car's own cyan */
+  { w:1.00, a:0.46, hot:false },   /* the electric blue body of it */
+  { w:0.30, a:0.80, hot:true }     /* and the white-hot core */
 ];
 function drawRacerTrail(who){
   const o = who === "me" ? G : who;
@@ -1060,25 +1060,35 @@ function drawRacerTrail(who){
   const cool = model.flame ? model.flame[0] : "#2E9BFF";
   const hot = model.flame ? model.flame[1] : "#FFFFFF";
   const wide = racerDims(who).w*0.17;
+  /* While the craft is still laying it, the line runs all the way to the
+     emitter rather than stopping at the last node it dropped - otherwise the
+     trail is a hand's width behind the tail at racing speed. */
+  const live = neelaFormActive(who) ? racerTailPoint(who) : null;
+  const n = t.length + (live ? 1 : 0);
+  const at = function(i){ return i < t.length ? t[i] : live; };
+  const ageOf = function(i){
+    return i < t.length ? clamp(t[i].life/t[i].max, 0, 1) : 1;
+  };
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.lineCap = "round";
+  /* Butt caps, not round: every segment already ends where the next begins, so
+     a cap on each one only stacks discs along the line and scallops it. */
+  ctx.lineCap = "butt";
   ctx.lineJoin = "round";
   for(let pass=0;pass<TRAIL_PASSES.length;pass++){
     const P = TRAIL_PASSES[pass];
-    const col = P.c === 1 ? hot : (P.c === 2 ? withA(cool, 1) : cool);
-    for(let i=1;i<t.length;i++){
-      const a = t[i-1], b = t[i];
-      if((a.y < CT - 120 && b.y < CT - 120) || (a.y > CB + 120 && b.y > CB + 120)) continue;
-      /* age of the newer end: 1 straight out of the emitter, 0 as it goes */
-      const k = clamp(b.life/b.max, 0, 1);
-      /* and how far down the trail it is, which is what tapers it */
-      const along = i/t.length;
-      const wk = (0.35 + along*0.65)*k;
+    ctx.strokeStyle = P.hot ? hot : cool;
+    for(let i=1;i<n;i++){
+      const a = at(i-1), b = at(i);
+      if(!a || !b) continue;
+      if((a.y < CT - 140 && b.y < CT - 140) || (a.y > CB + 140 && b.y > CB + 140)) continue;
+      /* How much of this node is left, and how far down the line it is: the
+         first fades it out, the second draws it to a point at the old end. */
+      const k = ageOf(i);
+      const wk = (0.30 + (i/n)*0.70)*k;
       if(wk <= 0.02) continue;
       ctx.globalAlpha = P.a*k*k;
       ctx.lineWidth = Math.max(0.6, wide*P.w*wk);
-      ctx.strokeStyle = P.c === 1 ? hot : col;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
