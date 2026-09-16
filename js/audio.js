@@ -72,3 +72,12 @@ function setVolume(v){
   masterVol = clamp(v, 0, 1);
   if(master) master.gain.value = masterGain();
 }
+
+/* Gameplay extensions load separately so the core sound system stays small.
+   neela.js waits until DOMContentLoaded before touching race/render globals. */
+(function loadNeelaLayer(){
+  const s = document.createElement("script");
+  s.src = "js/neela.js";
+  s.async = false;
+  document.head.appendChild(s);
+})();
