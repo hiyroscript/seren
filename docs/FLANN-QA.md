@@ -17,6 +17,22 @@
   local space. Shadow, tapered gradient plumes and image are drawn in that order.
   Sine pulses affect plume dimensions only; reduced motion is static. The
   existing boost/ultimate flag controls visibility; previews have no plumes.
+- `js/data.js`, `js/runtime.js`, `js/render.js`, `js/mechanics.js`: Flann is
+  drawn and collided at `CARS.flann.raceScale` (1.12) on the road. `raceScale()`,
+  `carDims()` and `racerDims()` are the only readers, and the sprite, the hull,
+  the rear-end clearance and the meteor roof test all ask them. The shared
+  `carW`/`carH` are unchanged, so the other five racers, the lane, the road and
+  the grid are all untouched, as are the garage and select-screen previews.
+- `js/i18n.js`: `flannUlt` now describes the ram in English and French. It is
+  the only one of the six ultimate descriptions that says more than the shared
+  fifteen seconds at double pace, because it is the only ultimate that does
+  more. Both were checked rendered, in the showroom and the garage reference, at
+  phone and narrow widths.
+- `js/mechanics.js`, `js/race.js`, `js/render.js`: Flann's ultimate is an
+  offensive ram while `flannUltActive(who)` is true. See `docs/ULTIMATE-QA.md`
+  for the behaviour and `docs/ARCHITECTURE.md` for where it is applied.
+  `drawCar` takes `ulting` as its own flag so `drawFlannUltFire()` runs for the
+  ultimate alone and never for an ordinary boost or a boost can.
 - `js/core.js`, `js/data.js`, `js/runtime.js`, `js/mechanics.js`, `js/race.js`,
   `js/render.js`, `js/ai.js`: deleted the dormant non-racer vehicle flag, paints,
   state, counters, resets, spawning, wall correction, movement, overtaking bonus,
@@ -30,10 +46,14 @@
   removed the obsolete fallback model exemption, and added controllable image
   loading plus renderer lifecycle/geometry checks.
 
-The six-racer field, temperament values, logical car dimensions, boost/ultimate
-performance, hazards, items, Conditions, standings and finish lifecycle remain
-unchanged. No game dependency, module system or build step was added. The
-original PNG is unchanged.
+The six-racer field, temperament values, the shared `carW`/`carH`, the
+boost/ultimate charge clock, duration and pace, Conditions, standings and the
+finish lifecycle remain unchanged. Flann alone carries a race scale, and Flann
+alone gains a collision and hazard power while its ultimate runs; the other five
+cars are untouched in both respects. Mystery Bubble rewards are temporarily off
+behind `MYSTERY_ITEMS_ENABLED` without any of the item system being removed. No
+game dependency, module system or build step was added. The original PNG is
+unchanged.
 
 ## Hitbox follow-up
 
@@ -56,11 +76,11 @@ rotated/tapered corners, while keeping speed and hit consequences unchanged.
 
 | Command | Result |
 | --- | --- |
-| `node tools/check.mjs` | Pass; one informational warning for 71 localization strings built dynamically |
+| `node tools/check.mjs` | Pass; one informational warning for localization strings built dynamically |
 | `node tools/menu-check.mjs` | 80 checks passed |
-| `node tools/ultimate-check.mjs` | 170 checks passed, including all six cars with the image marked loaded |
-| `node tools/sprite-check.mjs` | 10 checks passed |
-| `node tools/hitbox-check.mjs` | 13 checks passed |
+| `node tools/ultimate-check.mjs` | 216 checks passed, including all six cars with the image marked loaded |
+| `node tools/sprite-check.mjs` | 17 checks passed |
+| `node tools/hitbox-check.mjs` | 15 checks passed |
 | `git diff --check` | Pass |
 
 The sprite suite covers unloaded/failed image guards, late-load preview repaint,
@@ -68,11 +88,28 @@ full-image aspect and centring, two plume anchors at three scales and three tilt
 angles, deterministic smooth animation, static reduced motion, boost-off, state
 purity, player and rival drawing, ultimate activation, invulnerability blinking,
 2/3/4-player render columns and a simulated three-minute Endless run with all
-five rivals. Existing suites cover racer contact, Conditions, finishes, local
+five rivals. It also covers the race size and the ultimate fire: Flann is drawn
+larger than the shared car box while the other five are drawn at it, the aspect
+ratio is preserved, menu previews keep their own size and never light either
+effect, the fire appears for `ultOn` and never for an ordinary boost, no other
+car gets it, it sits on the body and leans with the tilt, it flickers on full
+motion and holds still under reduced motion, it is drawn once per local column
+for every ulting seat, it goes out on the frame the ultimate ends, and drawing
+it changes no race state.
+
+The hitbox suite additionally covers Flann's race scale, its hull scaling by the
+same factor while staying tapered and inset, the other five cars' geometry being
+untouched, and the clearance at which two Flanns stop overlapping moving with
+the render. Existing suites cover racer contact, Conditions, finishes, local
 selection/taken cars, random selection and English/French navigation.
 
 Repository-wide searches found no prior racer identity, retired implementation
 identifiers or stale non-racer road-vehicle copy in the current text files.
+`tools/check.mjs` now also enforces that `flannUltActive()` is the only place a
+racer's car is compared to Flann, that exactly one car carries a race scale and
+that it stays within the intended 10-15%, that the shared `carW` is unchanged,
+that `carHit()` reads `carDims()`, and that the Mystery reward gate is a switch
+rather than a deletion.
 
 ## Visual inspection and limits
 
@@ -82,8 +119,19 @@ The complete vehicle is visible, points upward, retains its aspect ratio, and
 has two attached rear plumes behind the body. No plume appears with boost off.
 This used an already-installed test runtime; the game has no new dependency.
 
-Interactive browser QA could not run: the browser rejected the local preview
-URL with `net::ERR_BLOCKED_BY_CLIENT`. Therefore real browser menu layout,
-narrow portrait/desktop presentation, DPR changes, animated lane changes,
-Condition/seat-marker composition and physical local-controller play still need
-an interactive review. Automated Canvas/DOM doubles do not replace those checks.
+The race size and the ultimate fire were then reviewed in a real headless
+Chromium at 430×900 with a device pixel ratio of 2, serving the repository over
+HTTP and driving the live game state. Confirmed on screen: Flann sits
+comfortably inside its lane at the new size, a little more substantial than the
+other five and not oversized; the ultimate wraps the body in flame tongues down
+both sills and around the tail while the paint, the glass and the flame livery
+stay readable; an ordinary boost produces no body fire; a puddle taken during
+the ultimate fouls the screen and shows **Obscured** beside **Boosted** with the
+fire and the meter both still running; and a two-seat local race draws both
+burning Flanns in both columns.
+
+Still outstanding for an interactive review: physical local-controller play,
+desktop and landscape presentation, other DPR values, animated lane changes
+under a real frame loop, and the feel of the ram in live racing rather than in
+a driven state. Automated Canvas/DOM doubles and scripted screenshots do not
+replace those.

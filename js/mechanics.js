@@ -128,16 +128,63 @@ function rearContact(who){
   return front;
 }
 
+/* ---------------- Flann's ultimate -------------------------------
+   Every car runs the same ultimate: seventy-five seconds to charge, fifteen
+   seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
+   below is shared by all six. Flann is the one car that adds something on top
+   of it, and only while that shared lifecycle is running - it catches fire and
+   becomes a ram, so solid things it hits come apart instead of it.
+
+   This is the one predicate that says so. Nothing else anywhere spells out the
+   car and the flag, so there is no second copy of the rule to drift.
+
+   It is deliberately NOT the Invulnerable Condition and it does not go through
+   noContact(): an ulting Flann still has to physically meet a racer or a
+   hazard in order to break it, and the puddle must still get through. What it
+   is, is collision priority - which is applied at the consequence, by the
+   three helpers below and by the hazard code in this file and in race.js. */
+function flannUltActive(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.car === "flann" && !!o.ultOn;
+}
+/* Which of two racers in contact wins it outright, or null for the ordinary
+   rules. Two ulting Flanns cancel: neither can smash the other, so the contact
+   falls back to the shunt and the barge like any other pair. */
+function ramWinner(a, b){
+  const ramA = flannUltActive(a), ramB = flannUltActive(b);
+  if(ramA === ramB) return null;
+  return ramA ? a : b;
+}
+/* One destruction call that does not care which kind of racer it is handed, so
+   the ram uses the existing wreck lifecycle - blame, meter penalty and reward,
+   particles, shake and audio - rather than growing a second one. */
+function wreckRacer(who, by){
+  if(who === "me") destroyCar(by);
+  else wreckRival(who, by);
+}
+
 /* Rear contact shunts the front car and slows the following car. */
 function rearEnd(who, victim){
   const meB = who === "me";
+  const vWho = victim.me ? "me" : victim.obj;
   if(meB ? finishedMe() : finishedCar(who)) return;      /* out of play: no contact */
   if(victim.me ? finishedMe() : finishedCar(victim.obj)) return;
-  if((meB ? G.bumpCD : who.bumpCD) > 0) return;
+  if(noContact(who) || noContact(vWho)) return;
 
-  if(noContact(who) || noContact(victim.me ? "me" : victim.obj)) return;
+  /* A ram settles it before the ordinary rules get a look in, and it does not
+     matter which of the two did the running into: the loser is wrecked where
+     it stands and Flann drives on with no slow, no shunt, no shove back down
+     the road and no rear-end cooldown to serve for it. Ahead of the cooldown
+     gate on purpose - a bump half a second ago must not let somebody sail
+     through an ulting Flann for free. */
+  const ram = ramWinner(who, vWho);
+  if(ram){ wreckRacer(ram === who ? vWho : who, ram); return; }
+
+  if((meB ? G.bumpCD : who.bumpCD) > 0) return;
   const vy = victim.y;
-  if(meB) G.bumpCD = 0.5; else { who.bumpCD = 0.5; who.y = vy + carH*0.98; }
+  /* Far enough back to clear both bodies, whatever size each of them is. */
+  const gap = (racerDims(who).h + racerDims(vWho).h)/2*0.98;
+  if(meB) G.bumpCD = 0.5; else { who.bumpCD = 0.5; who.y = vy + gap; }
 
   if(meB) G.slowT = Math.max(G.slowT, BUMP_SLOW*0.7);
   else who.slow = Math.max(who.slow, BUMP_SLOW*0.7);
@@ -152,14 +199,37 @@ function rearEnd(who, victim){
   noise(.14, .22);
 }
 
+/* What the barge actually did, so the caller knows whether the lane change it
+   was in the middle of still happens:
+
+   - "none"     nothing could be reached; the lane change is unaffected
+   - "moved"    the ordinary barge: shoved across and left labouring
+   - "wrecked"  no room left, so the hit wrecked it against the barrier
+   - "rammed"   an ulting Flann destroyed it outright and takes the lane
+   - "stopped"  the barger wrecked itself on an ulting Flann, and the lane
+                change dies with it
+
+   Only "stopped" stops the caller; everything else leaves the lane to the car
+   that asked for it, exactly as it always did. */
 function bumpTarget(victim, dir, by){
-  if(noContact(by) || noContact(victim.me ? "me" : victim.obj)) return;
+  const vWho = victim.me ? "me" : victim.obj;
+  if(noContact(by) || noContact(vWho)) return "none";
+
+  /* Flann's ultimate takes the lane by destroying whatever is in it, and a car
+     that barges into an ulting Flann destroys itself instead of moving it. */
+  const ram = ramWinner(by, vWho);
+  if(ram){
+    wreckRacer(ram === by ? vWho : by, ram);
+    return ram === by ? "rammed" : "stopped";
+  }
+
   const to = victim.lane + dir;
+  let out = "moved";
   if(victim.me){
-    if(to < 0 || to > 2) destroyCar(by);
+    if(to < 0 || to > 2){ destroyCar(by); out = "wrecked"; }
     else { G.lane = to; G.slowT = Math.max(G.slowT, BUMP_SLOW); }
   } else {
-    if(to < 0 || to > 2) wreckRival(victim.obj, by);
+    if(to < 0 || to > 2){ wreckRival(victim.obj, by); out = "wrecked"; }
     else {
       victim.obj.lane = to;
       victim.obj.x = lerp(victim.obj.x, laneCX(to), 0.35);
@@ -169,6 +239,7 @@ function bumpTarget(victim, dir, by){
     }
   }
   sideSwipe(victim.obj || { x:G.x, y:playerY, car:G.car });
+  return out;
 }
 
 function move(dir){
@@ -179,9 +250,11 @@ function move(dir){
 
   /* Barge into the lane you want. If the other car has room it is shoved
      across and left labouring; if it is already against a barrier the hit
-     wrecks it instead. Either way the lane is yours. */
+     wrecks it instead. Either way the lane is yours - unless what was sitting
+     in it was an ulting Flann, in which case the barge wrecked you and there
+     is nobody left to finish the lane change. */
   const victim = carAt(n, playerY, "me");
-  if(victim) bumpTarget(victim, dir, "me");
+  if(victim && bumpTarget(victim, dir, "me") === "stopped") return;
   G.lane = n;
 }
 
@@ -194,7 +267,8 @@ function rivalSteer(R, lane){
 function rivalLaneTo(R, lane){
   const dir = lane > R.lane ? 1 : -1;
   const victim = carAt(lane, R.y, R);
-  if(victim) bumpTarget(victim, dir, R);
+  /* Wrecked on an ulting Flann: there is no lane change left to make. */
+  if(victim && bumpTarget(victim, dir, R) === "stopped") return;
   R.lane = lane;
   R.changeT = 0.7;
 }
@@ -245,10 +319,10 @@ function tickUlt(who, dt){
 }
 
 function ultBurst(carId, x, y){
-  const car = CARS[carId];
+  const car = CARS[carId], d = carDims(carId);
   for(let i=0;i<26;i++){
     const a = (i/26)*6.2832;
-    addFx(x + Math.cos(a)*carW*0.7, y + Math.sin(a)*carH*0.45,
+    addFx(x + Math.cos(a)*d.w*0.7, y + Math.sin(a)*d.h*0.45,
           Math.cos(a)*210, Math.sin(a)*210, rand(.4,.8), rand(3,6),
           i % 2 ? car.flame[0] : car.flame[1]);
   }
@@ -480,6 +554,12 @@ function updateBubbles(dt, d, st){
 function takeBubble(who, bx, by){
   const me = who === "me";
   const holder = me ? G : who;
+  /* Rewards are switched off - see MYSTERY_ITEMS_ENABLED. The bubble is still
+     swept up and still pops, but nothing is handed over: no item, no trade of
+     the one already held, and no bot fuse to fire one with. The pop is drawn
+     in a plain colour rather than a rarity colour, because a rarity colour
+     would be claiming a reward that was never granted. */
+  if(!MYSTERY_ITEMS_ENABLED){ popFx(bx, by, "#BFC6D0"); return; }
   const had = !!holder.item;
   holder.item = rollItem(leaderOf(who));
   if(had) holder.swapT = ITEM_SWAP;
@@ -505,6 +585,12 @@ function useItem(who){
   const holder = me ? G : who;
   const id = holder.item;
   if(!id) return false;
+  /* Defence in depth for the reward gate above: with Mystery rewards off, a
+     Can, an Oil or a Seeker must not fire even if one somehow reached a holder
+     - a saved race, a console poke, a future code path. It is dropped rather
+     than kept, so stale state cannot sit in a box waiting for the gate to come
+     back and then go off. */
+  if(!MYSTERY_ITEMS_ENABLED && mysteryItem(id)){ holder.item = null; return false; }
   if(me && (G.state !== "running" || G.dead > 0 || G.finished !== null)) return false;
   if(!me && (who.dead > 0 || who.finished !== null)) return false;
   holder.item = null;
@@ -799,16 +885,23 @@ function spawnTrap(){
 
 /* --- Body hitboxes: world coordinates, independent of camera/DPR and PNG
        loading. Flann's inset hull follows its tapered body; the other cars
-       keep their existing body dimensions. All hulls rotate with the car. */
+       keep their existing body dimensions. All hulls rotate with the car.
+
+       The shape is in logical car units and the size it is multiplied up by is
+       the racer's own, out of carDims() - so a car drawn larger on the road is
+       collided larger by exactly the same factor, and there is never a big car
+       carrying a small hull. Five of the six are carW/carH as they always
+       were. */
 function carHit(who, xAt, yAt, tiltAt){
   const me = who === undefined || who === "me", o = me ? G : who;
   const x = xAt === undefined ? o.x : xAt;
   const y = yAt === undefined ? (me ? playerY : o.y) : yAt;
   const tilt = tiltAt === undefined ? (o.tilt || 0) : tiltAt;
   const shape = CARS[o.car].hitShape || CAR_HIT_RECT;
+  const dim = carDims(o.car);
   const ca = Math.cos(tilt), sa = Math.sin(tilt);
   const points = shape.map(function(p){
-    const px = p[0]*carW, py = p[1]*carH;
+    const px = p[0]*dim.w, py = p[1]*dim.h;
     return { x:x + px*ca - py*sa, y:y + px*sa + py*ca };
   });
   return { x:x, y:y, points:points };
@@ -946,11 +1039,20 @@ function updateTraps(dt, d, st){
         if(o.fall <= 0) detonate(o, live);
         else if(racing && o.fall < rockLead(o)){
           const alt = rockAlt(o);
-          if(alt < carH*0.55){                       /* a rock straight on the roof */
+          if(alt < racerDims("me").h*0.55){           /* a rock straight on the roof */
             const my = o.y - alt;
             const p2 = nearestOnCar(c, o.x, my);
             const dx = p2.x - o.x, dy = p2.y - my;
-            if(dx*dx + dy*dy <= o.mr*o.mr) detonate(o, live);
+            if(dx*dx + dy*dy <= o.mr*o.mr){
+              /* An ulting Flann goes through the rock rather than under it: it
+                 is taken off the road here and now, so it never reaches the
+                 ground and never detonates. The ultimate is untouched. */
+              if(flannUltActive("me")){
+                smashFx(o.x, my, o.mr, "#C6482A", G.car);
+                G.traps.splice(i,1); continue;
+              }
+              detonate(o, live);
+            }
           }
         }
       } else if(o.phase === 1){
@@ -983,7 +1085,10 @@ function detonate(o, live){
   for(let i=0;i<8;i++)
     addFx(o.x, o.y, rand(-70,70), rand(-130,-20), rand(.6,1.1), rand(4,8), "#2E2A34");
   noise(.5, .5); tone(70, .4, "sawtooth", .16);
-  if(live){
+  /* The blast still happens and still looks like one; what an ulting Flann
+     does not do is die in it. Everybody else inside the radius is destroyed on
+     exactly the terms they always were. */
+  if(live && !flannUltActive("me")){
     const c2 = carHit();
     const p3 = nearestOnCar(c2, o.x, o.y);
     const dx = p3.x - o.x, dy = p3.y - o.y;
@@ -991,7 +1096,7 @@ function detonate(o, live){
   }
   for(let n=0;n<G.rivals.length;n++){
     const R = G.rivals[n];
-    if(safeCar(R)) continue;
+    if(safeCar(R) || flannUltActive(R)) continue;
     const rc = carHit(R);
     const p4 = nearestOnCar(rc, o.x, o.y);
     const rx = p4.x - o.x, ry = p4.y - o.y;
@@ -1044,6 +1149,10 @@ function destroyCar(by){
 }
 
 function hitWeed(o){
+  /* Flann's ultimate goes straight through it. No Slow, no meter penalty, and
+     the weed comes apart on the bonnet rather than being politely missed - the
+     caller removes it either way. */
+  if(flannUltActive("me")){ smashWeed(o, G.car); return; }
   ultDelta("me", ULT_ON_TRAP);
   if(refusesDebuffs("me")) return;
   G.slowT = SLOW_TIME;
@@ -1055,6 +1164,12 @@ function hitWeed(o){
   }
   noise(.24, .24); tone(170, .13, "square", .07);
 }
+
+/* A tumbleweed broken apart by an ulting Flann rather than survived. It throws
+   the same debris the seeker's clear-out does - one destruction effect for
+   "this was smashed", asked for by a car now instead of a missile - tinted with
+   the weed's own colour. Player, bot and local human all come here. */
+function smashWeed(o, whose){ smashFx(o.x, o.y, o.r, "#D8C49A", whose); }
 
 /* Hazard debris, also used when a seeker clears the road. */
 function smashFx(x, y, r, tint, whose){

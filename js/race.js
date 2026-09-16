@@ -781,6 +781,13 @@ function updateRival(R, dt, st){
         : dx*dx + dy*dy <= o.r*o.r*0.86;
       if(!hit){ markPassed(o, rc, bit); continue; }
       o.hit |= bit;
+      /* A rival Flann with its ultimate running smashes the tumbleweed exactly
+         as the player's does: no Slow, no meter penalty, and the weed destroyed
+         on contact. The puddle is deliberately not here - water is not a solid
+         thing to break, so it goes on fouling the screen below. */
+      if(o.kind === "weed" && flannUltActive(R)){
+        smashWeed(o, R.car); G.traps.splice(i,1); break;
+      }
       ultDelta(R, ULT_ON_TRAP);
       if(refusesDebuffs(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
       if(o.kind === "weed"){ R.slow = SLOW_TIME; puffFx(o.x, o.y); G.traps.splice(i,1); }

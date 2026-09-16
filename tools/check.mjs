@@ -442,6 +442,112 @@ if (ITEMS && RARITY) {
   pass(`${Object.keys(ITEMS).length} items wired - drop odds: ${odds}`);
 }
 
+/* The Mystery Bubble rewards are temporarily off behind one named gate. The
+   point of the gate is that it is a switch and not a deletion, so what this
+   checks is that the switch exists, that it is the only thing turning the
+   rewards off, and that nothing was quietly taken out behind it. */
+head("Mystery Bubble rewards");
+{
+  const data = strip(sources.data || "");
+  const gate = /const\s+MYSTERY_ITEMS_ENABLED\s*=\s*(true|false)\s*;/.exec(data);
+  if (!gate) fail("MYSTERY_ITEMS_ENABLED is not declared in js/data.js");
+  else pass(`MYSTERY_ITEMS_ENABLED is ${gate[1]} - one named switch, easy to put back`);
+  /* Both doors are gated: the one that grants an item and the one that spends
+     it. The second is defence in depth against state that predates the gate. */
+  const mech = strip(sources.mechanics || "");
+  const gated = (fn) => {
+    const at = mech.indexOf(`function ${fn}(`);
+    if (at < 0) return null;
+    return mech.slice(at, at + 900).includes("MYSTERY_ITEMS_ENABLED");
+  };
+  for (const fn of ["takeBubble", "useItem"]) {
+    const g = gated(fn);
+    if (g === null) fail(`${fn}() is missing from js/mechanics.js`);
+    else if (!g) fail(`${fn}() does not read MYSTERY_ITEMS_ENABLED`);
+    else pass(`${fn}() refuses Mystery items while the gate is closed`);
+  }
+  /* Nothing dormant may be deleted just because it is currently unreachable. */
+  const kept = { data: ["ITEMS", "ITEM_IDS", "RARITY", "SLICK_KINDS", "CAN_TIME"],
+                 mechanics: ["function rollItem", "function fireSeeker",
+                             "function useItem", "function spawnBubbleRow"],
+                 hud: ["ITEM_PATHS"],
+                 render: ["function drawSlicks", "function drawMissiles",
+                          "function drawBubbles"] };
+  const missing = [];
+  for (const [file, needles] of Object.entries(kept))
+    for (const n of needles)
+      if (!strip(sources[file] || "").includes(n)) missing.push(`${n} (js/${file}.js)`);
+  missing.length
+    ? missing.forEach((m) => fail(`the disabled item system lost ${m}`))
+    : pass("roll, artwork, rarities, oil, seekers and bubble rows are all still here");
+  /* The reward gate is not the custom-race switch; both must exist separately. */
+  /\bbubbles:\s*true\b/.test(strip(sources.runtime || ""))
+    ? pass("rules.bubbles still decides whether rows spawn at all")
+    : fail("the rules.bubbles custom-race switch is gone from defaultRules()");
+}
+
+/* Flann's ultimate is the game's one car-specific power, and its race size is
+   the game's one per-car dimension. Both are deliberate, and both are meant to
+   stay exactly one: this is what says a second has not crept in. */
+head("Flann's ultimate and race size");
+{
+  const mech = strip(sources.mechanics || "");
+  /^function flannUltActive\(/m.test(mech)
+    ? pass("flannUltActive() is the one predicate for the car-specific power")
+    : fail("flannUltActive() is not declared in js/mechanics.js");
+  /* One predicate, used everywhere, rather than the car spelled out again in
+     each caller. Comments are stripped but string bodies are kept, because the
+     literal is exactly what is being looked for. Only the declaration of
+     flannUltActive() itself may compare a racer's car to "flann"; the model
+     dispatch in drawCar reads p.key and is a different question. */
+  const adhoc = [];
+  for (const n of ORDER) {
+    if (!sources[n]) continue;
+    for (const m of sources[n].matchAll(/\.car\s*===?\s*["']flann["']/g)) {
+      const before = sources[n].slice(0, m.index);
+      const inPredicate = /function flannUltActive\([^)]*\)\s*\{[^}]*$/.test(before);
+      if (!inPredicate) adhoc.push(`js/${n}.js`);
+    }
+  }
+  adhoc.length
+    ? [...new Set(adhoc)].forEach((f) => fail(`${f} compares a racer's car to "flann" itself instead of asking flannUltActive()`))
+    : pass("flannUltActive() is the only place a racer is compared to Flann");
+  /* And it is genuinely read where the power lives: the contact rules and the
+     player's hazards in mechanics, the rivals' hazards in race, the fire in
+     render. A predicate nobody asks is a power nobody has. */
+  const wanted = ["mechanics", "race", "render"];
+  const absent = wanted.filter((n) => !strip(sources[n] || "").includes("flannUltActive("));
+  absent.length
+    ? absent.forEach((n) => fail(`js/${n}.js never asks flannUltActive()`))
+    : pass(`contact, hazards and drawing all read it (${wanted.join(", ")})`);
+  /* The shared lifecycle is untouched: same clock, same duration, same pace. */
+  const data = strip(sources.data || "");
+  for (const [k, v] of [["ULT_CHARGE", "75"], ["ULT_TIME", "15"], ["ULT_SPEED", "2.0"]]) {
+    new RegExp(`const\\s+${k}\\s*=\\s*${v.replace(".", "\\.")}\\b`).test(data)
+      ? pass(`${k} is still ${v} for every car`)
+      : fail(`${k} is no longer ${v}`);
+  }
+  /* Exactly one car carries a race scale, and the shared car box is untouched. */
+  if (CARS) {
+    const scaled = Object.entries(CARS).filter(([, c]) => c.raceScale !== undefined);
+    scaled.length === 1 && scaled[0][0] === "flann"
+      ? pass(`only Flann has a race scale (${scaled[0][1].raceScale}x)`)
+      : fail(`cars with a race scale: ${scaled.map(([id]) => id).join(", ") || "none"}`);
+    const k = (CARS.flann || {}).raceScale;
+    k > 1.09 && k < 1.16
+      ? pass("Flann's race scale is the intended 10-15% and no more")
+      : fail(`Flann's race scale is ${k}, outside the intended 10-15%`);
+  }
+  /^\s*carW\s*=\s*Math\.min\(laneW\*0\.64/m.test(strip(sources.runtime || ""))
+    ? pass("the shared carW/carH the other five are built on is unchanged")
+    : fail("the shared carW in layout() has moved");
+  /* The hull and the sprite read the same size out of the same helper, so a
+     car cannot be drawn larger than it is collided. */
+  /carDims\(o\.car\)/.test(mech)
+    ? pass("carHit() scales its hull from the shared carDims() helper")
+    : fail("carHit() no longer reads carDims()");
+}
+
 head(failures ? `${failures} failure${failures === 1 ? "" : "s"}` +
                 (warnings ? `, ${warnings} warning${warnings === 1 ? "" : "s"}` : "")
               : warnings ? `all checks passed, ${warnings} warning${warnings === 1 ? "" : "s"}`

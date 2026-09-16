@@ -86,9 +86,30 @@ a car go faster.
 While an ultimate runs, the meter is its remaining duration, so those deltas are ignored
 until it is over rather than changing its duration (`ultDelta` enforces this).
 
-All cars share this speed multiplier. It has no contact, status, targeting or
+All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
+
+### Flann's ram
+
+Flann, and only Flann, adds a collision and hazard power on top of that shared
+lifecycle, for exactly as long as it runs. `flannUltActive(who)` is the one
+predicate that says so, and there is nothing to tune here: no new duration, no
+new clock, no new constant.
+
+| While it runs | What happens |
+| --- | --- |
+| Contact with another racer | The other racer is wrecked, whichever of the two ran into the other. Flann takes no `BUMP_SLOW`, no `SHUNT_TIME` and no wreck. |
+| Two ulting Flanns | Neither can smash the other; the contact falls back to the ordinary shunt and barge. |
+| Tumbleweed | Destroyed on contact. No `SLOW_TIME`, no `ULT_ON_TRAP`. |
+| Meteor, falling rock or blast | Cannot wreck Flann, and does not end the ultimate. |
+| Puddle | Unchanged. `BLIND_TIME`, the spray and the Obscured badge all apply — water is liquid and cannot be rammed apart. |
+| Oil, seekers | Unchanged. These are Mystery Bubble items and are currently unobtainable in any case. |
+
+Respawn invulnerability and finish protection are untouched and stay
+authoritative: a ram cannot reach a racer `noContact()` refuses, in either
+direction. The moment the fifteen seconds are up, every one of these goes
+straight back to the ordinary shared rule.
 
 ## Hazards
 
@@ -112,6 +133,13 @@ Spawn spacing is inline in `race.js`: a hazard every `rand(430, 900)` of road, a
 none while a track seam is crossing.
 
 ## Mystery bubbles and items
+
+> **Rewards are temporarily off.** `MYSTERY_ITEMS_ENABLED` in `data.js` is
+> `false`, so a collected bubble grants no Can, Oil or Seeker to anybody —
+> player, bot or local seat. Nothing below has been removed or retuned; the
+> numbers are what they will be again the moment the gate goes back to `true`.
+> The gate is not `rules.bubbles`, which is the custom-race switch for whether
+> rows spawn at all and still works.
 
 | Constant | Value | Means |
 | --- | --- | --- |
@@ -149,7 +177,9 @@ numbers the roll uses, so the printed odds can never drift from what drops.
 
 The seeker is never offered to whoever is already leading; out in front its share
 is redistributed across the other two. `epic` is defined and coloured but no item
-currently uses it.
+currently uses it. These odds describe the roll, which is still correct and
+still tested; while the reward gate above is closed the roll is simply never
+reached from a bubble.
 
 ## Conditions
 
@@ -238,19 +268,44 @@ In `js/local.js`:
 | `SPLASH_IMAGE` | `""` | `core.js` | a data URI or a path to replace the built-in mark; empty keeps the mark |
 | `RAINBOW` | | `data.js` | the seven bands of the space track |
 
-### Flann artwork
+### Flann artwork and race size
 
-`CARS.flann.spriteBounds` fits the visible vehicle to the existing car box while
+`CARS.flann.spriteBounds` fits the visible vehicle to the car box while
 preserving the PNG aspect ratio and padding. `exhaust` stores its two normalized
 source-image anchors. These are visual calibration only: never change `carW`,
 `carH`, collision rules or speed to tune artwork. Plumes pulse by about 7% in
 length and 5% in width; reduced motion disables that pulse.
 
+| Constant | Value | Means |
+| --- | --- | --- |
+| `CARS.flann.raceScale` | `1.12` | how large Flann is on the road, against the shared car box |
+
+This is the one per-car dimension in the game, and it is race-only. Flann read
+undersized against its lane, so it gets a little over a tenth back: the scale is
+uniform, so the aspect ratio, the measured `spriteBounds` and the exhaust
+anchors are all unaffected, and the body occupies about 71% of a lane instead of
+64%. `raceScale()`, `carDims()` and `racerDims()` in `runtime.js` are the only
+readers; the sprite, the hull, the gap a rear-end leaves and the roof a meteor
+lands on all ask them rather than reaching for `carW`/`carH`.
+
+To resize Flann, change this number and nothing else — the hull follows it
+automatically. Do **not** raise `carW`/`carH`: that is the lane's car and it
+would resize all six. The garage and select-screen previews size their own
+canvas and are deliberately outside this, so they do not move either.
+
+The ultimate fire is drawn by `drawFlannUltFire()` from the `FLANN_FIRE` table
+in `render.js` — each row is a tongue's position and length in fractions of the
+car's own width and height, plus a phase offset. It is enabled by `drawCar`'s
+separate `ulting` flag, never by `boosting`, so an ordinary boost and a boost
+can leave the paint alone.
+
 ### Body hitboxes
 
 `CAR_HIT_RECT` retains the default body half-width 0.40 and half-height 0.42
 in logical car units. `CARS.flann.hitShape` tapers its inset body to exclude empty
-corners in the sprite. `carHit()` rotates both with the vehicle. Neither includes
+corners in the sprite. `carHit()` rotates both with the vehicle and multiplies
+them up by the racer's own size out of `carDims()`, so Flann's hull carries its
+1.12 race scale and the other five are `carW`/`carH` exactly as before. Neither includes
 shadows, flames or PNG padding. These are gameplay shapes, independent of asset
 loading and display scaling; change them only when intentionally tuning contact.
 

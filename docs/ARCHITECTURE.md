@@ -352,17 +352,43 @@ state and the invulnerability timer. There is no second, mutable copy to fall ou
 of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
-`rearEnd` and `bumpTarget` apply ordinary contact rules regardless of ultimate
-state; the short forward shove a rear-end hands its victim is `SHUNT_TIME` /
-`SHUNT_BOOST` and shows as Boosted. `startUlt`, `tickUlt` and `endUlt` manage one
-fixed 15-second speed multiplier for every driver.
+`startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
+for every driver, and that lifecycle is shared by all six cars. One car adds a
+power on top of it: while `flannUltActive(who)` is true — the racer exists, its
+car is `flann`, and its ordinary `ultOn` is running — Flann is a ram. It is
+deliberately **not** the Invulnerable Condition and does not go through
+`noContact()`, because an ulting Flann still has to physically meet a racer or a
+hazard in order to break it. The exception is applied at the consequence:
+
+- `ramWinner(a, b)` says which of two racers in contact wins it outright, or
+  `null` for the ordinary rules. Two ulting Flanns cancel.
+- `rearEnd` and `bumpTarget` ask it first. The loser is wrecked through the
+  existing lifecycle (`wreckRacer` → `destroyCar` / `wreckRival`, so blame,
+  meter penalty and reward, particles, shake and audio are all the usual ones)
+  and the winner takes no slow, shunt or cooldown for it.
+- `bumpTarget` returns the outcome — `none`, `moved`, `wrecked`, `rammed` or
+  `stopped` — so `move()` and `rivalLaneTo()` do not go on to move a car that
+  has just wrecked itself on an ulting Flann.
+- `hitWeed` and the rival hazard sweep in `race.js` smash the tumbleweed
+  instead of taking Slow; the falling rock and `detonate`'s blast cannot reach
+  it. Puddles are the deliberate exception and still apply normally: water is
+  not a solid thing to break.
+
+For every other car, and for Flann the moment its ultimate expires, `rearEnd`
+and `bumpTarget` apply ordinary contact rules regardless of ultimate state; the
+short forward shove a rear-end hands its victim is `SHUNT_TIME` / `SHUNT_BOOST`
+and shows as Boosted.
 
 Body contact is centralized in `carHit(who)`. Flann uses an inset eight-point
 `hitShape` in logical car units; other cars retain their existing inset body
-rectangle. Both rotate with the rendered tilt. Hitboxes never read image alpha,
-image readiness, camera offsets or DPR. `nearestOnCar()` tests the polygon for
-round hazards, pickups and seekers. `rearContact()` requires actual body overlap;
-`carAt()` deliberately projects into a target lane for the barge mechanic.
+rectangle. Both rotate with the rendered tilt. The shape is multiplied up by the
+racer's own size out of `carDims()`, so a car drawn larger on the road is
+collided larger by exactly the same factor — Flann's hull scales with its
+sprite and there is never a big car carrying a small hitbox. Hitboxes never read
+image alpha, image readiness, camera offsets or DPR. `nearestOnCar()` tests the
+polygon for round hazards, pickups and seekers. `rearContact()` requires actual
+body overlap; `carAt()` deliberately projects into a target lane for the barge
+mechanic.
 
 Puddles share their quadratic control points with the renderer; contact flattens
 the curves with at most 0.15 logical pixels of chord error. Oil contact uses the
@@ -391,14 +417,32 @@ garage, player, bot and local columns all use this same dispatch.
 `CARS.flann.spriteBounds` describes the visible body within the padded PNG.
 `drawSpriteCar()` uses the image's natural dimensions and one uniform scale,
 centres the visible bounds on the logical car position, and draws the full PNG.
-The logical `carW`/`carH` dimensions are unchanged. The local draw order is shadow, exhaust,
-image; race markers and Conditions remain outside the model.
+The local draw order is shadow, exhaust, image, ultimate fire; race markers and
+Conditions remain outside the model.
+
+The shared `carW`/`carH` the road is built on are unchanged, and five of the six
+racers are drawn at exactly them. What a car may have is a race scale of its
+own — `CARS.<id>.raceScale` — and exactly one does: Flann is drawn and collided
+1.12× so it reads properly against the lane. `raceScale()`, `carDims()` and
+`racerDims()` in `runtime.js` are the only readers of it, and everything that
+needs a racer's physical body asks them. Menus are not racers and do not come
+through them, so `paintCarIcon()`'s previews are untouched.
 
 `CARS.flann.exhaust` contains two normalized anchors measured at source pixels
 (355, 1377) and (669, 1377), the centres of the paired rear tailpipes. They share
 the image's transform, including tilt. Smooth sine pulses change plume dimensions
 without moving the roots; reduced motion uses a static plume. Only the existing
 boost/ultimate visual flag enables them, so previews never have exhaust.
+
+`drawCar` takes `boosting` and `ulting` as separate flags on purpose.
+`boosting` is the old one — anything that makes the car go faster — and lights
+the exhaust on every model. `ulting` is narrower: this racer's ultimate is
+running right now, and for Flann alone it adds `drawFlannUltFire(w, h, p)`, a
+set of restrained flame tongues laid down both sills and around the tail inside
+the car's own translated and rotated space. Ordinary boost and a boost can never
+trigger it, and menus pass neither flag. Its only moving part is read off the
+clock, exactly as the exhaust pulse is, so drawing stays state-pure; reduced
+motion pins the phase and leaves the flames still rather than removing them.
 
 This file reads game state and never changes it.
 
@@ -496,12 +540,20 @@ code reaches for actually exists.
 2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
 3. `render.js` — a body drawing function and a `drawCar` style branch.
 4. `i18n.js` — its name and `<id>Ult` describing the shared 15-second double-pace
-   boost in both languages.
+   boost in both languages. Five of the six say exactly that and nothing more;
+   `flannUlt` is longer because Flann's ultimate does more, and a new car's
+   should match the five unless it is given a power of its own.
 5. `index.html` — its selection button and preview canvas; wire selection in
    `main.js`.
 
 Every car automatically uses the generic ultimate lifecycle, AI valuation,
-boost flames and Boosted status. Do not add car-specific ultimate behavior.
+boost flames and Boosted status, and a new car should stay there. The single
+exception is Flann's ram, described under `mechanics.js` above: the base
+lifecycle is shared and stays shared, and what Flann adds is a collision and
+hazard power that runs only while that shared `ultOn` is true, behind one
+predicate. Adding a second car-specific power means extending that pattern —
+one named predicate, applied at the consequence — and never a parallel ultimate
+state machine.
 
 Note `FIELD_SIZE` is 6 and local play hands every car in the game to the grid, so
 a seventh car changes the shape of a local race.
@@ -519,6 +571,17 @@ and road branches in `render.js` (`drawSide`, `drawProps`, `drawRoad`,
 `hud.js`, a branch in `useItem` in `mechanics.js`, `itemX` / `itemXInfo` strings,
 and a branch in `botItemWorth` in `ai.js`. The garage odds table and the drop roll
 both read `RARITY`, so they cannot disagree.
+
+**Mystery Bubble rewards are temporarily switched off.**
+`MYSTERY_ITEMS_ENABLED` in `data.js` is `false`, and while it is, `takeBubble`
+hands nothing over — no item, no trade, no bot fuse — and pops the bubble in a
+plain colour rather than a rarity one. `useItem` refuses a Mystery item as
+defence in depth, so stale state cannot go off later. Nothing is deleted: the
+roll, the rarities, the artwork, the strings, the bot valuation, oil and seeker
+rendering and every branch of `useItem` are all intact, and setting the gate
+back to `true` restores the mechanic exactly as it was. It is a separate
+question from `rules.bubbles`, which decides whether rows spawn on the road at
+all.
 
 ### A Condition
 

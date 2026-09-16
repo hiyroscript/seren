@@ -133,6 +133,36 @@ function layout(){
 }
 function laneCX(i){ return roadX + laneW*(i+0.5); }
 
+/* ---- how big one racer is on the road ---------------------------
+   carW/carH above are the road's car: the size the lane, the grid and five of
+   the six racers are built around, and nothing here makes them bigger. What a
+   car may have is a race scale of its own - CARS.<id>.raceScale - and exactly
+   one does: Flann is drawn and collided a little over a tenth larger so it
+   reads properly against the asphalt.
+
+   These two are the only readers of that number, and everything that genuinely
+   needs a racer's physical body - the sprite, the hull in carHit(), the gap a
+   rear-end leaves, the roof a meteor lands on - asks here instead of reaching
+   for carW/carH and guessing. Scaling is uniform, so aspect ratio is preserved
+   and a hull scales with the car it belongs to.
+
+   The garage and select-screen previews are not racers and do not come through
+   here: paintCarIcon() sizes its own canvas, so the menus are unaffected. */
+function raceScale(carId){
+  const c = CARS[carId];
+  return c && c.raceScale > 0 ? c.raceScale : 1;
+}
+function carDims(carId){
+  const k = raceScale(carId);
+  return { w:carW*k, h:carH*k };
+}
+/* The same answer for a racer rather than a car id: "me", a rival, or any
+   object carrying a `car` key. */
+function racerDims(who){
+  const o = who === "me" || who === undefined ? G : who;
+  return carDims(o && o.car);
+}
+
 /* How much bigger the desktop shell can be drawn than it is laid out. Measured
    from the shell's own layout box, which a transform does not affect, so there
    is no feedback loop. Floored at 1 - this only ever makes things larger. */

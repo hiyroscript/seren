@@ -9,6 +9,41 @@ function eq(code,value){assert.equal(run(code),value,code);}
 function near(code,value){assert.ok(Math.abs(run(code)-value)<1e-7,code);}
 f.boot();
 run('G.local=false;G.mode="endless";G.car="flann";G.rules=defaultRules();startRace();clearTimers();G.state="running";carW=100;carH=186;G.x=200;playerY=300;G.tilt=0;');
+/* Flann is drawn larger on the road than the shared car box, so its hull has
+   to come out larger by exactly the same factor. A big car wearing a small
+   hitbox is the failure this guards against. */
+test('Flann race dimensions scale by its own factor and nobody else moves',()=>{
+  near('raceScale("flann")',1.12);
+  near('carDims("flann").w/carW',1.12);
+  near('carDims("flann").h/carH',1.12);
+  near('carDims("flann").h/carDims("flann").w',run('carH/carW'));   /* uniform */
+  for(const car of ['phantom','bolt','timestamp','rose','siren']){
+    eq(`raceScale(${JSON.stringify(car)})`,1);
+    near(`carDims(${JSON.stringify(car)}).w`,run('carW'));
+    near(`carDims(${JSON.stringify(car)}).h`,run('carH'));
+  }
+  /* And the racer-shaped reader agrees with the car-id one, for either kind. */
+  run('G.car="flann";Object.assign(G.rivals[0],{car:"phantom"});');
+  eq('JSON.stringify(racerDims("me"))===JSON.stringify(carDims("flann"))',true);
+  eq('JSON.stringify(racerDims(G.rivals[0]))===JSON.stringify(carDims("phantom"))',true);
+});
+test('the tapered eight-point hull scales with the render and stays inset',()=>{
+  run('G.car="flann";G.tilt=0;');
+  /* Still the measured hull, now multiplied by Flann's own race size. */
+  near('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))',0.38*100*1.12);
+  near('carHit().points.map(p=>Math.abs(p.y-playerY)).reduce((a,b)=>Math.max(a,b))',0.42*186*1.12);
+  eq('carHit().points.length',8);
+  /* Tapered, not a rectangle: the nose is narrower than the waist. */
+  eq('Math.abs(carHit().points[0].x-G.x) < Math.abs(carHit().points[3].x-G.x)',true);
+  /* Inset: still well inside the artwork's own width. */
+  eq('Math.abs(carHit().points[3].x-G.x) < carDims("flann").w/2',true);
+  /* A rectangle car is untouched by any of it. */
+  run('G.car="phantom";');
+  near('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))',0.40*100);
+  near('carHit().points.map(p=>Math.abs(p.y-playerY)).reduce((a,b)=>Math.max(a,b))',0.42*186);
+  eq('carHit().points.length',4);
+  run('G.car="flann";');
+});
 test('Flann body excludes transparent nose corners, shadow and rear plumes',()=>{
   eq('insideHitPolygon(carHit().points,G.x,playerY)',true);
   eq('insideHitPolygon(carHit().points,G.x+39,playerY-76)',false);
@@ -58,7 +93,15 @@ test('rear contact rejects shared lane labels with physically separated cars',()
 test('rear contact follows overlapping bodies during a lane transition',()=>{
   run('G.rivals[0].lane=2;G.rivals[0].x=G.x;');
   eq('rearContact("me").obj===G.rivals[0]',true);
-  run('G.rivals[0].y=playerY-186*0.84-0.01;');eq('rearContact("me")',null);
+  /* Two Flanns separate at the sum of their two half-heights, and both of
+     those are now scaled - so the clearance moved with the render rather than
+     staying at the old shared car box. */
+  run('G.rivals[0].y=playerY-186*0.84*1.12-0.01;');eq('rearContact("me")',null);
+  run('G.rivals[0].y=playerY-186*0.84*1.12+0.5;');
+  eq('rearContact("me").obj===G.rivals[0]',true);
+  /* The old unscaled clearance is now firmly inside the bigger car. */
+  run('G.rivals[0].y=playerY-186*0.84-0.01;');
+  eq('rearContact("me").obj===G.rivals[0]',true);
 });
 test('barge queries still project into the requested lane',()=>{
   run('G.x=laneCX(0);G.lane=0;Object.assign(G.rivals[0],{lane:1,x:laneCX(1),y:playerY});');

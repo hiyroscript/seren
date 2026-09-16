@@ -8,6 +8,17 @@
 const CARS = {
   flann: {
     key:"flann", style:"sprite", sprite:"v_flann.PNG", accent:"#FF4A50",
+    /* How large this car is on the road, as a multiple of the shared carW/carH
+       every other car is drawn and collided at. Flann alone reads undersized
+       against the lane it is sitting in, so it gets a little over a tenth back
+       and nothing else changes: the scale is uniform, so the PNG's aspect ratio,
+       its measured bounds and its exhaust anchors are all untouched, and the
+       body ends up occupying about 71% of a lane instead of 64%.
+
+       This is a race-only number. carDims() in runtime.js is the one place that
+       reads it, and the menus size their own preview, so the garage and the
+       select screen are exactly as they were. */
+    raceScale:1.12,
     /* Normalized source pixels: visible body bounds (173,72)-(851,1409).
        Each anchor sits just inside one paired rear exhaust cluster. Keep
        the full PNG when drawing; bounds only control its scale and centre. */
@@ -170,6 +181,23 @@ const ITEMS = {
   seeker: { key:"itemSeeker", rarity:"legendary" }
 };
 const ITEM_IDS = ["can", "oil", "seeker"];
+/* ---- the rewards, temporarily switched off ----------------------
+   Mystery Bubbles still spawn on the road, are still swept up and still pop,
+   but the Can, the Oil and the Seeker they used to hand over are off while the
+   mechanic is reconsidered. Nothing has been taken out to do it: the roll, the
+   rarity table, the artwork, the strings, the bot valuation and every branch of
+   useItem() are all still here and still correct. Put this back to true and the
+   rewards return exactly as they were.
+
+   It is deliberately not the same switch as rules.bubbles. That one says
+   whether rows appear on the road at all and belongs to a custom race; this one
+   says whether a row that was collected is worth anything, and belongs to the
+   game as it is being played right now. */
+const MYSTERY_ITEMS_ENABLED = false;
+/* Every id a Mystery Bubble can hand out, which is what the gate above covers.
+   An item reaching a holder by any other route would still be refused, because
+   there is no other route: rollItem() is the only thing that writes `item`. */
+function mysteryItem(id){ return !!id && !!ITEMS[id]; }
 const BUBBLE_GAP = [5400, 8600];          /* road distance between rows */
 const CAN_TIME = 2.2, CAN_SPEED = 1.55;   /* the boost can */
 /* The slick is live for fifteen seconds, then fades out harmlessly. Anything
