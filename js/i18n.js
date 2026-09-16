@@ -40,7 +40,10 @@ const STR = {
   chooseCar:    {en:"Choose your car",             fr:"Choisissez votre voiture"},
   ultimate:     {en:"Ultimate",                    fr:"Ultime"},
   flann:         {en:"Flann",                        fr:"Flann"},
-  flannUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
+  /* The only car whose ultimate is not just the shared speed boost, so it is
+     the only one whose description says more than the other five. */
+  flannUlt: {en:"Fifteen seconds at double pace, and on fire: it wrecks any racer it touches and smashes straight through tumbleweeds and meteors. Puddles still get you.",
+             fr:"Quinze secondes à double allure, et en feu : elle détruit tout concurrent qu'elle touche et fracasse virevoltants et météores. Les flaques vous atteignent toujours."},
   phantom:      {en:"Phantom",                     fr:"Phantom"},
   phantomUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
   randomCar:    {en:"Surprise me",                 fr:"Au hasard"},

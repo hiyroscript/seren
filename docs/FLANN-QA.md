@@ -23,6 +23,11 @@
   the rear-end clearance and the meteor roof test all ask them. The shared
   `carW`/`carH` are unchanged, so the other five racers, the lane, the road and
   the grid are all untouched, as are the garage and select-screen previews.
+- `js/i18n.js`: `flannUlt` now describes the ram in English and French. It is
+  the only one of the six ultimate descriptions that says more than the shared
+  fifteen seconds at double pace, because it is the only ultimate that does
+  more. Both were checked rendered, in the showroom and the garage reference, at
+  phone and narrow widths.
 - `js/mechanics.js`, `js/race.js`, `js/render.js`: Flann's ultimate is an
   offensive ram while `flannUltActive(who)` is true. See `docs/ULTIMATE-QA.md`
   for the behaviour and `docs/ARCHITECTURE.md` for where it is applied.

@@ -540,7 +540,9 @@ code reaches for actually exists.
 2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
 3. `render.js` — a body drawing function and a `drawCar` style branch.
 4. `i18n.js` — its name and `<id>Ult` describing the shared 15-second double-pace
-   boost in both languages.
+   boost in both languages. Five of the six say exactly that and nothing more;
+   `flannUlt` is longer because Flann's ultimate does more, and a new car's
+   should match the five unless it is given a power of its own.
 5. `index.html` — its selection button and preview canvas; wire selection in
    `main.js`.
 
