@@ -17,7 +17,7 @@ function setup(car, kind, active = true){
        G.nextTrap = 1e9; G.nextGap = 1e9; G.nextRow = 1e9;
        G.rivals[0].car = G.car; G.rivals[0].human = ${kind === 'local'};
        G.rivals[0].lane = 0; G.rivals[0].x = laneCX(0); G.rivals[0].y = playerY - 2000;
-       G.rivals[0].changeT = 1e6; G.rivals[0].brakeHeld = false;
+       G.rivals[0].changeT = 1e6;
        globalThis.who = ${kind === 'player' ? '"me"' : 'G.rivals[0]'};
        globalThis.o = who === 'me' ? G : who;
        o.ult = 1; ${active ? 'startUlt(who);' : ''}`);
@@ -51,15 +51,16 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     run('tickUlt(who,0.02);');equal('o.ultOn',false);equal('o.ultT',0);equal('o.ult',0);
     equal('o.dead',0);
   });
-  test(label + ' speed multiplier coexists with Slow and launch',()=>{
-    for(const slow of [false,true]) for(const air of [false,true]){
+  test(label + ' speed multiplier coexists with Slow and the rear-end shunt',()=>{
+    for(const slow of [false,true]) for(const shunt of [false,true]){
       setup(car,kind);
-      run(`if(who==='me') G.slowT = ${slow ? 5 : 0}; else o.slow = ${slow ? 5 : 0};
-           o.airT = ${air ? 3 : 0}; o.airMax = 3; o.airPow = 0.5;
-           globalThis.expected = BASE_SPEED * 2 * (${air ? 'lerp(AIR_MIN_K,AIR_MAX_K,0.5)' : slow ? '0.5' : '1'});
-           if(who==='me'){G.speed=expected;update(0.01);} else {o.abs=expected;updateRival(o,0.01,'running');}`);
+      run(`if(who==='me'){G.slowT = ${slow ? 5 : 0}; G.shuntT = ${shunt ? 0.8 : 0};}
+           else {o.slow = ${slow ? 5 : 0}; o.shuntT = ${shunt ? 0.8 : 0};}
+           globalThis.expected = BASE_SPEED * 2 * (${slow ? '0.5' : '1'}) * (${shunt ? 'SHUNT_BOOST' : '1'});
+           if(who==='me'){G.speed=expected;update(0.005);} else {o.abs=expected;updateRival(o,0.005,'running');}`);
       near(`(who === 'me' ? G.speed : o.abs) / expected`,1);
       if(slow) equal(`(who === 'me' ? G.slowT : o.slow) > 0`,true);
+      if(shunt) equal(`(who === 'me' ? G.shuntT : o.shuntT) > 0`,true);
     }
   });
   test(label + ' no immunity, cleanse or collision priority',()=>{
@@ -67,7 +68,8 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     run(`if(who === 'me'){G.slowT=2;G.slipT=3;G.blind=1;}else{o.slow=2;o.slip=3;o.blind=1;} startUlt(who);`);
     equal(`who === 'me' ? G.slowT : o.slow`,2);
     equal(`who === 'me' ? G.slipT : o.slip`,3);equal('o.blind',1);
-    equal('warded(who)',false);equal('noContact(who)',false);
+    equal('refusesDebuffs(who)',false);equal('noContact(who)',false);
+    equal('invulnerableWho(who)',false);
     equal(`who === 'me' ? playerUntouchable() : safeCar(who)`,false);
     run(`o.lane=1; bumpTarget({me:who==='me',obj:who==='me'?null:o,lane:1},1,who==='me'?G.rivals[0]:'me');`);
     equal('o.lane',2);equal('o.dead',0);
@@ -86,17 +88,25 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     equal('o.ultOn',false);
     run(`o.ult=0;if(who==='me')update(0.1);else updateRival(o,0.1,'running');`);equal('o.ult',0);
     run(`G.rules.ults=true;if(who==='me')update(0.1);else updateRival(o,0.1,'running');`);near('o.ult',0.1/75);
-    run(`o.immune=2;startUlt(who);`);equal('warded(who)',true);equal('noContact(who)',true);
+    run(`o.invuln=2;startUlt(who);`);equal('refusesDebuffs(who)',true);equal('noContact(who)',true);
+    equal('invulnerableWho(who)',true);
+    equal(`activeConditions(who).indexOf('invulnerable')`,0);
     hit(kind,'meteor');equal('o.dead',0);
-    run(`o.immune=0;o.airT=2;`);equal('noContact(who)',true);
-    run(`o.airT=0;o.finished=1;`);equal('warded(who)',true);equal('noContact(who)',true);
+    /* Finished is protection, never the Invulnerable Condition - and a
+       finisher shows no Conditions at all, because it is out of the race. */
+    run(`o.invuln=0;o.finished=1;`);equal('refusesDebuffs(who)',true);equal('noContact(who)',true);
+    equal('invulnerableWho(who)',false);
+    equal('JSON.stringify(activeConditions(who))','[]');
+    run(`o.finished=null;`);
   });
 }
 test('all car pairs use ordinary rear contact, without destruction or rematerialization',()=>{
   for(const car of cars) for(const rival of cars){
     setup(car,'player');run(`globalThis.r=G.rivals[0];r.car=${JSON.stringify(rival)};r.lane=G.lane;r.y=playerY-carH*0.5;startUlt(r);
       rearEnd('me',{me:false,obj:r,lane:r.lane,y:r.y});`);
-    equal('G.slowT > 0',true);equal('r.launch > 0',true);equal('r.dead',0);equal('G.dead',0);
+    equal('G.slowT > 0',true);equal('r.shuntT > 0',true);equal('r.dead',0);equal('G.dead',0);
+    /* The shove reads as Boosted, exactly as ordinary boost does. */
+    equal(`activeConditions(r).indexOf('boosted') >= 0`,true);
     run(`endUlt('me');endUlt(r);`);equal('r.dead',0);equal('G.dead',0);
   }
 });
@@ -108,11 +118,112 @@ test('every bot spends the shared ultimate on every difficulty',()=>{
 });
 test('HUD and render paths work for all cars and local columns',()=>{
   for(const car of cars){
-    setup(car,'player');run(`syncEffects();render();hudEffects('me',G);hudEffects(G.rivals[0],G.rivals[0]);`);
-    equal('JSON.stringify(G.effLog)',JSON.stringify(['boosted']));
-    equal(`$('#immuneTag').classList.contains('on')`,false);
-    run('G.immune=2;syncEffects();');equal(`$('#immuneTag').classList.contains('on')`,true);
+    setup(car,'player');run(`syncConditions();render();hudConditions('me');hudConditions(G.rivals[0]);
+                             drawConditionStack(G.rivals[0],G.rivals[0].x,G.rivals[0].y);`);
+    equal(`JSON.stringify(activeConditions('me'))`,JSON.stringify(['boosted']));
+    equal(`$('#condList').children.length`,1);
+    equal(`$('#condList').children[0].getAttribute('aria-label')`,run('t("condBoosted")'));
+    equal(`$('#shell').classList.contains('invulnerable')`,false);
+    run('G.invuln=2;syncConditions();');
+    equal(`$('#shell').classList.contains('invulnerable')`,true);
+    /* Invulnerable outranks Boosted, every frame and in that order. */
+    equal(`JSON.stringify(activeConditions('me'))`,JSON.stringify(['invulnerable','boosted']));
+    equal(`$('#condList').children.length`,2);
+    run('G.invuln=0;syncConditions();');
+    equal(`$('#shell').classList.contains('invulnerable')`,false);
   }
+});
+
+/* Every state that owns a Condition, checked against the one helper that both
+   the world badges and the HUD badges read. Nothing keeps a second copy, so a
+   lapsed timer cannot leave a badge behind. */
+test('every Condition is derived from the state that owns it',()=>{
+  const cases = [['slowT','slowed'],['blind','obscured'],['slipT','skidded'],
+                 ['canT','boosted'],['invuln','invulnerable']];
+  for(const [field,id] of cases){
+    setup('redd','player',false);
+    run(`G.slowT=G.blind=G.slipT=G.canT=G.invuln=G.shuntT=0;G.boosting=false;G.${field}=2;`);
+    equal(`activeConditions('me').indexOf(${JSON.stringify(id)}) >= 0`,true);
+    equal(`conditionOn('me',${JSON.stringify(id)})`,true);
+    run(`G.${field}=0;`);
+    equal(`activeConditions('me').indexOf(${JSON.stringify(id)}) >= 0`,false);
+  }
+  /* Rivals answer the identical question off their own fields, bot or human. */
+  for(const human of [false,true]){
+    setup('redd','bot',false);
+    run(`globalThis.r=G.rivals[0];r.human=${human};
+         r.slow=r.blind=r.slip=r.canT=r.invuln=r.shuntT=0;r.boosting=false;
+         r.invuln=2;r.slow=2;r.blind=2;r.slip=2;`);
+    equal('JSON.stringify(activeConditions(r))',
+          JSON.stringify(['invulnerable','slowed','obscured','skidded']));
+  }
+});
+
+/* Crossing the line takes a racer off every target list and out of every
+   collision, and it is never presented as a Condition. */
+test('a finished racer is out of play and wears no badge',()=>{
+  setup('redd','player',false);
+  run(`globalThis.r=G.rivals[0];r.y=playerY;r.lane=G.lane;r.x=G.x;
+       r.slow=2;r.blind=2;r.slip=2;r.invuln=0;r.finished=1;r.parkM=G.meters;`);
+  equal('JSON.stringify(activeConditions(r))','[]');
+  equal('noContact(r)',true);
+  equal('safeCar(r)',true);
+  equal('finishedCar(r)',true);
+  equal('invulnerableCar(r)',false);
+  equal('carAt(r.lane,r.y,"me")',null);            /* nothing collides with it */
+  equal('seekerTarget("me")',null);                /* nothing targets it */
+  equal(`fieldView('me').filter(a => !a.out).length`,0);
+  /* And the other way round: a bot's picture of the race drops a finisher out
+     of the actionable field rather than merely refusing the eventual hit. */
+  run(`r.finished=null;G.finished=1;r.human=false;globalThis.s=botSense(r);`);
+  equal(`s.all.filter(a => !a.out).length`,0);
+  equal(`botTarget(r, s)`,null);
+  equal('seekerTarget(r)',null);
+  equal('s.front',null);equal('s.back',null);equal('s.threat',null);
+  run(`G.finished=null;r.finished=1;`);
+  /* A seeker already locked on when it crossed gives the mark up harmlessly. */
+  run(`r.finished=null;fireSeeker('me');r.finished=1;globalThis.before=G.missiles.length;
+       updateMissiles(0.016,0);`);
+  equal('before',1);
+  equal('G.missiles.length === 0 || G.missiles[0].fade > 0',true);
+  equal('r.dead',0);
+  /* Hazards, items and debuffs all pass it by. */
+  run(`G.missiles=[];r.slow=0;r.blind=0;r.slip=0;
+       G.traps=[{kind:'meteor',x:r.x,y:r.y,r:200,mr:18,fall:0,max:1,phase:0,t:0}];
+       updateTraps(0,0,'running');
+       G.slicks=[{x:r.x,y:r.y,r:60,rx:60,ry:40,rot:0,jit:0.1,s:0.5,life:10,fade:0,owner:'me'}];
+       updateSlicks(0,0,'running');
+       wreckRival(r,'me',true);`);
+  equal('r.dead',0);equal('r.slip',0);equal('r.slow',0);equal('r.blind',0);
+  equal('r.finished',1);
+  run('r.finished=null;');
+});
+
+/* The icon layer: one table, one renderer, and a badge for every Condition. */
+test('every Condition has one canonical colour, type and icon',()=>{
+  const ids = Array.from(run('CONDITION_IDS'));
+  assert.deepEqual(ids,['invulnerable','boosted','slowed','obscured','skidded']);
+  const seen = new Set();
+  for(const id of ids){
+    const col = run(`CONDITIONS[${JSON.stringify(id)}].col`);
+    const icon = run(`CONDITIONS[${JSON.stringify(id)}].icon`);
+    const type = run(`CONDITIONS[${JSON.stringify(id)}].type`);
+    assert.ok(/^#[0-9A-F]{6}$/i.test(col),id+' colour');
+    assert.ok(!seen.has(col),id+' colour is its own');
+    seen.add(col);
+    assert.ok(['buff','debuff'].includes(type),id+' type');
+    assert.ok(run(`!!COND_PATHS[${JSON.stringify(icon)}]`),id+' artwork');
+    assert.ok(run(`!!STR[CONDITIONS[${JSON.stringify(id)}].key]`),id+' name string');
+    assert.ok(run(`!!STR[${JSON.stringify(id+'Info')}]`),id+' description');
+    /* Both renderers read the same artwork, so the page and the canvas agree. */
+    const svg = run(`conditionSvg(${JSON.stringify(id)},22)`);
+    assert.ok(svg.includes(col),id+' svg fill');
+    assert.ok(svg.includes(run(`CONDITIONS[${JSON.stringify(id)}].ink`)),id+' svg ink');
+    for(const d of run(`COND_PATHS[${JSON.stringify(icon)}]`)) assert.ok(svg.includes(d),id+' svg path');
+    run(`drawConditionBadge(${JSON.stringify(id)},40,40,8)`);   /* must not throw */
+  }
+  assert.equal(run('typeof CONDITIONS.launched'),'undefined');
+  assert.equal(run('typeof CONDITIONS.winner'),'undefined');
 });
 test('Timestamp boost leaves meteor, weed and opponent simulation unchanged',()=>{
   setup('timestamp','player');

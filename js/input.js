@@ -33,35 +33,17 @@ function humanUlt(who){
   if(who === "me"){ fireUlt(); return; }
   fireUltRival(who);
 }
-function humanBrake(who, down){
-  if(who === "me"){
-    if(down){ G.padBrake = true; brakeEngage(); }
-    else { G.padBrake = false; if(!G.brakeKey && !G.brakePtr) releaseBrake(); }
-    return;
-  }
-  const R = who;
-  if(down){
-    R.brakeHeld = true;                        /* the latch; the engage is below */
-    R.airWhy = "player";
-  } else {
-    R.brakeHeld = false;
-    if(!R.brakeOn) return;
-    if(R.airMeter <= AIR_ARM) launchRival(R);  /* under the notch: it goes up */
-    else rivalBrakeOff(R);                     /* over it: the meter just comes back */
-  }
-}
-
 /* ---- one frame of one player's pad ------------------------------
    None of this is a local-play version of the controls: every branch ends in
-   the same call your own finger makes, so a pad barging, launching, boosting
-   or spending an ultimate is running the mechanic and not a copy of it. */
+   the same call your own finger makes, so a pad barging, boosting or spending
+   an ultimate is running the mechanic and not a copy of it. */
 function padDrive(who, dt){
   const o = who === "me" ? G : who;
   const p = padOf(o);
   const k = o.pk || (o.pk = newPadKeys());
   if(!p) return;
 
-  const lx = padAxis(p, 0), ly = padAxis(p, 1), ry = padAxis(p, 3);
+  const lx = padAxis(p, 0), ry = padAxis(p, 3);
   const dl = padBtn(p, PAD_DL), dr = padBtn(p, PAD_DR);
 
   let want = 0;
@@ -78,15 +60,12 @@ function padDrive(who, dt){
 
   humanBoost(who, ry <= -STICK_ON || padBtn(p, PAD_DU));
 
-  const br = ly >= STICK_ON || padBtn(p, PAD_DD);
-  if(br !== k.brake){ k.brake = br; humanBrake(who, br); }
-
   /* Both sticks pressed in, and nothing else. It was L3 + L2 before, which put
      the ultimate under one hand next to a trigger the other thumb is already
      riding - easy to catch by accident and, worse, easy to miss when you meant
      it. Two sticks is a deliberate two-handed squeeze that no other control on
-     the pad shares. Clicking a stick does not move its axes, so steering,
-     braking and boosting all keep running underneath it. */
+     the pad shares. Clicking a stick does not move its axes, so steering and
+     boosting keep running underneath it. */
   const ult = padBtn(p, PAD_L3) && padBtn(p, PAD_R3);
   if(ult && !k.ult) humanUlt(who);
   k.ult = ult;
@@ -101,7 +80,7 @@ function padDrive(who, dt){
 }
 
 /* Batteries die mid-race. A car whose controller has gone would otherwise keep
-   whatever was last held - stick down, boost on - and drive itself into the
+   whatever was last held - boost on, stick over - and drive itself into the
    scenery while its owner hunts for a cable. So the whole race stops, the car
    lets go of everything, and the panel says whose pad it is. */
 function padsLost(seats){
@@ -113,7 +92,6 @@ function padsLost(seats){
   for(let i=0;i<seats.length;i++){
     const who = seats[i];
     humanBoost(who, false);
-    humanBrake(who, false);
     const o = who === "me" ? G : who;
     o.pk = newPadKeys();                     /* nothing is held any more */
   }
@@ -157,13 +135,6 @@ document.addEventListener("keydown", function(e){
   if(k === "arrowleft" || k === "a"){ e.preventDefault(); move(-1); }
   else if(k === "arrowright" || k === "d"){ e.preventDefault(); move(1); }
   else if(k === "arrowup" || k === "w"){ e.preventDefault(); G.keyBoost = true; setBoost(); }
-  else if(k === "arrowdown" || k === "s"){
-    /* Held, not tapped: the key going down starts the brake and the key coming
-       up is what fires. Autorepeat sends keydown over and over, so only the
-       first one counts. */
-    e.preventDefault();
-    G.brakeKey = true; brakeEngage();
-  }
   else if(k === "p" || k === "escape"){
     e.preventDefault();
     pause(G.state === "running" || G.state === "countdown");
@@ -175,10 +146,6 @@ document.addEventListener("keyup", function(e){
   if(!e.key) return;
   const k = e.key.toLowerCase();
   if(k === "arrowup" || k === "w"){ G.keyBoost = false; setBoost(); }
-  if(k === "arrowdown" || k === "s"){
-    if(G.brakeKey){ G.brakeKey = false; if(!G.brakePtr) releaseBrake(); }
-    setBoost();
-  }
   if(k === "shift" || k === " ") G.ultKey = false;
 });
 
@@ -194,13 +161,11 @@ cv.addEventListener("pointerdown", function(e){
 cv.addEventListener("pointermove", function(e){
   if(!ptr.on) return;
   const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
-  /* Both vertical gestures latch until the finger comes off, so once one has
-     taken hold its travel has been spent and the origin moves up to where the
-     finger is now. Without that the swipe you already made keeps counting:
-     dy stays at whatever you dragged, and a lane change has to out-travel it
-     before it will register. Braking is the case that made it obvious - you
-     hold the brake precisely because you want to pick a line - but boosting
-     had the same stiffness and gets the same fix. */
+  /* The boost swipe latches until the finger comes off, so once it has taken
+     hold its travel has been spent and the origin moves up to where the finger
+     is now. Without that the swipe you already made keeps counting: dy stays at
+     whatever you dragged, and a lane change has to out-travel it before it will
+     register. */
   if(Math.abs(dx) > SWIPE_STEP && Math.abs(dx) > Math.abs(dy)){
     /* Each step of travel is one lane, but a flick covers several steps in
        one instant - the lock keeps that to a single lane, while a drag held
@@ -210,15 +175,8 @@ cv.addEventListener("pointermove", function(e){
       G.swipeLock = SWIPE_LOCK;
     }
     ptr.x = e.clientX; ptr.y = e.clientY; ptr.moved = true;
-  } else if(dy < -34 && Math.abs(dy) > Math.abs(dx) && !G.brakePtr){
+  } else if(dy < -34 && Math.abs(dy) > Math.abs(dx)){
     G.ptrBoost = true; setBoost(); ptr.moved = true;
-    ptr.x = e.clientX; ptr.y = e.clientY;
-  } else if(dy > 34 && Math.abs(dy) > Math.abs(dx) && !G.ptrBoost){
-    /* Down and hold. Whichever way this finger went first owns it until it
-       comes off, so a wobble back the other way cannot flip you from braking
-       into boosting halfway through a launch. */
-    G.brakePtr = true; brakeEngage();
-    ptr.moved = true;
     ptr.x = e.clientX; ptr.y = e.clientY;
   } else if(Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP){
     ptr.moved = true;                      /* a drag, not a tap */
@@ -235,10 +193,6 @@ function endPtr(e){
   else { ptrCount = 0; for(const k in ptrDown) delete ptrDown[k]; }
   if(ptrCount === 0){
     ptr.on = false; G.ptrBoost = false;
-    /* The finger coming off is the release. A cancelled pointer counts too:
-       losing the touch has to put the car down one way or the other, or the
-       brake would stay latched with nothing left to let go of. */
-    if(G.brakePtr){ G.brakePtr = false; if(!G.brakeKey) releaseBrake(); }
     setBoost();
     G.ultArmed = true;             /* the ultimate needs a long press, not a tap */
   }

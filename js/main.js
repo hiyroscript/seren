@@ -154,7 +154,7 @@ $("#btnCloseGarage").addEventListener("click", function(){ show("home"); });
 $("#tabCars").addEventListener("click", function(){ garageTab = "cars"; setTab(); });
 $("#tabTracks").addEventListener("click", function(){ garageTab = "tracks"; setTab(); });
 $("#tabItems").addEventListener("click", function(){ garageTab = "items"; setTab(); });
-$("#tabEffects").addEventListener("click", function(){ garageTab = "effects"; setTab(); });
+$("#tabConditions").addEventListener("click", function(){ garageTab = "conditions"; setTab(); });
 $("#carRandom").addEventListener("click", function(){
   const left = CAR_IDS.filter(function(id){ return !carTaken(id); });
   pickCar(left[randi(0, left.length-1)]);
@@ -205,7 +205,7 @@ CAR_IDS.forEach(function(id){
   button.addEventListener("focus", function(){if(!button.disabled) previewCar(id);});
 });
 $(".tabs").addEventListener("keydown", function(e){
-  const ids = ["cars", "tracks", "items", "effects"];
+  const ids = GARAGE_TABS;
   let next = ids.indexOf(garageTab);
   if(e.key === "ArrowRight" || e.key === "ArrowDown") next = (next + 1) % ids.length;
   else if(e.key === "ArrowLeft" || e.key === "ArrowUp") next = (next + ids.length - 1) % ids.length;
@@ -213,4 +213,31 @@ $(".tabs").addEventListener("keydown", function(e){
   else if(e.key === "End") next = ids.length - 1;
   else return;
   e.preventDefault(); garageTab = ids[next]; setTab(); $("#tab" + cap(garageTab)).focus();
+});
+
+/* The Conditions page's Buff/Debuff switcher. One listener on the panel rather
+   than two on the buttons, because the page is thrown away and rebuilt every
+   time either of them is pressed. Arrow keys walk it the way the main tab rail
+   walks, and focus follows the press so the keyboard never loses its place. */
+$("#garageBody").addEventListener("click", function(e){
+  const el = e.target && e.target.closest ? e.target.closest("[data-condtab]") : null;
+  if(!el) return;
+  setCondTab(el.getAttribute("data-condtab"));
+  const back = $("#condTab" + cap(condTab));
+  if(back) back.focus({preventScroll:true});
+});
+$("#garageBody").addEventListener("keydown", function(e){
+  const el = e.target && e.target.closest ? e.target.closest("[data-condtab]") : null;
+  if(!el) return;
+  const ids = COND_TABS;
+  let next = ids.indexOf(condTab);
+  if(e.key === "ArrowRight" || e.key === "ArrowDown") next = (next + 1) % ids.length;
+  else if(e.key === "ArrowLeft" || e.key === "ArrowUp") next = (next + ids.length - 1) % ids.length;
+  else if(e.key === "Home") next = 0;
+  else if(e.key === "End") next = ids.length - 1;
+  else return;
+  e.preventDefault();
+  setCondTab(ids[next]);
+  const back = $("#condTab" + cap(condTab));
+  if(back) back.focus({preventScroll:true});
 });

@@ -57,36 +57,20 @@ Not constants — these are inline in `race.js`, in `update()` for you and
 
 Run it completely dry and it locks out until the bar is full again.
 
-## The launch
-
-| Constant | Value | Means |
-| --- | --- | --- |
-| `AIR_BRAKE` | `1.4` | seconds of hold from cruise to a dead stop |
-| `AIR_ARM` | `0.60` | the meter must get under this to launch |
-| `AIR_WIND` | `1.6` | seconds of wind-up available once stopped |
-| `AIR_STOP_POW` | `0.42` | strength at a dead stop, before any wind-up |
-| `AIR_MIN_T` / `AIR_MAX_T` | `0.85` / `3.8` | air time, weakest to strongest |
-| `AIR_MIN_K` / `AIR_MAX_K` | `1.18` / `2.80` | road speed while up there |
-| `AIR_HOP` | `2.8` | peak height at full strength, in car heights |
-| `AIR_CD` | `10` | seconds before the next launch |
-
-The meter is the speed left in the car, one for one, so "empty" means stopped and
-the bar can never disagree with the road. The wind-up then refills the same track
-in white. `airPower()` is the one place the two phases become a single number —
-air time, speed, height and the size of the bang all read it and nothing else.
-
-`AIR_CD` is also the refill: the red bar coming back *is* the cooldown.
-
 ## Contact
 
 | Constant | Value | Means |
 | --- | --- | --- |
 | `BUMP_SLOW` | `1.3` | seconds of labouring after being barged |
-| `LAUNCH_TIME` | `0.8` | seconds the shunted car is pushed along for |
-| `LAUNCH_BOOST` | `1.35` | how fast it is pushed |
+| `SHUNT_TIME` | `0.8` | seconds the shunted car is pushed along for |
+| `SHUNT_BOOST` | `1.35` | how fast it is pushed |
 
 Both cars lose the same time to a bump. A rear-end also has a 0.5s per-car
 cooldown (inline in `rearEnd`) so one collision cannot fire every frame.
+
+The shunt is a short push down the same tarmac, nothing more, and it reads on the
+shunted car as the **Boosted** Condition — the same as any other thing that makes
+a car go faster.
 
 ## Ultimates
 
@@ -113,14 +97,14 @@ ends it. Ordinary negative speed modifiers still apply independently.
 | `BLIND_TIME` | `2.6` | puddle: seconds the view stays fouled |
 | `SLOW_TIME` | `1.7` | tumbleweed: seconds at half speed |
 | `DEAD_TIME` | `3` | seconds wrecked |
-| `IMMUNE_TIME` | `2` | seconds untouchable after respawning |
+| `INVULNERABLE_TIME` | `2` | seconds Invulnerable after respawning |
 | `METEOR_ALT` | `300` | how far up the rock comes in |
 | `METEOR_MIN_T` | `0.9` | never less warning than this |
 | `METEOR_MAX_T` | `3.2` | and never hanging longer than this |
 | `METEOR_ROCK_K` | `0.66` | the last fraction of the fall, with the rock in view |
 
 The meteor's ring is a **position on the road**, and its remaining fall is measured
-in **seconds** — so braking, launching or boosting moves where it lands, not when.
+in **seconds** — so boosting or being slowed moves where it lands, not when.
 The fall uses elapsed seconds, unaffected by ultimates. `rockAlt()` is the single answer to "how
 high is it", read by the fall, the roof test and the drawing alike.
 
@@ -167,6 +151,24 @@ The seeker is never offered to whoever is already leading; out in front its shar
 is redistributed across the other two. `epic` is defined and coloured but no item
 currently uses it.
 
+## Conditions
+
+`CONDITIONS` in `data.js` is the whole model: five entries, and the key order is
+the priority order a stack of badges is drawn in.
+
+| Condition | Colour | Type | Icon | Comes from |
+| --- | --- | --- | --- | --- |
+| `invulnerable` | `#FFD86B` | buff | shield | `G.invuln` / `R.invuln`, granted by a respawn for `INVULNERABLE_TIME` |
+| `boosted` | `#FF9A4A` | buff | forward chevrons | `boosting`, `ultOn`, `canT` or `shuntT` |
+| `slowed` | `#8A9099` | debuff | arrow onto a floor | `G.slowT` / `R.slow` |
+| `obscured` | `#B07A4A` | debuff | crossed-out eye | `blind` |
+| `skidded` | `#0B0B0C` | debuff | paired skid marks | `G.slipT` / `R.slip` |
+
+`activeConditions(who)` in `mechanics.js` is the only derivation, so nothing has
+a second copy to fall out of step with those timers. A finished racer returns
+none — it is out of the race, not protected within it. `type` is what splits the
+garage's Buff and Debuff pages; nothing lists the two sides separately.
+
 ## Difficulty
 
 `DIFFS` in `data.js`. None of these may ever multiply speed, charge rate or any
@@ -183,15 +185,13 @@ car capability — they describe the driver, not the car.
 | `hunt` | how deliberately it picks an offensive target rather than lashing out |
 | `guard` | how well it protects the place it is holding |
 | `judge` | how well it values an item or an ultimate against the situation |
-| `air` | how much of the launch it understands — escape only, up to setting one up as an overtake |
-| `wind` | the most wind-up it is willing to stand still for |
 | `plan` | how many think-ticks an intention survives before it is thrown away |
 | `noise` | how much of its decision is left to chance |
 | `block` `aggro` `boost` `ult` `keep` | lane and throttle appetites |
 
-`TEMPERS` gives each car a leaning — `nerve`, `spite`, `patience`, `guard`,
-`flair` — and `makeTemper()` jitters it by ±0.17 at the start of every race, so
-five bots on one setting are not the same bot five times.
+`TEMPERS` gives each car a leaning — `nerve`, `spite`, `patience` and `guard` —
+and `makeTemper()` jitters it by ±0.17 at the start of every race, so five bots
+on one setting are not the same bot five times.
 
 ## Input
 
@@ -226,7 +226,9 @@ In `js/local.js`:
 | `FAR_W` | `34` | `data.js` | far marker width: two chevrons and nothing else |
 | `PLACE_COLS` | | `data.js` | gold, silver, bronze, then white |
 | `PCOLS` | | `data.js` | the four player colours, in join order |
-| `EFF_MAX` | `6` | `hud.js` | most effect labels on screen at once; the oldest makes room |
+| `COND_R` | `8` | `hud.js` | radius of a condition badge beside a car, at scene scale 1 |
+| `HUD_COND_R` | `11` | `hud.js` | radius of a condition badge in the HUD corner |
+| `COND_ICON_K` | `1.5` | `hud.js` | the icon's box, in badge radii — the canvas and the SVG both scale by it |
 
 ## Miscellaneous
 

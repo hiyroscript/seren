@@ -1,48 +1,93 @@
 "use strict";
 
 /* SEREN - the rules of the road, shared by every car on it.
-   Contact and collisions, lane changes, boost, the brake and the launch,
-   wrecking and respawning, effects, ultimates, items, hazards and particles.
-   Player and bot run the same functions here; nothing is duplicated for one
-   or the other. */
+   Contact and collisions, lane changes, boost, wrecking and respawning,
+   Conditions, ultimates, items, hazards and particles. Player and bot run the
+   same functions here; nothing is duplicated for one or the other. */
 
-/* Winner: granted the instant a car crosses the line and never taken away.
-   A winner is out of play outright - no targeting system may pick it, nothing
-   can reach it, and it takes no further part in the race it has finished. */
+/* ---------------- finish protection ------------------------------
+   Crossing the line takes a racer out of play for the rest of the race: no
+   targeting system may pick it, nothing can reach it, and nothing may alter
+   the result it has just earned. This is a race lifecycle state and not a
+   Condition - a finisher wears no badge, because it is no longer racing. */
 function finishedCar(R){ return !!R && R.finished !== null; }
 function finishedMe(){ return G.finished !== null; }
 
-/* Respawn immunity and the finish flag protect against contact and effects. */
-function immuneCar(R){ return !!R && (finishedCar(R) || R.dead > 0 || R.immune > 0); }
-function immuneMe(){ return finishedMe() || G.dead > 0 || G.immune > 0; }
-function immuneWho(who){ return who === "me" ? immuneMe() : immuneCar(who); }
+/* ---------------- temporary invulnerability ----------------------
+   The Invulnerable Condition itself, and nothing else. Respawn protection is
+   what grants it. It is deliberately kept apart from finish protection:
+   activeConditions() asks these and never the finish flag, so a racer that has
+   crossed the line is never presented as Invulnerable. */
+function invulnerableMe(){ return G.invuln > 0; }
+function invulnerableCar(R){ return !!R && R.invuln > 0; }
+function invulnerableWho(who){ return who === "me" ? invulnerableMe() : invulnerableCar(who); }
 
-/* Finished, wrecked, immune and airborne cars do not make road contact. */
+/* The one internal answer to "can anything reach this car at all?". Temporary
+   invulnerability, being wrecked and having finished all say no, and every
+   contact, hazard and targeting test downstream asks this rather than
+   reassembling the three for itself. */
 function noContact(who){
-  return immuneWho(who) || overhead(who);
+  if(who === "me") return finishedMe() || G.dead > 0 || invulnerableMe();
+  return !who || finishedCar(who) || who.dead > 0 || invulnerableCar(who);
 }
 /* Protection is independent of the ultimate speed multiplier. */
 function safeCar(R){ return !R || noContact(R); }
 function playerUntouchable(){ return noContact("me"); }
 
-/* Real immunity refuses negative effects and clears any already applied. */
-function warded(who){
-  if(who === "me") return immuneMe();
-  return !who || immuneCar(who);
-}
-function scrubBad(who){
+/* Whatever cannot be reached cannot be debuffed either, so this is the same
+   answer under the name the callers actually mean: a car that is Invulnerable,
+   wrecked or finished refuses a new debuff and has any already applied cleared
+   by sweepDebuffs below. */
+function refusesDebuffs(who){ return noContact(who); }
+function clearDebuffs(who){
   if(who === "me"){
     G.slowT = 0; G.blind = 0; G.slipT = 0;
   } else if(who){
     who.slow = 0; who.blind = 0; who.slip = 0;
   }
 }
-function immuneScrub(){
-  if(G.immune > 0 || finishedMe()) scrubBad("me");
+function sweepDebuffs(){
+  if(invulnerableMe() || finishedMe()) clearDebuffs("me");
   for(let i=0;i<G.rivals.length;i++){
     const R = G.rivals[i];
-    if(R.immune > 0 || finishedCar(R)) scrubBad(R);
+    if(invulnerableCar(R) || finishedCar(R)) clearDebuffs(R);
   }
+}
+
+/* ---------------- Conditions -------------------------------------
+   One derivation, read straight off the state that owns each Condition, so
+   there is no second copy to fall out of step with slowT, blind, slipT, the
+   boost or the invulnerability timer. Both the badges beside a rival car and
+   the badges in a HUD corner ask this and nothing else.
+
+   The order is CONDITIONS' own key order, so a stack of badges never
+   reshuffles between frames. A finished racer is out of play and returns
+   none: it is not racing, so it has no Conditions to show. */
+function conditionOn(who, id){
+  const me = who === "me";
+  const o = me ? G : who;
+  if(!o) return false;
+  if(id === "invulnerable") return invulnerableWho(who);
+  if(id === "boosted"){
+    /* Anything that makes this car faster, whatever put it there: the boost
+       meter, a boost can, a running ultimate, or the shove a rear-end gave it. */
+    return !!o.boosting || !!o.ultOn || (o.canT || 0) > 0 ||
+           (me ? G.shuntT : o.shuntT || 0) > 0;
+  }
+  if(id === "slowed") return (me ? G.slowT : o.slow || 0) > 0;
+  if(id === "obscured") return (o.blind || 0) > 0;
+  if(id === "skidded") return (me ? G.slipT : o.slip || 0) > 0;
+  return false;
+}
+function activeConditions(who){
+  const out = [];
+  if(!who) return out;
+  if(who === "me" ? finishedMe() : finishedCar(who)) return out;
+  for(let i=0;i<CONDITION_IDS.length;i++){
+    const id = CONDITION_IDS[i];
+    if(conditionOn(who, id)) out.push(id);
+  }
+  return out;
 }
 
 /* every car on the road, described the same way */
@@ -57,7 +102,7 @@ function racers(){
   return list;
 }
 function carAt(lane, y, skip){
-  if(noContact(skip)) return null;             /* immune or in the air: meets nobody */
+  if(noContact(skip)) return null;             /* out of reach: meets nobody */
   const all = racers();
   for(let i=0;i<all.length;i++){
     const a = all[i];
@@ -81,8 +126,8 @@ function rearEnd(who, victim){
 
   if(meB) G.slowT = Math.max(G.slowT, BUMP_SLOW*0.7);
   else who.slow = Math.max(who.slow, BUMP_SLOW*0.7);
-  if(victim.me) G.launchT = LAUNCH_TIME;               /* they get shoved along */
-  else victim.obj.launch = LAUNCH_TIME;
+  if(victim.me) G.shuntT = SHUNT_TIME;                 /* they get shoved along */
+  else victim.obj.shuntT = SHUNT_TIME;
   for(let i=0;i<12;i++){
     const a = rand(-2.4, -0.7), sp = rand(60, 200);
     addFx((meB ? G.x : who.x), vy + carH*0.5, Math.cos(a)*sp, Math.sin(a)*sp,
@@ -220,7 +265,6 @@ function fireUltRival(R){
 function setBoost(){
   G.boosting = ruleOn("boost")
                && (G.keyBoost || G.ptrBoost || G.padBoost) && !G.boostLock && G.charge > 0
-               && !G.brakeOn
                && G.state === "running" && G.dead <= 0 && G.finished === null;
 }
 
@@ -233,12 +277,11 @@ function puffFx(x, y){
 
 function wreckRival(R, by, force){
   if(!R || R.dead > 0) return;
-  if(force ? immuneCar(R) : safeCar(R)) return;
+  if(force ? (finishedCar(R) || invulnerableCar(R)) : safeCar(R)) return;
   botBlame(R, by);
   ultDelta(R, ULT_ON_WRECK);
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
   R.dead = DEAD_TIME;
-  killLaunchRival(R);                          /* and anything it had in the air */
   if(R.ultOn) endUlt(R);                       /* a running ultimate is lost outright */
   /* The meter itself survives, exactly as the player's does: destroyCar takes
      ULT_ON_WRECK off the top and no more. Wiping it here contradicted the
@@ -246,7 +289,7 @@ function wreckRival(R, by, force){
      hardest - a brutal field wrecks four times as often, so it was losing
      four times as many charged ultimates to a rule the player never met. */
   R.boosting = false;
-  scrubBad(R);
+  clearDebuffs(R);
   for(let i=0;i<30;i++){
     const a = rand(0, 6.2832), sp = rand(70, 340);
     addFx(R.x, R.y, Math.cos(a)*sp, Math.sin(a)*sp, rand(.45,1.0), rand(2,7),
@@ -259,321 +302,9 @@ function wreckRival(R, by, force){
 }
 function destroyRival(){ wreckRival(G.rivals[0]); }
 
-/* Nought at the notch, AIR_STOP_POW at a dead stop, one fully wound. Two
-   phases, one number: everything downstream - air time, air speed, height,
-   the size of the bang - reads this and nothing else. */
-function airPower(){
-  const drained = clamp((AIR_ARM - G.airMeter)/AIR_ARM, 0, 1);
-  return clamp(drained*AIR_STOP_POW + G.airWind*(1 - AIR_STOP_POW), 0, 1);
-}
-
-function airborne(){ return G.airT > 0; }
-/* Airborne cars do not contact the road or other grounded cars. */
-function overhead(who){ return who === "me" ? airborne() : (!!who && who.airT > 0); }
-
-/* Anything that takes the controls away also takes the brake away. */
-function canBrake(){
-  return ruleOn("boost") &&
-         G.state === "running" && G.dead <= 0 && G.finished === null &&
-         G.launchCD <= 0 && !airborne();
-}
-/* Under the notch: far enough to go up. */
-function airArmed(){ return G.brakeOn && G.airMeter <= AIR_ARM; }
-
-/* brakeKey and brakePtr are the input being physically down; brakeOn is the
-   brake actually biting. Keeping them apart is what makes a cancelled hold
-   behave: a pin drops the brake, but the key is still down, and it must not
-   quietly come back - key autorepeat would otherwise re-latch a fresh full
-   meter every frame without the player ever lifting a finger. brakeSpent is
-   that latch, and it only clears when everything is released. */
-function brakeHeld(){ return G.brakeKey || G.brakePtr || G.padBrake; }
-function brakeEngage(){
-  if(G.brakeOn || G.brakeSpent || !brakeHeld() || !canBrake()) return;
-  G.brakeOn = true; setBoost();
-}
-/* Let go without getting under the notch and the meter simply comes back -
-   no launch, no cooldown, nothing spent. */
-function brakeOff(){
-  G.brakeOn = false;
-  G.airWind = 0;                            /* a wind-up not spent is a wind-up lost */
-  if(brakeHeld()) G.brakeSpent = true;      /* still down: dead until released */
-  if(G.launchCD <= 0) G.airMeter = 1;
-}
-
-function launchCar(){
-  const p = airPower();
-  G.airPow = p;
-  G.airMax = G.airT = lerp(AIR_MIN_T, AIR_MAX_T, p);
-  G.launchCD = AIR_CD;
-  G.brakeOn = false;
-  G.airWind = 0;
-  if(brakeHeld()) G.brakeSpent = true;
-  G.airMeter = 0;                          /* refills across the cooldown */
-  G.boosting = false; G.ptrBoost = false;
-  logEffect("launched", G.airMax);
-  /* thrust out of the back as it leaves the road, and the harder it was wound
-     the wider and hotter it comes out - a full charge should look like it
-     cost something */
-  const n = Math.round(lerp(18, 60, p));
-  for(let i=0;i<n;i++){
-    const a = rand(1.1, 2.05), sp = rand(90, 300)*(0.6 + p*1.5);
-    addFx(G.x + rand(-carW*0.4, carW*0.4), playerY + carH*0.42,
-          Math.cos(a)*sp, Math.sin(a)*sp, rand(.3,.9), rand(2,6),
-          i % 3 === 0 ? "#7CF7A6" : (i % 3 === 1 ? "#2FBF63" : "#FFFFFF"));
-  }
-  if(p > 0.5){                             /* a ring of it, for the big ones */
-    const ring = Math.round(lerp(0, 22, (p - 0.5)*2));
-    for(let i=0;i<ring;i++){
-      const a = (i/Math.max(1, ring))*6.2832;
-      addFx(G.x, playerY + carH*0.3, Math.cos(a)*260*p, Math.sin(a)*160*p,
-            rand(.35,.7), rand(3,6), i % 2 ? "#FFFFFF" : "#7CF7A6");
-    }
-  }
-  G.shake = Math.max(G.shake, 6 + p*14);
-  tone(190, .18, "square", .08);
-  later(function(){ tone(400 + p*520, .26, "sine", .10); }, 90);
-  noise(.2 + p*0.2, .22);
-}
-
-/* Coming down. Whatever is under you in this lane is written off; a trap or a
-   hazard is not, so the frame after touchdown puts you back in the world and
-   the usual collision runs on whatever you landed in. */
-function landCar(){
-  const p = G.airPow;                      /* how hard it came down, before we clear it */
-  G.airT = 0; G.airPow = 0; G.airMax = 0;
-  dropEffect("launched");
-  const under = carAt(G.lane, playerY, "me");
-  if(under && !under.me && !safeCar(under.obj)){
-    wreckRival(under.obj, "me");
-    G.shake = Math.max(G.shake, 14 + p*14);
-  } else {
-    /* Even an empty landing should land. A full-charge touchdown comes down
-       from nearly three car heights, so it throws a ring of dust out to the
-       kerb and hits the screen accordingly; a little hop barely puffs. */
-    puffFx(G.x, playerY + carH*0.42);
-    const ring = Math.round(lerp(0, 20, p));
-    for(let i=0;i<ring;i++){
-      const a = rand(0, 6.2832), sp = rand(120, 300)*p;
-      addFx(G.x, playerY + carH*0.3, Math.cos(a)*sp, Math.sin(a)*sp*0.45 - rand(0, 60),
-            rand(.3, .6), rand(2, 5), i % 2 ? "#D9DEE6" : "#B9BEC6");
-    }
-    G.shake = Math.max(G.shake, 6 + p*13);
-    noise(.16 + p*0.2, .22 + p*0.2);
-    tone(130 - p*40, .12 + p*0.1, "sine", .06 + p*0.06);
-  }
-}
-
-/* Wrecked mid-flight: put the car down where it is and let
-   the state that interrupted it take over. */
-function killLaunch(){
-  if(airborne()) dropEffect("launched");
-  G.airT = 0; G.airMax = 0; G.airPow = 0;
-  brakeOff();
-}
-
-function updateLaunch(dt, st){
-  if(G.launchCD > 0){
-    G.launchCD = Math.max(0, G.launchCD - dt);
-    /* the meter refilling IS the cooldown, so one bar answers both questions */
-    G.airMeter = airborne() ? 0 : clamp(1 - G.launchCD/AIR_CD, 0, 1);
-    G.airWind = 0;
-  }
-  if(airborne()){
-    G.airT = Math.max(0, G.airT - dt);
-    if(G.airT <= 0) landCar();
-    return;
-  }
-  if(!brakeHeld()) G.brakeSpent = false;     /* everything is off: a new hold may start */
-  if(G.brakeOn && !canBrake()){ brakeOff(); return; }
-  brakeEngage();                             /* held through whatever stopped it, and now clear */
-  if(G.brakeOn){
-    G.airMeter = clamp(G.airMeter - dt/AIR_BRAKE, 0, 1);
-    if(G.airMeter < 1e-9) G.airMeter = 0;    /* land exactly on empty, not on float dust */
-    /* Stopped, and still holding: there is no more speed to give up, so the
-       clock itself becomes the charge. */
-    if(G.airMeter === 0) G.airWind = clamp(G.airWind + dt/AIR_WIND, 0, 1);
-    /* Smoke off the back while it is scrubbing speed, green once you are under
-       the notch, and a hard white spray while it winds - so the state of the
-       charge is visible on the car as well as on the bar. */
-    const wind = G.airWind;
-    if(wind > 0){
-      G.shake = Math.max(G.shake, 1.5 + wind*5);
-      if(Math.random() < dt*(30 + wind*90)){
-        const a = rand(0, 6.2832), sp = rand(50, 120 + wind*220);
-        addFx(G.x + rand(-carW*0.4, carW*0.4), playerY + carH*rand(0.1, 0.42),
-              Math.cos(a)*sp, Math.sin(a)*sp*0.6 + rand(10, 90),
-              rand(.2, .5), rand(2, 5 + wind*3),
-              Math.random() < 0.4 + wind*0.4 ? "#FFFFFF" : "#7CF7A6");
-      }
-    } else if(G.speed > 30 && Math.random() < dt*26){
-      const armed = G.airMeter <= AIR_ARM;
-      addFx(G.x + rand(-carW*0.36, carW*0.36), playerY + carH*0.40,
-            rand(-40, 40), rand(30, 130), rand(.25, .5), rand(2, 5),
-            armed ? (Math.random() < 0.5 ? "#7CF7A6" : "#2FBF63") : "#B9BEC6");
-    }
-  } else if(st === "running" && G.launchCD <= 0 && G.airMeter < 1){
-    G.airMeter = 1; G.airWind = 0;
-  }
-}
-
-/* Called by both the key and the finger coming off. */
-function releaseBrake(){
-  if(!G.brakeOn) return;
-  if(airArmed()) launchCar();
-  else brakeOff();
-}
-
-/* ---- the same launch, with a bot's finger on it ---------------------
-   Not a bot version of the mechanic - the mechanic. Same two phases, same
-   constants, same meter, same arming notch, same cooldown, same landing rule.
-   All the AI supplies is the hold and the release: when to put the brake on,
-   how much of the wind-up it is willing to stand still for, and when to let
-   go. A bot that gets wrecked halfway through loses the
-   charge exactly the way you do. */
-function rivalAirPower(R){
-  const drained = clamp((AIR_ARM - R.airMeter)/AIR_ARM, 0, 1);
-  return clamp(drained*AIR_STOP_POW + R.airWind*(1 - AIR_STOP_POW), 0, 1);
-}
-function rivalAirborne(R){ return !!R && R.airT > 0; }
-function canBrakeRival(R){
-  return ruleOn("boost") &&
-         G.state === "running" && R.dead <= 0 && R.finished === null &&
-         R.launchCD <= 0 && R.airT <= 0;
-}
-function rivalBrakeOff(R){
-  R.brakeOn = false;
-  R.airWind = 0;                               /* a wind-up not spent is a wind-up lost */
-  R.airWhy = null;
-  if(R.brakeHeld) R.brakeSpent = true;         /* still down: dead until released */
-  if(R.launchCD <= 0) R.airMeter = 1;
-}
-function launchRival(R){
-  const p = rivalAirPower(R);
-  R.airPow = p;
-  R.airMax = R.airT = lerp(AIR_MIN_T, AIR_MAX_T, p);
-  R.launchCD = AIR_CD;
-  R.brakeOn = false; R.airWind = 0; R.airMeter = 0;
-  R.boosting = false; R.airWhy = null;
-  if(R.brakeHeld) R.brakeSpent = true;         /* one hold, one launch */
-  const n = Math.round(lerp(12, 44, p));
-  for(let i=0;i<n;i++){
-    const a = rand(1.1, 2.05), sp = rand(90, 300)*(0.6 + p*1.5);
-    addFx(R.x + rand(-carW*0.4, carW*0.4), R.y + carH*0.42,
-          Math.cos(a)*sp, Math.sin(a)*sp, rand(.3,.9), rand(2,6),
-          i % 3 === 0 ? "#7CF7A6" : (i % 3 === 1 ? "#2FBF63" : "#FFFFFF"));
-  }
-  if(onScreen(R.y)){ G.shake = Math.max(G.shake, 3 + p*7); tone(190, .12, "square", .05); }
-}
-/* Coming down. Whatever is under it in this lane is written off - the same
-   rule your own landing runs, which is why the air has to be cleared first:
-   airborne cars meet nobody, so the test would find nobody. */
-function landRival(R){
-  const p = R.airPow;
-  R.airT = 0; R.airPow = 0; R.airMax = 0;
-  const under = carAt(R.lane, R.y, R);
-  /* The player's entry in racers() carries obj:null, and safeCar(null) reports
-     safe - so asking safeCar(under.obj) about a player under the wheels always
-     came back "leave them alone" and a bot could never land on you. Each side
-     gets asked its own question. */
-  const lands = !!under && (under.me ? !playerUntouchable() : !safeCar(under.obj));
-  if(lands){
-    if(under.me) destroyCar(R); else wreckRival(under.obj, R);
-    if(onScreen(R.y)) G.shake = Math.max(G.shake, 10 + p*10);
-  } else {
-    puffFx(R.x, R.y + carH*0.42);
-    if(onScreen(R.y)){
-      G.shake = Math.max(G.shake, 3 + p*8);
-      noise(.12 + p*0.14, .16 + p*0.14);
-    }
-  }
-}
-/* Written off mid-flight: put it down where it is and let
-   whatever interrupted it take over. */
-function killLaunchRival(R){
-  if(!R) return;
-  R.airT = 0; R.airMax = 0; R.airPow = 0;
-  rivalBrakeOff(R);
-}
 /* Only worth shaking the screen and making a noise for something the player
    can actually see happen. */
 function onScreen(y){ return y > VW_TOP - carH*2 && y < VW_BOT + carH*2; }
-
-/* One frame of the mechanic for one bot, run before it thinks, so the think
-   sees the road it is actually on. */
-function updateRivalLaunch(R, dt, s){
-  if(R.launchCD > 0){
-    R.launchCD = Math.max(0, R.launchCD - dt);
-    R.airMeter = R.airT > 0 ? 0 : clamp(1 - R.launchCD/AIR_CD, 0, 1);
-    R.airWind = 0;
-  }
-  if(R.airT > 0){
-    R.airT = Math.max(0, R.airT - dt);
-    if(R.airT <= 0) landRival(R);
-    return;
-  }
-  if(R.human){
-    /* Exactly what brakeEngage does for player one: a hold that could not
-       start yet keeps trying until it can, and a hold already spent stays
-       dead until the stick comes back up. */
-    if(!R.brakeHeld) R.brakeSpent = false;
-    if(!R.brakeOn && R.brakeHeld && !R.brakeSpent && canBrakeRival(R)){
-      R.brakeOn = true; R.boosting = false;
-    }
-  }
-  if(R.brakeOn && !canBrakeRival(R)){ rivalBrakeOff(R); return; }
-  if(R.brakeOn){
-    R.airMeter = clamp(R.airMeter - dt/AIR_BRAKE, 0, 1);
-    if(R.airMeter < 1e-9) R.airMeter = 0;
-    if(R.airMeter === 0) R.airWind = clamp(R.airWind + dt/AIR_WIND, 0, 1);
-    /* A person decides when to let go, exactly as player one does - the
-       stick coming back up is the release and nothing here second-guesses it.
-       The smoke below is the mechanic, not the mind, so it still runs. */
-    if(R.human){
-      if(Math.random() < dt*(12 + R.airWind*40)){
-        const a2 = rand(0, 6.2832), sp2 = rand(50, 120 + R.airWind*200);
-        addFx(R.x + rand(-carW*0.4, carW*0.4), R.y + carH*rand(0.1, 0.42),
-              Math.cos(a2)*sp2, Math.sin(a2)*sp2*0.6 + rand(10, 90),
-              rand(.2, .5), rand(2, 5),
-              R.airWind > 0 && Math.random() < 0.5 ? "#FFFFFF"
-                : (R.airMeter <= AIR_ARM ? "#7CF7A6" : "#B9BEC6"));
-      }
-      return;
-    }
-    R.airHold -= dt;
-    const armed = R.airMeter <= AIR_ARM;
-    const p = rivalAirPower(R);
-    /* Let go when the charge is what it came for - or when it has run out of
-       patience, or when the reason it started has gone away. A driver that
-       has changed its mind while stopped still has to spend the charge: the
-       meter does not come back for free. */
-    const stale = s && R.airWhy === "land" && (!s.front || s.front.safe);
-    if(armed && (p >= R.airAim - 0.01 || R.airHold <= 0 || stale)) launchRival(R);
-    else if(!armed && R.airHold <= -1.2) rivalBrakeOff(R);
-    /* a little smoke off the back, so a bot winding up reads the same way you do */
-    if(R.airWind > 0 && Math.random() < dt*(12 + R.airWind*40)){
-      const a = rand(0, 6.2832), sp = rand(50, 120 + R.airWind*200);
-      addFx(R.x + rand(-carW*0.4, carW*0.4), R.y + carH*rand(0.1, 0.42),
-            Math.cos(a)*sp, Math.sin(a)*sp*0.6 + rand(10, 90),
-            rand(.2, .5), rand(2, 5), Math.random() < 0.5 ? "#FFFFFF" : "#7CF7A6");
-    } else if(R.airWind <= 0 && Math.random() < dt*14){
-      addFx(R.x + rand(-carW*0.36, carW*0.36), R.y + carH*0.40,
-            rand(-40, 40), rand(30, 130), rand(.25, .5), rand(2, 5),
-            R.airMeter <= AIR_ARM ? "#2FBF63" : "#B9BEC6");
-    }
-    return;
-  }
-  /* not braking: is there a reason to start? A person is the reason, and they
-     say so with the stick - nothing decides it for them. */
-  if(R.human) return;
-  if(!s || R.launchCD > 0 || !canBrakeRival(R)) return;
-  const want = botAirWant(R, s);
-  if(!want) return;
-  R.brakeOn = true;
-  R.airWhy = want.why;
-  R.airAim = clamp(want.aim, 0, 1);
-  /* how long it is prepared to sit there before spending whatever it has */
-  R.airHold = AIR_BRAKE + AIR_WIND*clamp(want.aim, 0, 1) + 0.4;
-}
 
 function spawnWave(){
   const free = [];
@@ -859,8 +590,8 @@ function seekerTarget(owner){
   const all = [{ me:true, obj:null, m:G.meters, out:G.dead > 0 || finishedMe() }].concat(
     G.rivals.map(function(R){ return { me:false, obj:R, m:metersOf(R),
                                        out:R.dead > 0 || finishedCar(R) }; }));
-  /* A winner is off the target list of every offensive system, this one
-     included - it has finished, and nothing may touch its result. */
+  /* A finisher is off the target list of every offensive system, this one
+     included - it is out of play, and nothing may touch its result. */
   const others = all.filter(function(a){
     return (owner === "me" ? !a.me : a.obj !== owner) && !a.out;
   });
@@ -899,7 +630,7 @@ function fireSeeker(owner){
   const D = missileDims();
   const x = owner === "me" ? G.x : owner.x, y = owner === "me" ? playerY : owner.y;
   G.missiles.push({
-    /* clear of the launching car, tail first, so nothing overlaps the bonnet */
+    /* clear of the car that fired it, tail first, so nothing overlaps the bonnet */
     x:x, y:y - carH*0.5 - D.tail, vx:0, vy:-MISSILE_SPEED*0.3,
     owner:owner, mark:t.me ? "me" : t.obj, life:14, fade:0
   });
@@ -909,7 +640,11 @@ function markPos(mark){
   return mark === "me" ? { x:G.x, y:playerY, gone:G.dead > 0 }
                        : { x:mark.x, y:mark.y, gone:mark.dead > 0 };
 }
-function markImmune(mark){ return mark === "me" ? immuneMe() : immuneCar(mark); }
+/* A seeker waits out temporary invulnerability, but a racer that has crossed
+   the line is gone for good - so the missile loses that mark harmlessly rather
+   than circling a finisher for the rest of its life. */
+function markFinished(mark){ return mark === "me" ? finishedMe() : finishedCar(mark); }
+function markShielded(mark){ return mark === "me" ? invulnerableMe() : invulnerableCar(mark); }
 
 function updateMissiles(dt, d){
   for(let i=G.missiles.length-1;i>=0;i--){
@@ -924,9 +659,12 @@ function updateMissiles(dt, d){
     }
     const p = markPos(m.mark);
     if(p.gone || m.life <= 0){ G.missiles.splice(i,1); continue; }
+    /* Its mark has finished: the target is out of play, so the seeker gives it
+       up and burns out where it is rather than following it over the line. */
+    if(markFinished(m.mark)){ m.fade = 0.5; continue; }
 
-    /* Seekers wait out real immunity. */
-    if(markImmune(m.mark)){                           /* wait it out */
+    /* Seekers wait out temporary invulnerability. */
+    if(markShielded(m.mark)){                         /* wait it out */
       m.x = lerp(m.x, p.x, 1 - Math.pow(0.2, dt));
       m.y = lerp(m.y, p.y + carH*2.2, 1 - Math.pow(0.2, dt));
       addFx(m.x, m.y, rand(-30,30), rand(20,90), .25, 2.5, "#FFB07A");
@@ -966,8 +704,9 @@ function updateMissiles(dt, d){
       const a = all[k];
       if(a.out) continue;
       if(m.owner === "me" ? a.me : a.obj === m.owner) continue;
-      /* Immunity and the finish flag stop the seeker; speed boosts do not. */
-      if(a.me ? immuneMe() : immuneCar(a.obj)) continue;
+      /* Invulnerability, a wreck and the finish flag all stop the seeker;
+         speed boosts do not. */
+      if(noContact(a.me ? "me" : a.obj)) continue;
       const box = { x:a.me ? G.x : a.obj.x, y:a.y, hw:carW*0.40, hh:carH*0.42 };
       let px = 0, py = 0, touch = false;
       for(let s=0;s<spine.length && !touch;s++){
@@ -1012,9 +751,9 @@ function updateSlicks(dt, d, st){
     if(o.life <= 0){ o.fade = OIL_FADE; continue; }
 
     /* Oil uses the ordinary road-contact rules. */
-    if(st === "running" && !noContact("me") && !airborne() && G.finished === null){
+    if(st === "running" && !noContact("me") && G.finished === null){
       if(slickHits(o, c)){
-        if(!warded("me")) G.slipT = SLIP_TIME;
+        if(!refusesDebuffs("me")) G.slipT = SLIP_TIME;
         slickSplash(o); noise(.2, .2);
         G.slicks.splice(i,1); continue;
       }
@@ -1024,7 +763,7 @@ function updateSlicks(dt, d, st){
       if(noContact(R)) continue;
       const rc = { x:R.x, y:R.y, hw:carW*0.40, hh:carH*0.42 };
       if(slickHits(o, rc)){
-        if(!warded(R)){ R.slip = SLIP_TIME; botBlame(R, o.owner); }
+        if(!refusesDebuffs(R)){ R.slip = SLIP_TIME; botBlame(R, o.owner); }
         slickSplash(o);
         G.slicks.splice(i,1);
         break;
@@ -1171,10 +910,7 @@ function nearestOnCar(c, px, py){
 
 function updateTraps(dt, d, st){
   const racing = st === "running" && G.dead <= 0;
-  /* Up in the air the road is simply not where you are: the trap neither
-     catches you nor gets smashed, it goes by underneath and is still there
-     when you come down. */
-  const live = racing && G.immune <= 0 && !finishedMe() && !airborne();
+  const live = racing && !invulnerableMe() && !finishedMe();
   const c = carHit();
   for(let i=G.traps.length-1;i>=0;i--){
     const o = G.traps[i];
@@ -1268,7 +1004,7 @@ function blindSpray(){
 }
 function hitPuddle(){
   ultDelta("me", ULT_ON_TRAP);
-  if(warded("me")) return;
+  if(refusesDebuffs("me")) return;
   G.blind = BLIND_TIME;
   G.blindPts = blindSpray();
   for(let i=0;i<16;i++){
@@ -1280,15 +1016,14 @@ function hitPuddle(){
   noise(.3, .3); tone(200, .16, "sine", .07);
 }
 
-/* the destroy effect: wreck the car, then respawn it untouchable */
+/* being destroyed: wreck the car, then respawn it invulnerable */
 function clearMyUlt(){
   if(G.ultOn) endUlt("me");
   G.ult = 0;
 }
 function destroyCar(by){
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
-  scrubBad("me");
-  killLaunch();                                /* and so is anything in the air */
+  clearDebuffs("me");
   ultDelta("me", ULT_ON_WRECK);
   if(by) ultDelta(by, ULT_ON_KILL);
   G.dead = DEAD_TIME;
@@ -1305,7 +1040,7 @@ function destroyCar(by){
 
 function hitWeed(o){
   ultDelta("me", ULT_ON_TRAP);
-  if(warded("me")) return;
+  if(refusesDebuffs("me")) return;
   G.slowT = SLOW_TIME;
   G.shake = 8;
   for(let i=0;i<14;i++){

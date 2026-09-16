@@ -1,7 +1,7 @@
 "use strict";
 
 /* SEREN - Canvas 2D drawing. Cars, tracks, scenery, hazards, particles and
-   the effects that sit over them. Draw order here is behaviour: it is what
+   the Conditions that sit over them. Draw order here is behaviour: it is what
    decides what covers what. This file reads game state and never changes
    it. */
 
@@ -891,49 +891,34 @@ function renderView(dy){
     drawCar(t2.x, t2.y, t2.w, t2.h, t2.paint, 0, false, false);
   }
 
+  /* Every car that is not this view's owner wears its Conditions beside it;
+     the owner's own go in the corner of the view's HUD instead, so nobody has
+     badges floating over the car they are actually driving. The badges are
+     drawn after the blink test rather than inside it, because a blinking car
+     must not take its Invulnerable badge off the screen nine times a second. */
   for(let n=0;n<G.rivals.length;n++){
     const RV = G.rivals[n];
     if(G.state === "idle" || RV.dead > 0) continue;
     const rc = CARS[RV.car];
-    if(RV.immune > 0 && Math.floor(RV.immune*9) % 2 === 0) continue;
-    /* The launch, seen. Every car in the field runs the same mechanic - the
-       same meter, the same wind-up, the same landing that writes off whatever
-       is underneath - but only player one was ever drawn doing it: rivalHop
-       existed and nothing called it, so a bot or a second player left the road
-       for real while staying flat on the tarmac. Same arithmetic as the
-       player's block below, off that car's own numbers, so a launch looks the
-       same whoever spent it. */
-    const rhop = rivalHop(RV);
-    const rpow = RV.airPow || 0;
-    const rsquat = rhop > 0 ? 0 : (RV.airWind || 0);
-    const ry = RV.y - rhop*carH*lerp(0.6, AIR_HOP, rpow) + rsquat*carH*0.03;
-    const rk = 1 + rhop*lerp(0.20, 0.62, rpow) - rsquat*0.09;
-    const rw = carW*rk, rh = carH*rk;
-    if(rhop > 0.002) drawAirShadow(rhop, RV.x, RV.y, rpow);
-    drawCar(RV.x, ry, rw, rh, rc, RV.tilt, true,
-            RV.boosting || RV.ultOn || RV.airT > 0);
-    ctx.globalAlpha = 1;
-    if(G.local && RV.human) drawSeatMark(RV, RV.x, ry);
+    const rblink = RV.invuln > 0 && Math.floor(RV.invuln*9) % 2 === 0;
+    if(!rblink){
+      drawCar(RV.x, RV.y, carW, carH, rc, RV.tilt, true, RV.boosting || RV.ultOn);
+      ctx.globalAlpha = 1;
+      if(G.local && RV.human) drawSeatMark(RV, RV.x, RV.y);
+    }
+    if(VOWN !== RV) drawConditionStack(RV, RV.x, RV.y);
   }
 
-  const blink = G.immune > 0 && Math.floor(G.immune*9) % 2 === 0;
-  if(G.state !== "idle" && G.dead <= 0 && !blink && (!G.local || playerY >= CT - carH*2 && playerY <= CB + carH*2)){
+  const blink = G.invuln > 0 && Math.floor(G.invuln*9) % 2 === 0;
+  const meSeen = !G.local || (playerY >= CT - carH*2 && playerY <= CB + carH*2);
+  if(G.state !== "idle" && G.dead <= 0 && meSeen){
     const car = CARS[G.car];
-    /* Airborne, everything about the player's car moves together: it lifts off
-       the road, grows because it is nearer the camera, and leaves a shadow
-       behind on the tarmac. The shadow is what actually sells the height -
-       without it a bigger car just reads as a bigger car. On the ground with
-       the brake wound it does the opposite and squats, so the launch reads as
-       a spring going down before it goes up. */
-    const hop = airHop();
-    const squat = airborne() ? 0 : G.airWind;
-    const py = playerY - hop*carH*lerp(0.6, AIR_HOP, G.airPow) + squat*carH*0.03;
-    const kk = 1 + hop*lerp(0.20, 0.62, G.airPow) - squat*0.09;
-    const cw = carW*kk, ch = carH*kk;
-    if(hop > 0.002) drawAirShadow(hop, G.x, playerY, G.airPow);
-    drawCar(G.x, py, cw, ch, car, G.tilt, true, G.boosting || G.ultOn || airborne());
-    ctx.globalAlpha = 1;
-    if(G.local) drawSeatMark("me", G.x, py);
+    if(!blink){
+      drawCar(G.x, playerY, carW, carH, car, G.tilt, true, G.boosting || G.ultOn);
+      ctx.globalAlpha = 1;
+      if(G.local) drawSeatMark("me", G.x, playerY);
+    }
+    if(VOWN !== "me") drawConditionStack("me", G.x, playerY);
   }
 
   for(let i=0;i<G.fx.length;i++){
@@ -973,38 +958,6 @@ function renderView(dy){
   const blind = o.blind || 0;
   if(blind > 0) drawBlind(blind, o.blindPts);
   ctx.restore();
-}
-
-/* Where in the arc the car is: nothing on the road, one at the top of the
-   climb. A sine gives the same shape going up as coming down, which is what
-   you want here - the launch is a jump, not a throw. */
-function airHop(){
-  if(!airborne() || G.airMax <= 0) return 0;
-  return Math.sin(clamp(1 - G.airT/G.airMax, 0, 1)*Math.PI);
-}
-
-/* Where in the arc a bot's car is, for the drawing. */
-function rivalHop(R){
-  if(R.airT <= 0 || R.airMax <= 0) return 0;
-  return Math.sin(clamp(1 - R.airT/R.airMax, 0, 1)*Math.PI);
-}
-
-/* The shadow stays on the road where the car would have been, shrinking and
-   fading as it climbs, so the height is readable at a glance. It takes the
-   spot and the strength rather than reading the player's, because every car
-   in the field launches and the shadow is what actually sells the height -
-   without it a bigger car just reads as a bigger car. */
-function drawAirShadow(hop, cx, cy, pow){
-  const deep = hop*lerp(0.5, 1, pow);             /* a big launch throws a smaller shadow */
-  const r = carW*0.46*(1 - deep*0.52);
-  ctx.save();
-  ctx.globalAlpha = 0.44*(1 - deep*0.62);
-  ctx.beginPath();
-  if(ctx.ellipse) ctx.ellipse(cx, cy + carH*0.16, r, r*0.42, 0, 0, 6.2832);
-  else ctx.arc(cx, cy + carH*0.16, r*0.7, 0, 6.2832);
-  ctx.fillStyle = "#000000"; ctx.fill();
-  ctx.restore();
-  ctx.globalAlpha = 1;
 }
 
 function bubbleFlash(row){

@@ -5,16 +5,23 @@
    Gameplay logic lives elsewhere. */
 
 /* the reference pages behind Cars & more */
+const GARAGE_TABS = ["cars", "tracks", "items", "conditions"];
 let garageTab = "cars";
+/* The Conditions page is split in two, and which half is showing survives a
+   rebuild - a language change or a repaint should not throw the reader back
+   to Buff. Arriving on the page fresh does start on Buff, which is what
+   tabShown is watching for. */
+const COND_TABS = ["buff", "debuff"];
+let condTab = "buff", tabShown = null;
 /* One card shape for every reference entry: an optional kind chip and odds
    pill on the head row, a name, a paragraph, and an optional meta row. Every
    tab builds the same card, so the four pages read as one index rather than
    four layouts. */
 function infoCard(o){
   let head = "";
-  if(o.chip || o.odds || o.dot){
+  if(o.chip || o.odds || o.badge){
     head += '<div class="info-head">';
-    if(o.dot) head += '<span class="eff-dot" style="background:' + o.dot + '"></span>';
+    if(o.badge) head += '<span class="cond-dot">' + o.badge + '</span>';
     head += '<h3>' + o.name + '</h3>';
     if(o.chip) head += o.chip;
     if(o.odds) head += '<span class="odds">' + o.odds + '</span>';
@@ -45,7 +52,7 @@ function buildGarage(){
         name:t(c.key),
         body:t(id + "Ult"),
         meta:'<div class="tagrow">' +
-             t(EFFECTS.boosted.key) +
+             t(CONDITIONS.boosted.key) +
              '</div>'
       });
     });
@@ -87,11 +94,24 @@ function buildGarage(){
     });
     html += '<p class="soon">' + t("oddsNote") + '</p>';
   } else {
-    /* An effect is named as well as swatched: the colour is a reminder of what
-       you saw on the road, never the only way to tell two of them apart. */
-    for(const id in EFFECTS){
-      html += infoCard({ dot:EFFECTS[id].col, name:t(EFFECTS[id].key), body:t(id + "Info") });
-    }
+    /* The two halves come out of CONDITIONS[id].type, so a Condition that
+       changes side changes side here too and there is no second list to keep
+       in step. Each card wears the badge it wears on the road, so what you
+       learn here is what you will recognise at speed - and it is named as
+       well as drawn, because the shape is what has to be learned. */
+    html += '<div class="subtabs" role="tablist" aria-label="' + t("tabConditions") + '">';
+    COND_TABS.forEach(function(k){
+      const on = condTab === k;
+      html += '<button class="subtab' + (on ? " on" : "") + '" role="tab"' +
+              ' id="condTab' + cap(k) + '" aria-selected="' + on + '"' +
+              ' aria-controls="garageBody" tabindex="' + (on ? "0" : "-1") + '"' +
+              ' data-condtab="' + k + '">' + t("cond" + cap(k)) + '</button>';
+    });
+    html += '</div>';
+    conditionsOfType(condTab).forEach(function(id){
+      html += infoCard({ badge:conditionSvg(id, 26), name:t(CONDITIONS[id].key),
+                         body:t(id + "Info") });
+    });
   }
   body.innerHTML = html;
   if(garageTab === "cars") paintCarIcons();
@@ -365,7 +385,11 @@ function previewCar(id){
 }
 
 function setTab(){
-  ["cars","tracks","items","effects"].forEach(function(k){
+  /* Coming to the Conditions page from another tab starts it on Buff; a
+     rebuild of the page it is already on keeps whichever half is showing. */
+  if(garageTab === "conditions" && tabShown !== "conditions") condTab = "buff";
+  tabShown = garageTab;
+  GARAGE_TABS.forEach(function(k){
     const tab = $("#tab" + cap(k));
     tab.classList.toggle("on", garageTab === k);
     tab.setAttribute("role", "tab");
@@ -376,6 +400,14 @@ function setTab(){
   $("#garageBody").setAttribute("aria-labelledby", "tab" + cap(garageTab));
   buildGarage();
   $("#garageBody").scrollTop = 0;
+}
+
+/* One of the Conditions page's two sub-tabs. Not setTab: the main tab has not
+   changed, so the page is rebuilt where it stands rather than reset. */
+function setCondTab(k){
+  if(COND_TABS.indexOf(k) < 0 || condTab === k) return;
+  condTab = k;
+  buildGarage();
 }
 
 /* ---------------- select-screen car art --------------------------

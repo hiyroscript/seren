@@ -16,9 +16,9 @@ fifteen JavaScript files, drawn entirely with hand-written Canvas 2D.
 
 - [Playing](#playing) · [Controls](#controls) · [Modes](#modes)
 - [The cars and their ultimates](#the-cars-and-their-ultimates)
-- [Driving](#driving) · [The launch](#the-launch) · [Contact rules](#contact-rules)
+- [Driving](#driving) · [Contact rules](#contact-rules)
 - [The road](#the-road) · [Hazards](#hazards) · [Mystery bubbles and items](#mystery-bubbles-and-items)
-- [Effects](#effects) · [Race structure](#race-structure) · [Difficulty](#difficulty)
+- [Conditions](#conditions) · [Race structure](#race-structure) · [Difficulty](#difficulty)
 - [Local multiplayer](#local-multiplayer) · [Settings and saved data](#settings-and-saved-data)
 - [Accessibility](#accessibility) · [Browser support](#browser-support)
 - [Running it locally](#running-it-locally) · [Project layout](#project-layout) · [Deploying](#deploying)
@@ -32,18 +32,19 @@ Open the page, pick a language the first time, then **Start race**. Pick a mode,
 pick a car, and the lights go out three seconds later.
 
 **Cars & more** on the home screen is the reference: every car's ultimate, every
-track, every trap, the mystery-bubble drop odds, and what each status effect
-means. It is the in-game manual and it is built from the same tables the race
-reads, so it can never drift out of date.
+track, every trap, the mystery-bubble drop odds, and what each Condition means.
+It is the in-game manual and it is built from the same tables the race reads, so
+it can never drift out of date.
 
 ![A bot race in progress](docs/img/race.png)
 
 The HUD, clockwise from the top left: the track name and race clock; the distance
 you have covered and the six-car standings, with your row picked out; a ladder
 down the right showing how far ahead or behind each racer is; your ultimate meter
-and item box bottom right; and the boost bar (green) and launch bar (red) across
-the foot. Racers off the top or bottom of the screen get an edge badge with their
-lane and the gap in metres — or, past 500m, a pair of chevrons on the ladder.
+and item box bottom right; your own Conditions as a column of coloured icon
+circles bottom left; and the boost bar across the foot. Racers off the top or
+bottom of the screen get an edge badge with their lane and the gap in metres —
+or, past 500m, a pair of chevrons on the ladder.
 
 ## Controls
 
@@ -53,7 +54,6 @@ lane and the gap in metres — or, past 500m, a pair of chevrons on the ladder.
 | --- | --- |
 | `←` `→` or `A` `D` | change lane (and barge whoever is in it) |
 | `↑` or `W` — hold | boost |
-| `↓` or `S` — hold, then release | brake, wind up, launch |
 | `Shift` or `Space` | ultimate |
 | `E` | use the item you are holding |
 | `P` or `Esc` | pause / resume |
@@ -65,14 +65,13 @@ lane and the gap in metres — or, past 500m, a pair of chevrons on the ladder.
 | --- | --- |
 | swipe left / right | change lane — a held drag keeps stepping across |
 | swipe up and hold | boost |
-| swipe down and hold, then lift | brake, wind up, launch |
 | press and hold one finger (0.35s) | ultimate |
 | double-tap (within 0.5s) | use the item |
 | tap the ultimate square / item box | ultimate / use item |
 
-A vertical gesture latches until the finger comes off, so a wobble back the other
-way cannot flip you from braking into boosting halfway through a launch. The
-ultimate needs **one** finger held — a second finger on the glass suppresses it.
+The boost swipe latches until the finger comes off, so the travel you have
+already spent does not keep counting against the next lane change. The ultimate
+needs **one** finger held — a second finger on the glass suppresses it.
 
 ### Controller — local play
 
@@ -82,7 +81,6 @@ pads alike, so one table covers all of them.
 | Control | Does |
 | --- | --- |
 | left stick ← / → (or d-pad) | change lane |
-| left stick held down (or d-pad down) | brake, then launch on release |
 | right stick held up (or d-pad up) | boost |
 | both sticks clicked in (L3 + R3 / LS + RS) | ultimate |
 | R2, or Circle (Xbox: RT, or B) | use the item |
@@ -114,7 +112,7 @@ Local play then asks how you want to race:
 - **Standard play** — the full game, with a difficulty for the bots.
 - **Custom play** — set the road up your way: how many bots (from none up to
   however many seats the people leave free), and whether traps, mystery bubbles,
-  boost-and-launch, and ultimates are on the table at all.
+  boost, and ultimates are on the table at all.
 
 Backing out of a custom setup and choosing standard restores the defaults, so you
 never inherit half a custom race by accident.
@@ -148,8 +146,8 @@ when a bot spends the boost, never its strength, duration or charge rate.
 
 Ultimates do not change contact rules. An active racer simply moves at boosted
 pace and otherwise interacts normally: collisions, barges, wrecks, hazards,
-oil and seekers still apply. Slow and other legitimate penalties coexist with
-the speed multiplier. Only **Boosted** is added to the effect display, with
+oil and seekers still apply. Slowed and other legitimate debuffs coexist with
+the speed multiplier. Only **Boosted** is added to the Conditions on show, with
 ordinary boost flames and a generic activation burst.
 
 ## Driving
@@ -160,46 +158,28 @@ against a barrier, the hit wrecks it. Either way the lane is yours.
 
 **Boost.** A full bar lasts about 2.5 seconds at 1.5× pace and takes about 7
 seconds to refill. Run it completely dry and it locks out until it is full again.
-It will not run while the brake is down, or while you are wrecked.
+It will not run while you are wrecked.
 
-**Wrecks.** Being destroyed parks you for 3 seconds, then respawns you immune for
-2 more. Immunity is total — every effect, hazard, trap and attack — and it phases,
-so you pass through anything that would otherwise meet you.
+**Rear-ending.** Running into the back of the car in front shunts it forward for
+0.8 seconds at 1.35× while you are left labouring. Both cars lose the same time
+to the bump, and the shunt shows on the shunted car as **Boosted**.
 
-### The launch
-
-The one mechanic worth practising.
-
-1. **Hold the brake.** The car sheds speed over 1.4 seconds until it is stopped
-   dead. The red bar is literally the speed left in the car, so "empty" means
-   stopped.
-2. **Get under the notch.** Once the bar is below 60%, the launch is armed —
-   release any time after that and the car goes up.
-3. **Or keep holding.** Now you are spending time, not speed, while the whole
-   field drives past. 1.6 more seconds fills the same bar back up in white. A
-   dead stop is 42% of the way to a full launch; the wind-up is the rest.
-4. **Release.** You are in the air for 0.85–3.8 seconds at 1.18×–2.80× road
-   speed, up to 2.8 car heights high.
-
-In the air, grounded traps and cars pass harmlessly underneath and you **wreck
-whatever you come down on** — but the seeker still reaches you up
-there. Ten seconds of cooldown before you can launch again, and the red bar
-refilling *is* that cooldown.
-
-Braking is roughly free — a light launch comes out a couple of metres down on
-driving straight through, so it is an escape. Winding up is anything but: every
-second stopped hands thirty-odd metres to five cars that are not stopped, in
-traffic where anything can barge into or wreck you and take the whole charge with
-it. That curve is the point of the mechanic.
-
-Bots run this exact mechanic — the same meter, the same notch, the same cooldown,
-the same landing rule. All the AI supplies is the hold and the release.
+**Wrecks.** Being destroyed parks you for 3 seconds, then respawns you
+**Invulnerable** for 2 more. That is total — every debuff, hazard, trap and
+attack — and it phases, so you pass through anything that would otherwise meet
+you.
 
 ### Contact rules
 
-A car does not make road contact when it has finished, is wrecked, has genuine
-respawn immunity, or is airborne. An ultimate grants none of these protections.
-Airborne cars still follow the normal landing and seeker rules.
+A car does not make road contact when it has finished, is wrecked, or is
+Invulnerable from a respawn. An ultimate grants none of these protections.
+
+Finishing is not a Condition and it is not temporary Invulnerability: it is a
+race lifecycle state. The instant a car crosses the line it is out of play for
+the rest of that race. Nothing selects it as a target, nothing tracks it,
+nothing collides with it, and no debuff, item, hazard or seeker can alter the
+result it has earned — a seeker already locked on gives the mark up and burns
+out. All it does from there is roll out onto its parking mark.
 
 ## The road
 
@@ -220,7 +200,7 @@ minutes in.
 
 | Hazard | Track | What it does | Ultimate cost |
 | --- | --- | --- | --- |
-| **Puddle** | City | Water over your screen: cluttered for 2.6 seconds | −5% |
+| **Puddle** | City | Water over your screen: **Obscured** for 2.6 seconds | −5% |
 | **Meteor** | Space | A blinking red ring marks the impact. Anything in the blast is destroyed and respawns after 3 seconds | −10% |
 | **Tumbleweed** | Desert | Rolls across from either side; halves your speed for 1.7 seconds | −5% |
 
@@ -229,7 +209,7 @@ rock has left is measured in seconds — so it lands where it was always going t
 land no matter what you do to your own speed. Every ultimate leaves the
 world clock and other racers’ speed unchanged.
 
-The seeker clears hazards it passes through. In the air, hazards simply go by underneath.
+The seeker clears hazards it passes through.
 
 ### Mystery bubbles and items
 
@@ -245,28 +225,46 @@ still reads.
 | **Seeker** | Legendary | 5.6% | — | A missile that hunts the leader, destroying whatever it passes through |
 
 The seeker never drops for whoever is leading; out in front, its share goes to the
-other two. Immunity and the finish flag stop a seeker hit; an ultimate does not.
+other two. Invulnerability, a wreck and the finish flag stop a seeker hit; an
+ultimate does not.
 
 A row does not sit there forever. It flashes and goes on whichever comes first:
 the last stretch before it drops off the bottom, or a 30-second clock that only
 runs when the road has all but stopped.
 
-## Effects
+## Conditions
 
-These states appear beside the HUD. Genuine respawn immunity clears and blocks
-negative effects. Activating an ultimate leaves existing effects in place.
+Five of them, and each one is a small filled circle in its own colour with a
+plain device inside it. The shape carries the meaning as much as the colour
+does, so a Condition is never told apart by colour alone.
 
-| Effect | | Meaning |
-| --- | --- | --- |
-| **Slowed** | negative | Anything making you go slower, whatever put it there |
-| **Boosted** | | Anything making you go faster, whatever put it there |
-| **Cluttered** | negative | Water from puddles obscuring your screen |
-| **Slippery** | negative | No grip: left goes right and right goes left |
-| **Launched** | | You are in the air |
-| **Immune** | | Respawn protection: pass through road contact and reject negative effects |
-| **Winner** | | Over the line. Off every target list, invincible, out of the race you finished |
+| Condition | | Colour | Icon | Meaning |
+| --- | --- | --- | --- | --- |
+| **Boosted** | buff | `#FF9A4A` | forward chevrons | Anything making you go faster, whatever put it there: the boost meter, a boost can, an ultimate, or a rear-end shunt |
+| **Invulnerable** | buff | `#FFD86B` | shield | Respawn protection: pass through road contact and refuse every debuff |
+| **Slowed** | debuff | `#8A9099` | arrow brought down to a floor | Anything making you go slower, whatever put it there |
+| **Obscured** | debuff | `#B07A4A` | crossed-out eye | Water from a puddle over your screen |
+| **Skidded** | debuff | `#0B0B0C` | paired skid marks | No grip: left goes right and right goes left |
 
-At most six labels are on screen at once; the oldest makes room.
+**Where they are shown.** Every visible car that is *not* the owner of the view
+you are looking through wears its Conditions as a compact column of these
+circles beside it — bots and other people alike, because what decides is the
+racer's state and never who is holding the controls. Your own car never carries
+them: yours go in the bottom-left corner of the HUD instead, as the same
+circles. In split screen this is worked out per column, so in Player 2's window
+Player 2 has corner badges and everyone else has beside-car ones, and in Player
+1's window Player 2 is a rival and gets beside-car badges like anybody else.
+
+Where several are active they stack in a fixed order — Invulnerable, Boosted,
+Slowed, Obscured, Skidded — so a stack never reshuffles between frames.
+
+**Invulnerable** clears the debuffs already on you and refuses new ones for as
+long as it lasts. Activating an ultimate leaves every Condition in place.
+
+A racer that has crossed the line shows no Conditions at all: it is out of the
+race, not protected within it. The garage's **Conditions** tab is where the
+symbols are learned — Buff and Debuff on two sub-tabs, each card carrying the
+same circle you see on the road.
 
 ## Race structure
 
@@ -305,7 +303,6 @@ how well the driver *thinks*.
 | Picks targets deliberately | 0.10 | 0.42 | 0.78 | 1.00 |
 | Defends its place | 0.06 | 0.36 | 0.72 | 1.00 |
 | Values items and ultimates | 0.10 | 0.46 | 0.82 | 1.00 |
-| Understands the launch | 0.18 | 0.52 | 0.84 | 1.00 |
 | Decision left to chance | 50% | 26% | 11% | 3.5% |
 
 In practice: **Easy** is slow to spot trouble and happy to let you by. **Medium**
@@ -313,14 +310,14 @@ races you fairly and takes a lane when it needs one. **Hard** blocks, barges and
 times its ultimates well. **Brutal** misses nothing, defends every lane, and
 wrecks you if it can.
 
-On top of difficulty, each car has a **temperament** — nerve, spite, patience,
-guard and flair — that is jittered at the start of every race, so five bots on one
+On top of difficulty, each car has a **temperament** — nerve, spite, patience
+and guard — that is jittered at the start of every race, so five bots on one
 setting are not the same bot five times, and the Redd you raced last time is not
 quite this one.
 
 Bots only ever *decide*. The doing is handed straight back to the same functions
-your own inputs call, so a bot barging, launching, dropping oil or spending an
-ultimate is running your mechanic, not a copy written for bots.
+your own inputs call, so a bot barging, dropping oil or spending an ultimate is
+running your mechanic, not a copy written for bots.
 
 ## Local multiplayer
 
@@ -401,8 +398,8 @@ One system, from the splash to the finish line, built on four things:
   the selected step, the charge in the ultimate square, the tick beside your own
   row in the standings. Colours that mean something in the game — the four seat
   colours, gold/silver/bronze in the running order, the rarity of a pickup, the
-  green of an armed launch, the gold of immunity — stay, because they are the
-  game speaking and not the interface decorating.
+  five Condition colours — stay, because they are the game speaking and not the
+  interface decorating.
 - **Glass for anything elevated.** Dialogs, panels, the countdown plate
   and every instrument over the road use one recipe: a dark tonal fill, a blurred
   backdrop, a hairline edge and a highlight along the top. Where a browser cannot
@@ -427,16 +424,16 @@ original race layout.
 
 The race HUD is the same system rather than a second one. The corners hold what
 you consult: the pause button and the track and clock top left, distance and the
-running order top right. The bottom holds what you spend: the launch and boost
-meters in one tray, your states as pills on the left, the ultimate and item
-squares on the right. On a wide window that bottom band closes in on the road
+running order top right. The bottom holds what you spend: the boost meter in its
+tray, your Conditions as a column of icon circles on the left, the ultimate and
+item squares on the right. On a wide window that bottom band closes in on the road
 instead of stretching to the far corners, so it stays in peripheral vision. The
 ultimate square fills from the foot as it charges, so the reading is a shape
 before it is a number.
 
 Local play draws the same instruments on the canvas, once per column, from the
 same constants — see
-[the HUD section of ARCHITECTURE.md](docs/ARCHITECTURE.md#hudjs--1088-lines).
+[the HUD section of ARCHITECTURE.md](docs/ARCHITECTURE.md#hudjs).
 
 ## Accessibility
 
@@ -447,8 +444,11 @@ same constants — see
   outside CSS, so they ask the same resolved answer — the item-box swap flash, for instance,
   becomes a brightness pulse with the box held still. Every state that is
   normally carried by movement also has a still form: a charged ultimate stays
-  red, your row in the standings stays ticked, a wound-up launch stays lit.
-- **Never colour alone.** Every status effect is named as well as swatched, your
+  red, your row in the standings stays ticked, a Condition badge appears without
+  animating in.
+- **Never colour alone.** Every Condition carries a distinct icon as well as its
+  colour and is named on its garage card — the in-race badge is icon-only but
+  carries its name as an accessible label — your
   own row in the running order carries a red tick as well as full brightness, a
   car already chosen by another player is struck through as well as dimmed, and
   the difficulty levels are four bars filled to the level rather than four shades.
@@ -533,8 +533,10 @@ job unchanged. It verifies:
 - every string has all its languages, and every `data-i18n` attribute and literal
   `t("…")` call resolves to a string that exists
 - every car has a draw branch, a name, an ultimate description, a button, a
-  select-screen canvas; every effect has a label;
-  every item has artwork and a valid rarity
+  select-screen canvas; every Condition has a name, a description, a unique
+  colour and one piece of icon artwork, and lands on the right Buff/Debuff page;
+  no trace of the removed launch mechanic survives anywhere in the source or the
+  page; every item has artwork and a valid rarity
 
 Run it before you commit. It takes well under a second.
 
@@ -562,17 +564,17 @@ may rely on the ones above it and nothing starts before every declaration exists
 | --- | --- |
 | `core.js` | storage with a memory fallback, the small maths/DOM helpers, capability flags |
 | `i18n.js` | every string, the current language, and the sweep that writes them into the page |
-| `data.js` | cars, difficulties, temperaments, effects, items, tracks and every tuning constant |
+| `data.js` | cars, difficulties, temperaments, conditions, items, tracks and every tuning constant |
 | `audio.js` | the lazily-created Web Audio context, tones, noise, engine |
 | `runtime.js` | canvas and context, road and split-view geometry, the game state object, layout/resize |
 | `ui.js` | screen switching and focus gating, garage, custom setup, the car board, select-screen art |
 | `settings.js` | every player preference, where it is stored, what applies it, and the Settings dialog |
 | `local.js` | seats, player colours, pad discovery, the menu pad loops |
 | `ai.js` | the bot mind: sense, weigh, act |
-| `mechanics.js` | contact, lanes, boost, the launch, wrecks, effects, ultimates, items, hazards, particles |
+| `mechanics.js` | contact, lanes, boost, wrecks, Conditions, ultimates, items, hazards, particles |
 | `race.js` | world seeding, the grid, the lifecycle, the finish, the per-frame update and frame loop |
 | `render.js` | all Canvas 2D drawing |
-| `hud.js` | the DOM HUD, the effect pills, the per-seat canvas HUD and the constants the two share |
+| `hud.js` | the DOM HUD, the condition badges and their icons, the per-seat canvas HUD and the constants they share |
 | `input.js` | keyboard, pointer and controller, translated into mechanics calls |
 | `main.js` | boot: initial paints, event wiring, splash, settle |
 

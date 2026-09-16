@@ -1,129 +1,194 @@
 "use strict";
 
-/* SEREN - the instruments. The DOM HUD painted over the canvas, the effect
-   labels beside it, and the canvas HUD each local-play column gets - all
+/* SEREN - the instruments. The DOM HUD painted over the canvas, the condition
+   badges beside it, and the canvas HUD each local-play column gets - all
    reading the same numbers so a column and a phone show the same race. */
 
 /* ================================================================
-   EFFECT TEXT  -  a fixed set of lines, reused, never accumulated
+   CONDITION BADGES  -  one artwork, every place it is drawn
    ================================================================
-   The list used to be built by appending a fresh element per application and
-   removing it on a timer keyed by id. Two things went wrong with that. A
-   re-application during the four-tenths of a second an old line spent fading
-   created a second element with the same id, and the next removal looked the
-   id up and took the wrong one - so the survivor was never removed again. And
-   nothing cleared the list between races, so every run inherited the last
-   one's leftovers.
+   A Condition is a filled circle in its own colour with a plain device inside
+   it, and it is the same circle on the road beside a rival, in the corner of
+   your own HUD, and on its reference card in the garage. So the artwork is
+   written once, on the 24-unit grid the item icons already use, in strokes
+   only: the canvas builds Path2D out of these strings and the page builds
+   inline SVG out of the same strings. Neither draws its own version of a
+   shield, and no renderer carries a second copy of a name, a colour or a
+   buff/debuff classification - those all come from CONDITIONS in data.js.
 
-   So: one element per effect for the life of the page, held in a map, revived
-   rather than recreated, and hard-capped. There is no path here that can
-   produce an unbounded number of nodes. */
-const EFF_MAX = 6;                         /* most lines on screen at once */
-const effEls = {};                         /* id -> { el, out, timer } */
-function effHost(){ return $("#effList"); }
-function logEffect(id){
-  const def = EFFECTS[id];
+   The shapes are deliberately blunt, because they have to survive being drawn
+   at a third of this size in a four-way split: a shield, a pair of forward
+   chevrons, an arrow brought down onto a floor, a crossed-out eye, and two
+   skid marks. Colour is never the only difference between two of them. */
+const COND_PATHS = {
+  shield:   ["M12 3.4 18.6 6v5c0 4.2-2.6 7.6-6.6 9-4-1.4-6.6-4.8-6.6-9V6L12 3.4Z"],
+  chevrons: ["M5.8 13.4 12 7.6l6.2 5.8", "M5.8 19 12 13.2l6.2 5.8"],
+  slow:     ["M12 3.6v9.6", "M7.4 9 12 13.6 16.6 9", "M6.4 18.6h11.2"],
+  eye:      ["M3.2 12S7 6.6 12 6.6 20.8 12 20.8 12 17 17.4 12 17.4 3.2 12 3.2 12Z",
+             "M4.4 4.4 19.6 19.6"],
+  skid:     ["M7.6 19.6v-7.4c0-3.4 1-5.6 3.2-7", "M13.6 19.6v-7.4c0-3.4 1-5.6 3.2-7"]
+};
+
+/* How light the ink is decides what the badge is rimmed with: a near-black
+   Skidded badge needs a light outline so it cannot vanish into a dark road or
+   a dark HUD, and a gold or orange one needs a dark one so it cannot vanish
+   into a pale desert. Derived from the ink rather than listed again. */
+function inkIsLight(hex){
+  const n = parseInt(hex.slice(1), 16);
+  return (((n>>16)&255)*0.299 + ((n>>8)&255)*0.587 + (n&255)*0.114) > 140;
+}
+function condRim(def){
+  return inkIsLight(def.ink) ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.55)";
+}
+/* The icon sits in a box one and a half radii across, centred on the badge.
+   Both renderers use that same figure, so the canvas badge and the page badge
+   are the same drawing at two sizes. */
+const COND_ICON_K = 1.5;
+
+/* ---- the canvas side ----
+   Path2D is built lazily and kept: the same five icons are redrawn sixty times
+   a second beside up to five cars in up to four columns. */
+const COND_P2D = {};
+function condPaths(icon){
+  if(COND_P2D[icon] !== undefined) return COND_P2D[icon];
+  if(typeof Path2D === "undefined" || !COND_PATHS[icon]) return (COND_P2D[icon] = null);
+  try{ COND_P2D[icon] = COND_PATHS[icon].map(function(d){ return new Path2D(d); }); }
+  catch(e){ COND_P2D[icon] = null; }
+  return COND_P2D[icon];
+}
+/* The authoritative icon renderer. Everything on the canvas that wants a
+   Condition drawn comes through here. */
+function drawConditionIcon(c, id, cx, cy, r){
+  const def = CONDITIONS[id];
+  if(!def || !c) return;
+  const paths = condPaths(def.icon);
+  if(!paths) return;
+  const k = (r*COND_ICON_K)/24;
+  c.save();
+  c.translate(cx - r*COND_ICON_K/2, cy - r*COND_ICON_K/2);
+  c.scale(k, k);
+  c.strokeStyle = def.ink;
+  c.lineWidth = Math.max(2.6, 1.25/k);     /* never thinner than a hairline on screen */
+  c.lineCap = "round"; c.lineJoin = "round";
+  for(let i=0;i<paths.length;i++) c.stroke(paths[i]);
+  c.restore();
+}
+/* One badge: the circle, its rim, and the icon inside it. The drop shadow is
+   what separates a pale badge from a pale desert and a dark one from tarmac,
+   so it is not decoration - it is the thing that makes the badge legible on
+   every track. */
+function drawConditionBadge(id, cx, cy, r){
+  const def = CONDITIONS[id];
   if(!def) return;
-  if(id === "immune") return;              /* immune has its own treatment */
-  const have = effEls[id];
-  if(have){
-    if(have.out){                          /* caught on the way out: bring it back */
-      if(have.timer) clearTimeout(have.timer);
-      have.timer = null; have.out = false;
-      have.el.classList.remove("out");
-      if(!have.el.parentNode) effHost().appendChild(have.el);
-      if(G.effLog.indexOf(id) < 0) G.effLog.push(id);
-    }
-    return;
-  }
-  if(G.effLog.length >= EFF_MAX) killEffect(G.effLog[0]);   /* oldest makes room, at once */
-  sweepFaded();
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = Math.max(2, r*0.55);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832);
+  ctx.fillStyle = def.col; ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.2832);
+  ctx.lineWidth = Math.max(1, r*0.16);
+  ctx.strokeStyle = condRim(def);
+  ctx.stroke();
+  ctx.restore();
+  drawConditionIcon(ctx, id, cx, cy, r);
+}
+const COND_R = 8;                          /* badge radius beside a car, at scale 1 */
+/* Small enough to sit beside a car in a four-way split, never so small that
+   the shape inside stops being a shape. */
+function condR(){ return Math.max(5.5, COND_R*SCENE); }
+
+/* ---- beside a car ----
+   Every visible car that is not this view's owner wears its Conditions in a
+   compact column just clear of the silhouette, stacked upward. The anchor is
+   below the seat flag, so a numbered player and its badges are both readable.
+
+   x is clamped into this view's own column rather than the whole canvas, so
+   one split-screen window's badges can never leak into the next; if the right
+   side would cross the edge, the stack flips to the left of the car. */
+function drawConditionStack(who, cx, cy){
+  if(cy < CT - carH || cy > CB + carH) return;          /* not in this viewport */
+  const on = activeConditions(who);
+  if(!on.length) return;
+  const r = condR(), step = r*2 + Math.max(2, 3*SCENE);
+  const off = carW*0.62 + r + 2*SCENE;
+  let x = cx + off;
+  if(x + r + 3 > W) x = cx - off;
+  x = clamp(x, r + 3, W - r - 3);
+  const foot = cy - carH*0.16;                          /* clear of the seat flag */
+  const top = foot - (on.length - 1)*step;
+  const lift = Math.max(0, (CT + r + 3) - top);
+  for(let i=0;i<on.length;i++)
+    drawConditionBadge(on[i], x, Math.min(foot - i*step + lift, CB - r - 3), r);
+}
+
+/* ---- the page's own badges ----
+   The same circle, built as inline SVG from the same path strings. The circle
+   is drawn on the 24 grid so the icon transform below is the canvas renderer's
+   arithmetic written in SVG: an icon box COND_ICON_K radii across, centred. */
+function conditionSvg(id, px){
+  const def = CONDITIONS[id];
+  if(!def) return "";
+  const paths = COND_PATHS[def.icon] || [];
+  const size = px || 22;
+  const cr = 11.2;
+  const k = (cr*COND_ICON_K)/24;
+  return '<svg class="cond-svg" viewBox="0 0 24 24" width="' + size + '" height="' + size +
+         '" aria-hidden="true" focusable="false">' +
+         '<circle cx="12" cy="12" r="' + cr + '" fill="' + def.col +
+         '" stroke="' + condRim(def) + '" stroke-width="1.3"/>' +
+         '<g fill="none" stroke="' + def.ink + '" stroke-width="2.6" ' +
+         'stroke-linecap="round" stroke-linejoin="round" ' +
+         'transform="translate(12 12) scale(' + k.toFixed(4) + ') translate(-12 -12)">' +
+         paths.map(function(d){ return '<path d="' + d + '"/>'; }).join("") +
+         '</g></svg>';
+}
+/* One element per Condition for the life of the page, revived rather than
+   recreated, so nothing here can produce an unbounded number of nodes. */
+const condEls = {};
+let condShown = "";
+function condHost(){ return $("#condList"); }
+function makeConditionBadge(id){
   const el = document.createElement("span");
-  el.id = "eff-" + id;
-  el.textContent = t(def.key);
-  /* The label is set in the interface's own white on a dark pill and the
-     effect's colour is carried by the swatch beside it. That is why Slippery,
-     whose colour is very nearly black, needs no special case any more: nothing
-     here is ever read off the colour alone. */
-  el.style.setProperty("--eff", def.col);
-  effEls[id] = { el:el, out:false, timer:null };
-  G.effLog.push(id);
-  effHost().appendChild(el);
+  el.className = "cond";
+  el.id = "cond-" + id;
+  el.setAttribute("role", "img");
+  el.innerHTML = conditionSvg(id, 22);
+  return el;
 }
-/* Straight out, no fade. Used when something has to give. */
-function killEffect(id){
-  const i = G.effLog.indexOf(id);
-  if(i >= 0) G.effLog.splice(i, 1);
-  const have = effEls[id];
-  if(!have) return;
-  if(have.timer) clearTimeout(have.timer);
-  if(have.el.parentNode) have.el.parentNode.removeChild(have.el);
-  delete effEls[id];
-}
-/* A fading line still occupies a node for four-tenths of a second. That is
-   fine, and bounded, but it must never let the list run past its cap: if it
-   would, the oldest fading ones go immediately instead. */
-function sweepFaded(){
-  const host = effHost();
-  if(!host || !host.children || host.children.length < EFF_MAX) return;
-  for(const id in effEls){
-    if(host.children.length < EFF_MAX) break;
-    if(effEls[id].out) killEffect(id);
+/* The page's bottom-left corner, rebuilt only when the set of Conditions
+   actually changes. What is on screen is derived from the gameplay state every
+   frame and held nowhere else, so a Condition that has quietly lapsed cannot
+   leave its badge behind and nothing has to run a timer to find out. */
+function syncConditions(){
+  const host = condHost();
+  if(!host) return;
+  const on = activeConditions("me");
+  const sig = on.join(",");
+  if(condShown !== sig){
+    condShown = sig;
+    while(host.children && host.children.length) host.removeChild(host.children[0]);
+    for(let i=0;i<on.length;i++){
+      const id = on[i];
+      const el = condEls[id] || (condEls[id] = makeConditionBadge(id));
+      /* icon-only on screen, so the name has to live in the label */
+      el.setAttribute("aria-label", t(CONDITIONS[id].key));
+      host.appendChild(el);
+    }
   }
-}
-function dropEffect(id){
-  const i = G.effLog.indexOf(id);
-  if(i >= 0) G.effLog.splice(i, 1);
-  const have = effEls[id];
-  if(!have || have.out) return;
-  have.out = true;
-  have.el.classList.add("out");
-  have.timer = setTimeout(function(){
-    if(have.el.parentNode) have.el.parentNode.removeChild(have.el);
-    have.timer = null;
-    delete effEls[id];                     /* the next application builds a fresh one */
-  }, 420);
+  /* The gold edge around the view is secondary feedback for Invulnerable; the
+     badge above is the canonical indicator. In local play each column paints
+     its own edge, so the page's must stay off - one border around four games
+     would be saying it about all of them. */
+  $("#shell").classList.toggle("invulnerable",
+                               !G.local && on.indexOf("invulnerable") >= 0);
 }
 /* Between races: everything goes, DOM and bookkeeping together. */
-function clearEffects(){
-  for(const id in effEls){
-    const have = effEls[id];
-    if(have.timer) clearTimeout(have.timer);
-    if(have.el.parentNode) have.el.parentNode.removeChild(have.el);
-    delete effEls[id];
-  }
-  G.effLog = [];
-  const host = effHost();
+function clearConditions(){
+  const host = condHost();
   while(host && host.children && host.children.length) host.removeChild(host.children[0]);
-  $("#immuneTag").classList.remove("on");
-  $("#shell").classList.remove("immune");
-}
-/* Read the player's state each frame and keep the list honest. Every line on
-   screen is derived here and nowhere else, so a state that has quietly lapsed
-   cannot leave its label behind. */
-function syncEffects(){
-  const won = finishedMe();
-  const faster = G.boosting || G.launchT > 0 || G.canT > 0 || airborne() ||
-                 G.ultOn;
-  const slower = G.slowT > 0;
-  const on = {
-    winner:    won,
-    slowed:    !won && slower,
-    cluttered: !won && G.blind > 0,
-    boosted:   !won && faster,
-    slippery:  !won && G.slipT > 0,
-    launched:  !won && airborne()
-  };
-  for(const id in on){
-    if(on[id]) logEffect(id);
-    else dropEffect(id);
-  }
-  const imm = G.immune > 0 && !won;
-  const tag = $("#immuneTag");
-  const lbl = tag.firstElementChild;
-  if(lbl) lbl.textContent = t(EFFECTS.immune.key);
-  tag.classList.toggle("on", imm);
-  $("#shell").classList.toggle("immune", imm);
+  condShown = "";
+  $("#shell").classList.remove("invulnerable");
 }
 
 /* ---- who is driving this one ------------------------------------
@@ -178,10 +243,10 @@ const HUD_ACT_BOT = 46;                    /* how far they stand off the foot */
 const HUD_RAIL_BOT = 12;                   /* and the meter tray under them */
 const HUD_RAIL_MAX = 680;                  /* how wide the instrument band gets */
 const HUD_RAIL_PAD = 6;
-const HUD_BAR = 5;                         /* one meter track */
-const HUD_RAIL_H = HUD_RAIL_PAD*2 + HUD_BAR*2 + 5;
-const HUD_PILL_H = 20;                     /* one effect pill */
-const HUD_PILL_GAP = 4;
+const HUD_BAR = 5;                         /* the boost meter's track */
+const HUD_RAIL_H = HUD_RAIL_PAD*2 + HUD_BAR;
+const HUD_COND_R = 11;                     /* one condition badge, in the HUD */
+const HUD_COND_GAP = 5;
 
 /* the interface ramp, the same values the stylesheet's tokens carry */
 const HUD_INK = "#F4F5F6";
@@ -192,12 +257,12 @@ const HUD_LINE2 = "rgba(255,255,255,0.16)";
 const HUD_RED = "#E5262D";
 const HUD_RED_HI = "#FF4A50";
 
-/* How far the bottom row - the squares, the pills, the immune tag - stands off
+/* How far the bottom row - the squares and the condition badges - stands off
    the foot. A short viewport pulls it in, exactly as the stylesheet's
    @media (max-height:480px) block does. */
 function hudFoot(){ return H < 480 ? 40 : HUD_ACT_BOT; }
 /* The instrument band's inset. On a narrow view it is the plain edge margin;
-   on a wide one it closes in so the meters, the pills and the two squares stay
+   on a wide one it closes in so the meter, the badges and the two squares stay
    beside the road rather than in the far corners. The stylesheet's --side on
    .hud is this same expression. */
 function hudSide(){ return Math.max(HUD_EDGE, (W - HUD_RAIL_MAX)/2); }
@@ -261,50 +326,18 @@ function placeOf(who){
   return n;
 }
 
-/* ---- the two meters across the foot ----
-   One tray, two tracks: launch on top, boost below. The page puts them in the
-   same tray for the same reason - the two things you fill by holding are one
-   question, so they get one place to look. */
+/* ---- the boost meter across the foot ----
+   One tray, one track: the one thing you fill by holding gets one place to be
+   looked at. The tray closes up around it, so there is no empty channel beside
+   the bar for the eye to keep checking. */
 function hudMeters(o){
-  if(!ruleOn("boost")) return;             /* no launch, no boost, no tray */
+  if(!ruleOn("boost")) return;             /* no boost, no tray */
   const x = hudSide(), w = Math.max(48, W - x*2);
   const ry = H - HUD_RAIL_BOT - HUD_RAIL_H;
-  const air = !!(o.airT > 0), armed = o.airMeter <= AIR_ARM && o.airWind <= 0;
-  const wound = o.airWind >= 1, winding = o.airWind > 0 && o.airWind < 1;
-  const cooling = o.launchCD > 0 && !air;
-
   ctx.save();
   hudGlass(x, ry, w, HUD_RAIL_H, 8);
   const bx = x + 8, bw = w - 16;
-  const ay = ry + HUD_RAIL_PAD;                                   /* #airWrap */
-  const by = ay + HUD_BAR + 5;                                    /* #boostWrap */
-
-  /* the launch */
-  ctx.save();
-  if(armed){ ctx.shadowColor = "rgba(47,191,99,0.85)"; ctx.shadowBlur = 9; }
-  else if(wound){ ctx.shadowColor = "rgba(255,233,168,0.9)"; ctx.shadowBlur = 14; }
-  else if(winding){ ctx.shadowColor = "rgba(255,255,255,0.7)"; ctx.shadowBlur = 10; }
-  fillRR(bx, ay, bw, HUD_BAR, 3, "rgba(255,255,255,0.14)");
-  ctx.restore();
-  fillRR(bx, ay, bw*AIR_ARM, HUD_BAR, 3, "rgba(47,191,99,0.26)");  /* #airZone */
-  const fillCol = air ? "#FFFFFF"
-                : cooling ? "rgba(47,191,99,0.30)"
-                : (armed ? "#7CF7A6" : "#2FBF63");
-  if(o.airMeter > 0.001) fillRR(bx, ay, Math.max(4, bw*clamp(o.airMeter,0,1)), HUD_BAR, 3, fillCol);
-  if(o.airWind > 0.001){                                           /* #airWind */
-    ctx.save();
-    ctx.shadowColor = wound ? "rgba(255,210,74,0.9)" : "rgba(255,255,255,0.8)";
-    ctx.shadowBlur = wound ? 12 : 8;
-    fillRR(bx, ay, Math.max(4, bw*clamp(o.airWind,0,1)), HUD_BAR, 3, wound ? "#FFE9A8" : "#FFFFFF");
-    ctx.restore();
-  }
-  ctx.save();                                                      /* #airMark */
-  ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 4;
-  ctx.fillStyle = armed ? "#7CF7A6" : (cooling ? "rgba(255,255,255,0.35)" : "#FFFFFF");
-  ctx.fillRect(bx + bw*AIR_ARM - 1, ay - 3, 2, HUD_BAR + 6);
-  ctx.restore();
-
-  /* the boost */
+  const by = ry + HUD_RAIL_PAD;                                   /* #boostWrap */
   fillRR(bx, by, bw, HUD_BAR, 3, "rgba(255,255,255,0.14)");
   if(o.charge > 0.001)
     fillRR(bx, by, Math.max(4, bw*clamp(o.charge,0,1)), HUD_BAR, 3,
@@ -486,64 +519,28 @@ function hudReadout(who, o){
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
 }
 /* ---- what is currently being done to this car ----
-   The page keeps one pill per state for the player. A rival carries the same
-   states under its own field names, so the reading is the same reading. */
-function hudEffects(who, o){
-  const won = (who === "me" ? G.finished : who.finished) !== null;
-  const boostT = who === "me" ? (G.launchT > 0 || G.canT > 0) : (o.launch > 0 || o.canT > 0);
-  const blindT = who === "me" ? (G.blind > 0) : (o.blind > 0);
-  const slowT  = who === "me" ? (G.slowT > 0) : (o.slow > 0);
-  const slipT  = who === "me" ? G.slipT > 0 : o.slip > 0;
-  const air    = o.airT > 0;
-  const faster = o.boosting || boostT || air ||
-                 o.ultOn;
-  const on = [];
-  if(won) on.push("winner");
-  else {
-    if(slowT) on.push("slowed");
-    if(blindT) on.push("cluttered");
-    if(faster) on.push("boosted");
-    if(slipT) on.push("slippery");
-    if(air) on.push("launched");
-  }
-  ctx.save();
-  ctx.textBaseline = "middle";
-  const sx = hudSide();
-  let y = H - hudFoot() - HUD_PILL_H;
-  for(let i=0;i<on.length && i<EFF_MAX;i++){
-    ctx.font = "500 9px " + HUD_MONO;
-    const label = t(EFFECTS[on[i]].key).toUpperCase();
-    const tw = trackWidth(label, 1.3);
-    const pw = Math.min(W - sx*2, 7 + 7 + 6 + tw + 9);
-    hudGlass(sx, y, pw, HUD_PILL_H, HUD_PILL_H/2);
-    fillRR(sx + 7, y + HUD_PILL_H/2 - 3.5, 7, 7, 2, EFFECTS[on[i]].col);
-    rr(sx + 7.5, y + HUD_PILL_H/2 - 3, 6, 6, 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = HUD_INK;
-    trackText(label, sx + 20, y + HUD_PILL_H/2 + 0.5, 1.3, "left");
-    y -= HUD_PILL_H + HUD_PILL_GAP;
-  }
-  ctx.restore();
+   The view owner's own Conditions, as the same circular badges every rival
+   wears, stacked upward from the bottom-left corner. Nothing is named here:
+   the garage's Conditions page is where the symbols are learned, and a name
+   printed over the road mid-race is a word nobody has time to read.
 
-  /* Immunity: the gold pill across the foot and the gold edge around the
-     view - on the page that edge is a border on the shell, so in a column it
-     is a border on the column. */
-  const imm = !won && o.immune > 0;
-  if(imm){
+   `who` is the seat this column belongs to, so a player in a split-screen
+   window reads their own Conditions and nobody else's. */
+function hudConditions(who){
+  const on = activeConditions(who);
+  const r = HUD_COND_R, step = r*2 + HUD_COND_GAP;
+  const x = hudSide() + r;
+  let y = H - hudFoot() - r;
+  for(let i=0;i<on.length;i++){
+    drawConditionBadge(on[i], x, y, r);
+    y -= step;
+  }
+  /* Invulnerable also flashes the edge of this view, exactly as the page puts
+     a gold border on the shell. It is secondary: the badge above is the
+     canonical indicator, and this only says the same thing louder. */
+  if(on.indexOf("invulnerable") >= 0){
     ctx.save();
-    ctx.font = "600 9px " + HUD_MONO;
-    ctx.textBaseline = "middle";
-    const label = t(EFFECTS.immune.key).toUpperCase();
-    const pw = trackWidth(label, 2) + 22;
-    const px = W/2 - pw/2, py = H - hudFoot() - HUD_PILL_H;
-    fillRR(px, py, pw, HUD_PILL_H, HUD_PILL_H/2, "rgba(10,11,13,0.66)");
-    rr(px, py, pw, HUD_PILL_H, HUD_PILL_H/2);
-    ctx.strokeStyle = "rgba(255,216,107,0.55)"; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = "#FFD86B";
-    trackText(label, W/2, py + HUD_PILL_H/2 + 0.5, 2, "center");
-    ctx.restore();
-    ctx.save();
-    ctx.strokeStyle = (Math.floor(G.raceT*1.82) % 2) ? "#FFFFFF" : "#FFD86B";
+    ctx.strokeStyle = (Math.floor(G.raceT*1.82) % 2) ? "#FFFFFF" : CONDITIONS.invulnerable.col;
     ctx.lineWidth = 3;
     ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
     ctx.restore();
@@ -556,7 +553,7 @@ function drawSeatHud(who, seat){
   hudReadout(who, o);
   hudMeters(o);
   hudActions(o);
-  hudEffects(who, o);
+  hudConditions(who);
   ctx.restore();
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
 }
@@ -986,20 +983,7 @@ function paintHUD(force){
   f.style.width = (G.charge*100).toFixed(1) + "%";
   $("#boostWrap").classList.toggle("full", G.charge > 0.98);
   $("#boostWrap").classList.toggle("locked", G.boostLock);
-  /* The notch and the tinted zone are placed from AIR_ARM itself, so the line
-     you are aiming under is always the line the launch actually tests. */
-  const aw = $("#airWrap");
-  const arm = (AIR_ARM*100).toFixed(1) + "%";
-  $("#airMark").style.left = arm;
-  $("#airZone").style.width = arm;
-  $("#airFill").style.width = (G.airMeter*100).toFixed(1) + "%";
-  $("#airWind").style.width = (G.airWind*100).toFixed(1) + "%";
-  aw.classList.toggle("armed", airArmed() && G.airWind <= 0);
-  aw.classList.toggle("winding", G.airWind > 0 && G.airWind < 1);
-  aw.classList.toggle("wound", G.airWind >= 1);
-  aw.classList.toggle("air", airborne());
-  aw.classList.toggle("cooling", G.launchCD > 0 && !airborne());
-  syncEffects();
+  syncConditions();
   paintItemBox();
   const board = [{ me:true, m:G.meters, car:G.car }].concat(G.rivals.map(function(R){
     return { me:false, m:metersOf(R), car:R.car };

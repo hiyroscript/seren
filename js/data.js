@@ -1,7 +1,7 @@
 "use strict";
 
 /* SEREN - the game's definitions and tuning numbers. Cars, difficulties,
-   temperaments, effects, items, tracks and every constant the systems read.
+   temperaments, conditions, items, tracks and every constant the systems read.
    Loaded before runtime.js because the global state object is built from
    some of these. Nothing here has behaviour of its own. */
 
@@ -49,8 +49,8 @@ const CAR_IDS = ["redd","phantom","bolt","timestamp","rose","siren"];
    numbers describes how well the driver thinks: how far up the road it looks,
    how long it takes to act on what it sees, how often it misses something
    entirely, how well it reads what an item or an ultimate is worth right now,
-   and how much of the launch mechanic it is able to use. The car itself is the
-   same car at every setting - same pace, same charge clock, same rules.
+   and how well it picks its moment. The car itself is the same car at every
+   setting - same pace, same charge clock, same rules.
 
    - lapse  how often it simply fails to see trouble in its own lane
    - react  how long it takes to do something about it, in seconds
@@ -61,28 +61,25 @@ const CAR_IDS = ["redd","phantom","bolt","timestamp","rose","siren"];
    - hunt   how deliberately it picks an offensive target rather than lashing out
    - guard  how well it protects the place it is holding
    - judge  how well it values an item or an ultimate against the situation
-   - air    how much of the launch it understands - escape only, up to setting
-            one up as an overtake and coming down on somebody
-   - wind   the most wind-up it is willing to stand still for
    - plan   how many think-ticks an intention survives before it is thrown away
    - noise  how much of its decision is left to chance
    - block/aggro/boost/ult/keep  the old lane and throttle appetites, kept */
 const DIFFS = {
   easy:   { key:"diffEasy",   lapse:0.52, react:[0.70,1.40], tick:[0.50,0.95],
             block:0.02, aggro:0.08, boost:0.10, ult:0.05, keep:0.00, look:0,
-            skill:0.14, hunt:0.10, guard:0.06, judge:0.10, air:0.18, wind:0.10,
+            skill:0.14, hunt:0.10, guard:0.06, judge:0.10,
             plan:0, noise:0.50, read:0.00 },
   medium: { key:"diffMedium", lapse:0.26, react:[0.35,0.75], tick:[0.34,0.68],
             block:0.16, aggro:0.24, boost:0.34, ult:0.28, keep:0.10, look:110,
-            skill:0.46, hunt:0.42, guard:0.36, judge:0.46, air:0.52, wind:0.34,
+            skill:0.46, hunt:0.42, guard:0.36, judge:0.46,
             plan:1, noise:0.26, read:0.35 },
   hard:   { key:"diffHard",   lapse:0.10, react:[0.18,0.42], tick:[0.22,0.46],
             block:0.44, aggro:0.50, boost:0.70, ult:0.70, keep:0.24, look:250,
-            skill:0.80, hunt:0.78, guard:0.72, judge:0.82, air:0.84, wind:0.70,
+            skill:0.80, hunt:0.78, guard:0.72, judge:0.82,
             plan:2, noise:0.11, read:0.80 },
   brutal: { key:"diffBrutal", lapse:0.03, react:[0.07,0.22], tick:[0.14,0.30],
             block:0.74, aggro:0.72, boost:1.00, ult:1.00, keep:0.32, look:380,
-            skill:1.00, hunt:1.00, guard:1.00, judge:1.00, air:1.00, wind:1.00,
+            skill:1.00, hunt:1.00, guard:1.00, judge:1.00,
             plan:3, noise:0.035, read:1.30 }
 };
 const DIFF_IDS = ["easy","medium","hard","brutal"];
@@ -94,35 +91,59 @@ const DIFF_IDS = ["easy","medium","hard","brutal"];
    brawler, Timestamp sits on its ultimate waiting for the moment - and every
    race jitters it, so the Redd you raced last time is not quite this one.
 
-   - nerve     what it will risk: tight gaps, long wind-ups, traffic
+   - nerve     what it will risk: tight gaps, traffic, a lane somebody else wants
    - spite     how much it would rather hurt somebody than simply drive faster
    - patience  how long it will sit on an item or an ultimate for a better use
-   - guard     how hard it defends the place it is holding
-   - flair     how much it likes leaving the road entirely */
+   - guard     how hard it defends the place it is holding */
 const TEMPERS = {
-  redd:      { nerve:0.74, spite:0.86, patience:0.22, guard:0.42, flair:0.54 },
-  phantom:   { nerve:0.88, spite:0.46, patience:0.44, guard:0.30, flair:0.82 },
-  bolt:      { nerve:0.54, spite:0.64, patience:0.68, guard:0.52, flair:0.46 },
-  timestamp: { nerve:0.38, spite:0.32, patience:0.88, guard:0.74, flair:0.34 },
-  rose:      { nerve:0.62, spite:0.58, patience:0.50, guard:0.58, flair:0.72 },
-  siren:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80, flair:0.40 }
+  redd:      { nerve:0.74, spite:0.86, patience:0.22, guard:0.42 },
+  phantom:   { nerve:0.88, spite:0.46, patience:0.44, guard:0.30 },
+  bolt:      { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
+  timestamp: { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
+  rose:      { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
+  siren:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
 };
 function makeTemper(car){
   const b = TEMPERS[car] || TEMPERS.redd;
   const j = function(v){ return clamp(v + rand(-0.17, 0.17), 0.04, 0.98); };
   return { nerve:j(b.nerve), spite:j(b.spite), patience:j(b.patience),
-           guard:j(b.guard), flair:j(b.flair) };
+           guard:j(b.guard) };
 }
-/* Status labels and colors. Negative effects are cleared by real immunity. */
-const EFFECTS = {
-  slowed:   { key:"efSlowed",    col:"#8A9099", bad:true  },
-  immune:   { key:"efImmune",    col:"#FFD86B" },
-  cluttered:{ key:"efCluttered", col:"#B07A4A", bad:true  },
-  boosted:  { key:"efBoosted",   col:"#FF9A4A" },
-  slippery: { key:"efSlippery",  col:"#0B0B0C", bad:true  },
-  launched: { key:"efLaunched",  col:"#2FBF63" },
-  winner:   { key:"efWinner",    col:"#FFD24A" }
+/* ---------------- conditions -------------------------------------
+   The one table every part of the game reads a Condition out of: the badges
+   beside a rival car, the badges in the corner of your own HUD, and the
+   reference page in the garage. Name, colour, whether it helps or hurts and
+   which icon it wears all live here and nowhere else, so a Condition cannot
+   mean one thing on the road and another in the garage.
+
+   The key order is the priority order. activeConditions() walks this object,
+   so a car wearing several badges stacks them the same way every frame.
+
+   - key    the localisation key for its name
+   - col    the badge's fill, and the only colour it is ever drawn in
+   - type   "buff" or "debuff": the two pages the garage splits on
+   - icon   which artwork in CONDITION_PATHS it wears
+   - ink    the icon's colour on that fill, picked for contrast
+
+   Debuffs are refused, and cleared, by temporary invulnerability. */
+const CONDITIONS = {
+  invulnerable: { key:"condInvulnerable", col:"#FFD86B", type:"buff",
+                  icon:"shield",   ink:"#20180A" },
+  boosted:      { key:"condBoosted",      col:"#FF9A4A", type:"buff",
+                  icon:"chevrons", ink:"#241000" },
+  slowed:       { key:"condSlowed",       col:"#8A9099", type:"debuff",
+                  icon:"slow",     ink:"#0B0B0C" },
+  obscured:     { key:"condObscured",     col:"#B07A4A", type:"debuff",
+                  icon:"eye",      ink:"#1B0F05" },
+  skidded:      { key:"condSkidded",      col:"#0B0B0C", type:"debuff",
+                  icon:"skid",     ink:"#FFFFFF" }
 };
+/* The priority order, read straight off the table so the two cannot drift. */
+const CONDITION_IDS = Object.keys(CONDITIONS);
+/* The garage's two pages, generated from the table rather than listed again. */
+function conditionsOfType(type){
+  return CONDITION_IDS.filter(function(id){ return CONDITIONS[id].type === type; });
+}
 const ULT_CHARGE = 75;                    /* seconds from empty to ready */
 const ULT_TIME = 15;                       /* seconds it lasts */
 const ULT_SPEED = 2.0;                    /* what every ultimate is worth in pace */
@@ -214,7 +235,7 @@ const BASE_SPEED = 420;                   /* 1.00x */
 const MULT_STEP = 0.05, MAX_MULT = 2.00;  /* +5% every SPEED_SECONDS, up to double */
 const MAX_TIER = Math.round((MAX_MULT - 1)/MULT_STEP);
 const BLIND_TIME = 2.6;                   /* puddle: how long the view stays fouled */
-const DEAD_TIME = 3, IMMUNE_TIME = 2;     /* destroy: wreck, then respawn untouchable */
+const DEAD_TIME = 3, INVULNERABLE_TIME = 2;   /* destroy: wreck, then respawn untouchable */
 const SLOW_TIME = 1.7;                    /* tumbleweed: how long it drags you down */
 /* ---- meteor ----------------------------------------------------
    A rock falls on a clock of its own, and the ring under it is a spot on the
@@ -222,11 +243,10 @@ const SLOW_TIME = 1.7;                    /* tumbleweed: how long it drags you d
 
    It used to be neither. The drop was measured in scrolled pixels against a
    mark that was a fixed row of player one's camera, which made two things
-   wrong at once. The road is not the only thing that moves the scroll: stand
-   on the brake to wind up a launch and the road stops dead, so the rock
-   stopped dead with it and hung in the sky for as long as the hold lasted;
-   go up, and the road runs at nearly three times pace, so the same rock came
-   down in a third of the time. And a mark fixed to one camera is not a spot
+   wrong at once. The road is not the only thing that moves the scroll - a
+   wreck stops it dead and an ultimate runs it at double pace - so the same
+   rock hung in the sky through one and came down in half the time through the
+   other. And a mark fixed to one camera is not a spot
    on the road at all - it never scrolled, so it could not be somewhere the
    field drives past.
 
@@ -257,42 +277,12 @@ const BUMP_SLOW = 1.3;
 const ULT_ON_WRECK = -0.10;               /* what each event does to the meter */
 const ULT_ON_TRAP  = -0.05;
 const ULT_ON_KILL  =  0.10;
-const LAUNCH_TIME = 0.8, LAUNCH_BOOST = 1.35;                    /* both cars lose the same time to a bump */
-
-/* ---------------- the launch ---------------------------------------
-   Hold the brake - swipe down and keep your finger there, or hold the down
-   key - and the car sheds speed. AIR_BRAKE is the first phase: hold that long
-   and you are stopped dead with the meter at nothing. Let go any time after
-   the notch and the car goes up.
-
-   Keep holding and the second phase starts. The car is already stopped, so
-   there is no speed left to give: what you are spending now is time, straight
-   up, while the whole field drives past you. AIR_WIND is how long that lasts
-   and it is worth a great deal more than the braking was - a dead stop is
-   AIR_STOP_POW of the way to full, and the wind-up is the rest.
-
-   The meter is the speed you have left, one for one: it empties exactly as the
-   car stops, so there is never a moment where the bar says one thing and the
-   road says another. The wind-up then fills the same track back up in white,
-   because it is the same bar answering the same question - how much launch
-   have I got - just in the other direction.
-
-   What it costs. Braking is roughly free: a light launch comes out a couple of
-   metres down on driving straight through, so it is an escape, not a shortcut.
-   Winding up is anything but. Every second stopped is thirty-odd metres handed
-   to five cars that are not stopped, and it is thirty-odd metres of sitting
-   still in traffic where anything can barge, pin or order you and take the
-   whole charge with it. A full wind therefore has to pay properly or nobody
-   would ever risk one - so it does, and the curve from one end to the other is
-   the point of the mechanic: how much are you willing to stand still for. */
-const AIR_BRAKE = 1.4;                    /* seconds of hold from cruise to a dead stop */
-const AIR_WIND = 1.6;                     /* and this much longer again, winding up */
-const AIR_ARM = 0.60;                     /* the meter must get under this to launch */
-const AIR_CD = 10;                        /* seconds before the next launch */
-const AIR_STOP_POW = 0.42;                /* strength at a dead stop, before any wind-up */
-const AIR_MIN_T = 0.85, AIR_MAX_T = 3.8;  /* air time, weakest to strongest */
-const AIR_MIN_K = 1.18, AIR_MAX_K = 2.80; /* road speed while up there */
-const AIR_HOP = 2.8;                      /* peak height at full strength, in car heights */
+/* ---- the rear-contact shunt -------------------------------------
+   Running into the back of somebody shoves them along for a moment while the
+   car that hit them labours. It is a push down the same tarmac and nothing
+   more, which is why it is named for a shunt. Both cars lose the same time to
+   the bump. */
+const SHUNT_TIME = 0.8, SHUNT_BOOST = 1.35;
 
 const RACE_MINUTES = 5;                   /* bots mode: then three tracks to the flag */
 const FINAL_TRACKS = 3;
