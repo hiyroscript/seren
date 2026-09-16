@@ -74,10 +74,13 @@ function setVolume(v){
 }
 
 /* Gameplay extensions load separately so the core sound system stays small.
-   neela.js waits until DOMContentLoaded before touching race/render globals. */
+   This defer script runs before DOMContentLoaded, so waiting for that event
+   guarantees mechanics, race, render, HUD and input have all been declared. */
 (function loadNeelaLayer(){
-  const s = document.createElement("script");
-  s.src = "js/neela.js";
-  s.async = false;
-  document.head.appendChild(s);
+  document.addEventListener("DOMContentLoaded", function(){
+    const s = document.createElement("script");
+    s.src = "js/neela.js";
+    s.async = false;
+    document.head.appendChild(s);
+  }, {once:true});
 })();
