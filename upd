@@ -1,814 +1,665 @@
-You are modifying the existing Seren browser racing game. Work directly from the current repository and preserve its existing architecture, game feel, local multiplayer behavior, accessibility settings, tests, and shared player/bot mechanics.
+Seren: Replace Bolt/Timestamp with Lolanthe/Verdant and implement both ultimates
 
-Do not implement this as a disconnected special-case minigame. Study the existing Flann sprite/ultimate implementation and extend the same systems cleanly.
+Work directly against the current hiyroscript/seren repository. Do not treat this as a greenfield implementation. First inspect the existing architecture, especially js/data.js, js/runtime.js, js/mechanics.js, js/race.js, js/render.js, js/ai.js, js/input.js, js/hud.js, js/i18n.js, js/ui.js, js/main.js, index.html, the tools/*.mjs test harnesses, and the architecture/QA documentation.
 
-# Objective
+The repository already contains these required assets at the project root:
 
-Replace **Phantom** completely with **Neela**.
+v_lolanthe.PNG
+v_verdant.PNG
+queen_note.PNG
+pion_note.PNG
 
-Neela’s normal race model must use:
+Do not generate substitute artwork and do not use procedural Bolt/Timestamp bodies after this change.
 
-`v_neela.PNG`
+1. Architectural constraints that must be preserved
 
-Neela’s temporary alternate ultimate form must use:
+Seren currently has a shared ultimate lifecycle. Preserve it.
 
-`vtm_neela.PNG`
+Every car still uses the existing shared:
 
-Both assets already exist at the repository root.
+ULT_CHARGE = 75 seconds
+ULT_TIME = 15 seconds
+ULT_SPEED = 2.0
 
-Rename Phantom to Neela everywhere: internal car ID where appropriate, selection menus, garage/reference pages, localization, bot temperament mapping, tests, documentation, comments, and any other place that currently refers to Phantom.
+Do not create separate ultimate clocks or an alternate parallel ultimate state machine for Lolanthe or Verdant. Follow the existing Flann/Neela pattern: the shared startUlt(), tickUlt(), and endUlt() lifecycle remains authoritative, while named racer-specific predicates and small state fields implement the extra behavior.
 
-Neela keeps the normal shared ultimate rules:
+The field must remain six cars. Lolanthe replaces Bolt and Verdant replaces Timestamp. Do not add a seventh or eighth vehicle.
 
-* 75 seconds to charge.
-* 15 seconds total duration.
-* 2× normal pace while active.
-* The ultimate meter counts down normally.
-* Repressing ultimate while active must not restart it.
-* Wrecking/finishing must continue to terminate an active ultimate according to Seren’s existing lifecycle unless the current game already specifies otherwise.
+Rendering must remain read-only. Gameplay state and timers must advance from the update/mechanics code, not from rendering functions.
 
-On top of that shared lifecycle, Neela gets the special transformation/teleport mechanic described below.
+Continue using the existing invariant that the model being drawn is also the model being collided. racerModel(), racerDims(), and carHit() must stay consistent.
 
----
+Do not break split-screen/local multiplayer. Anything based on visibility must be evaluated per view using the existing view owner concept (VOWN), while gameplay collision/state remains shared globally.
 
-# 1. Replace Phantom with the Neela sprite properly
+2. Fully replace Bolt with Lolanthe
 
-Do not simply draw `v_neela.PNG` inside Phantom’s old rectangular box.
+Replace the car identity bolt with lolanthe everywhere it actually refers to the Bolt vehicle.
 
-Follow the approach already used for Flann in `js/data.js`, `js/runtime.js`, `js/render.js`, `js/mechanics.js`, and the sprite/hitbox tests.
+In CARS, replace the procedural Bolt definition with a sprite-backed Lolanthe definition:
 
-Change the car entry from `phantom` to `neela` and make it sprite-based.
+key: "lolanthe"
+style: "sprite"
+sprite: "v_lolanthe.PNG"
 
-The Neela definition should include measured, normalized geometry for the actual PNG:
+Replace "bolt" with "lolanthe" in CAR_IDS. The final six-car identity list should be equivalent to:
 
-* `sprite: "v_neela.PNG"`
-* correctly measured `spriteBounds`
-* correctly measured exhaust/tailpipe anchor or anchors
-* a precise `hitShape`
-* blue/cyan energy colors
-* any Neela-specific race scale only if the visible artwork genuinely needs one
+["flann", "neela", "lolanthe", "verdant", "rose", "siren"]
 
-Do not copy Flann’s bounds or exhaust coordinates. Measure Neela’s actual transparent image and determine where the visible body begins/ends and where the real rear outlet is.
+Move Bolt’s existing temperament values to Lolanthe unless there is a strong implementation reason not to. Do not accidentally change AI personality at the same time as changing the vehicle.
 
-Preserve the full PNG when rendering, including transparent padding, exactly as Flann does. Use the measured visible bounds only for sizing/centering.
+The current Bolt temperament is:
 
-The hit polygon must follow the visible physical body, not the transparent PNG rectangle. Exclude empty transparent corners and decorative energy/exhaust regions.
+nerve: 0.54
+spite: 0.64
+patience: 0.68
+guard: 0.52
 
-Do not leave Neela using Phantom’s generic `CAR_HIT_RECT` unless measurements prove that is genuinely correct.
+Rename the corresponding i18n identity and ultimate-description keys to lolanthe and lolantheUlt.
 
-Menus and garage previews must show `v_neela.PNG`, never the alternate form.
+Replace the static selector button with carLolanthe, update data-car, data-i18n, labels, main.js click wiring, menu tests, garage references, documentation, and any other vehicle-specific UI reference.
 
-If Phantom’s old procedural `drawJet()` renderer becomes completely unused after this change, verify that with repository-wide search and tests before removing it. Do not delete shared rendering code merely because Phantom stopped using it if something else still references it.
+There should be no stale user-visible Bolt vehicle after this implementation.
 
----
+Do not blindly rename unrelated uses of the English word “bolt” if they refer to some unrelated mechanic or historical comment. Audit each occurrence based on meaning.
 
-# 2. Normal Neela boost exhaust: BLUE ENERGY, not fire
+3. Fully replace Timestamp with Verdant
 
-Neela’s normal boost visual must originate from the actual tailpipe/rear outlet visible in `v_neela.PNG`.
+Replace the car identity timestamp with verdant everywhere it actually identifies the Timestamp vehicle.
 
-Use the same principle as Flann’s sprite exhaust:
+In CARS, replace the procedural Timestamp definition with:
 
-the effect root must be defined in image-space coordinates and transformed with the sprite, so resizing, lane-change tilt, race scaling and split-screen rendering never cause the effect to drift away from the vehicle.
+key: "verdant"
+style: "sprite"
+sprite: "v_verdant.PNG"
 
-However, Neela’s boost should not look like Flann’s flame.
+Move Timestamp’s existing temperament values to Verdant:
 
-It should look like concentrated blue energy:
+nerve: 0.38
+spite: 0.32
+patience: 0.88
+guard: 0.74
 
-* bright white/cyan at the emitter
-* vivid electric blue/cyan body
-* transparent blue fade toward the end
-* smoother and cleaner than fire
-* slightly trail-like rather than a pointed orange flame
-* additive/lightened glow where appropriate
+Rename the corresponding localization keys to verdant and verdantUlt.
 
-The root of the energy must remain pinned exactly to Neela’s tailpipe under every sprite size and tilt.
+Replace the selector button with carVerdant, update static HTML, menu wiring, documentation, tests, and every other vehicle-specific Timestamp reference.
 
-Ordinary boost, boost cans, and the speed granted by the ultimate may all use this exhaust indication exactly as the existing `boosting` flag works, but none of those states should accidentally trigger Neela’s transformation.
+After the migration, old "bolt" and "timestamp" car IDs must not remain as active car identities or aliases.
 
-Respect Reduced Motion. Reduced Motion may remove oscillation/flicker, but it must not remove essential visual feedback.
+4. Measure both new PNG models properly
 
----
+Do not copy Flann’s or Neela’s geometry.
 
-# 3. Add explicit Neela ultimate state
+Inspect v_lolanthe.PNG and v_verdant.PNG and measure the actual artwork.
 
-Do not infer every part of this mechanic from `ultOn` alone.
+For each vehicle, determine the actual visible-body pixel bounds in the PNG and store normalized spriteBounds exactly as the existing Flann/Neela sprite system expects.
 
-Add a small, explicit Neela state model on every racer object, including `G` and rival objects.
+Measure the center of every actual rear tailpipe/exhaust outlet and store those as normalized exhaust anchors. Boost fire must visibly originate from the actual tailpipe mouths at all race scales, tilts, screen sizes, and split-screen column widths.
 
-Use names consistent with the repository, but conceptually the state needs to represent:
+Both cars should use the normal sprite flame path, not Neela’s energy exhaust, unless the artwork itself makes a different treatment clearly necessary. The user’s requirement is boost fire from the actual tailpipe.
 
-* whether Neela is currently in the alternate `vtm_neela.PNG` form
-* the exact world/race position where Neela activated the ultimate
-* whether Neela has already hit/swapped with another racer during this ultimate
-* per-racer whiteout/obscure timer
-* per-racer transformation/teleport visual timer if needed
-* any very short internal collision guard required to prevent the same physical contact from firing twice in one frame
+Trace a precise polygonal hitShape around each visible vehicle body. Do not give either car the generic CAR_HIT_RECT. Exclude transparent padding and non-body trailing visual details in the same way Neela/Flann geometry is currently measured.
 
-Reset all of those fields in race setup/reset and clean them up reliably when the ultimate ends, the racer wrecks, finishes, or another race begins.
+If a raceScale adjustment is necessary to make the visible body occupy a sensible amount of the lane, derive it from the measured image rather than guessing. Keep scaling uniform so artwork, hitbox, sprite bounds, and exhaust anchors remain aligned.
 
-Do not make Neela Invulnerable as part of this system.
+Extend tools/sprite-check.mjs and tools/hitbox-check.mjs so these measurements become regressions rather than undocumented visual guesses.
 
-Do not route this through `noContact()`.
+5. Add first-class Lolanthe/Verdant predicates
 
-Like Flann’s special collision behavior, this is an extra consequence of genuine physical contact, not a replacement for contact.
+Extend the existing car-power predicate architecture in js/mechanics.js.
 
----
+Add identity and active-ultimate helpers equivalent in role to the existing Flann/Neela helpers, for example:
 
-# 4. Ultimate activation sequence
+lolantheCar(who)
+lolantheUltActive(who)
+verdantCar(who)
+verdantUltActive(who)
 
-When a Neela racer activates ultimate:
+Do not scatter checks such as o.car === "lolanthe" or o.car === "verdant" throughout unrelated files.
 
-1. Start the existing shared ultimate lifecycle normally.
-2. Capture Neela’s activation position immediately before the transformation.
-3. Trigger the temporary white-screen sequence for Neela’s own view, if Neela is controlled by a human who has a view.
-4. Begin Neela’s vehicle transformation effect.
-5. Switch its rendered/raced form to `vtm_neela.PNG`.
-6. Keep the racer fully controllable throughout the sequence.
-7. Keep the normal 2× ultimate speed multiplier active.
-8. Start the long blue alternate-form energy trail.
+Update tools/check.mjs, which currently assumes Flann and Neela are the only car-specific power identities. The invariant should become that all four special cars use centralized identity/power predicates rather than ad-hoc car-name checks.
 
-The screen going white is visual only.
+6. Shared solid-hazard destruction
 
-Do not:
+Lolanthe and Verdant must gain the same solid-hazard privilege Neela currently has while their ultimates are running.
 
-* pause the race
-* freeze Neela
-* suppress controls
-* stop the ultimate countdown
-* stop other racers
-* alter the world clock
-* secretly auto-steer the vehicle
-* implement automatic homing
+Extend clearsSolidHazards(who) so it is true for:
 
-Despite the appearance of `vtm_neela.PNG`, the racer must continue to use Seren’s existing lane controls and bot steering. Human input and bot AI remain authoritative.
+an ulting Flann
+an ulting Neela
+an ulting Lolanthe
+an ulting Verdant
 
-Use one named constant for the whiteout duration rather than scattering magic numbers. Keep it short enough to feel like a transformation flash rather than making the race unplayable.
+Use the exact existing Neela semantics. This means the solid road hazards that Neela currently smashes, such as tumbleweeds and meteors, are destroyed by Lolanthe/Verdant too.
 
----
+Do not silently broaden this to puddles, oil, or unrelated effects if Neela does not currently destroy those. Puddles should continue behaving according to the existing Neela rule.
 
-# 5. Store Neela’s origin in WORLD/RACE coordinates, not screen coordinates
+Lolanthe and Verdant do not become offensive Flann-style rams merely because they can clear hazards.
 
-This part is critical.
+7. Create the new Mind Controlled Condition
 
-Player one does not have an ordinary mutable race `y`: player one is kept at `playerY`, while rival positions are relative to that camera and `metersOf()` converts those relative positions into race distance.
+Add a real new debuff Condition for Lolanthe’s power.
 
-Therefore, DO NOT implement the later teleport as:
+Use an internal ID such as mindControlled or another consistent project-style identifier, with localized display text “Mind Controlled”.
 
-`oldX = ...; oldY = ...; swap x/y`
+Add it to the CONDITIONS table as a debuff. Give it a royal-violet visual treatment and a recognizable musical/control-themed vector icon in COND_PATHS so it works with both canvas condition badges and the garage’s inline SVG condition cards.
 
-That will be incorrect as soon as the road has scrolled.
+Do not try to place pion_note.PNG inside the existing Condition badge system; use the existing vector-path architecture for the small HUD badge. The actual pion_note.PNG artwork is for the three large orbiting world-space notes described later.
 
-Create a proper concept of a racer world pose, containing at least:
+Add English and French name/info localization entries and update the Conditions documentation.
 
-* absolute race meters/progress
-* lane
-* logical lateral position as needed
+The Condition description must communicate that the racer loses control for three seconds and that a new application resets the timer rather than stacking additional duration.
 
-At the moment Neela activates, save this world pose.
+Every racer, including player one and rival/local-human racer objects, needs a mind-control timer such as mindT.
 
-At the moment Neela impacts another racer, capture that racer’s world pose before changing anything.
+Add:
 
-Build centralized helpers such as the conceptual equivalents of:
+MIND_CONTROL_TIME = 3
 
-`racerWorldPose(who)`
+or an equivalently named tuning constant in the shared tuning/data layer.
 
-`teleportRacerToPose(who, pose)`
+conditionOn() must derive the Condition directly from mindT > 0.
 
-Do not duplicate player-one versus rival coordinate calculations all over the mechanic.
+clearDebuffs() must clear mindT.
 
-If teleporting player one requires rebasing the player-one camera/world representation, do that centrally and preserve the absolute world position of every unrelated racer and road object.
+The existing invulnerability/dead/finished debuff refusal rules must apply. A racer that refuses debuffs must not receive mind control, and becoming protected must clear it consistently with the rest of Seren’s debuffs.
 
-A player-one rebase must not accidentally shift standings, hazards, bubbles, slicks, active item objects, scenery, meteor markers, effects, finish calculations, or other racers to different absolute race positions.
+8. Mind-control timer reset semantics
 
-The mathematical invariant should be:
+Applying mind control must set:
 
-after rebasing player one, every unrelated racer’s `metersOf()` result remains unchanged.
+target.mindT = MIND_CONTROL_TIME
 
-Any persistent Neela trail points must also remain in the correct world location across such a rebase.
+It must never do:
 
----
+target.mindT += MIND_CONTROL_TIME
 
-# 6. Alternate-form collision with road hazards
+Repeated application resets the timer to three seconds. It does not stack to six, nine, twelve seconds, etc.
 
-While Neela’s ultimate is active, Neela receives Flann-like priority against Seren’s solid road hazards.
+If a target remains continuously inside Lolanthe’s aura, repeated application can keep resetting the timer to three seconds. Therefore the racer can remain controlled for the duration of exposure and then remain controlled for up to three seconds after the last application.
 
-Follow the existing Flann behavior instead of inventing a second unrelated hazard subsystem.
+Do not replay the “pop in” animation every frame while the timer is merely being reset. The pop-in is for the inactive → active transition.
 
-For Seren’s normal three track hazards:
+9. Lolanthe ultimate aura
 
-**Tumbleweed:** Neela destroys/smashes it on contact. Neela does not receive Slow or the ordinary ultimate-meter penalty from that hit.
+While Lolanthe’s shared 15-second ultimate is active, continuously evaluate every other active racer around Lolanthe.
 
-**Meteor:** Neela survives the solid meteor/blast interaction while the relevant Neela ultimate protection is active. Use the same established gameplay interpretation as Flann rather than creating generic Invulnerability.
+“Nearby” must be implemented as one named, tunable range rather than a magic number scattered through code. Use a distance equivalent to roughly four car lengths along the road. Make it scale correctly with the game rather than tying it to one hardcoded viewport size.
 
-**Puddle:** completely unchanged. Neela cannot “destroy” water. The puddle still applies the normal water screen effect and Obscured behavior exactly as it does to Flann.
+The aura reaches racers in any of the three lanes. Lane does not determine whether a racer becomes Mind Controlled; lane only determines whether the forced “move aside” behavior happens.
 
-Do not silently turn this into immunity against every offensive mechanic in the game.
+Use shared/master race coordinates or an absolute racer-distance helper. The answer must not depend on which split-screen view happens to be rendering.
 
-Oil slicks, seekers, ordinary racer contact and other non-solid systems should retain their normal behavior unless the mechanic described here explicitly overrides racer contact.
+Skip:
 
-The special solid-hazard permission should remain active for the entire remaining Neela ultimate, including after Neela has returned from `vtm_neela.PNG` to `v_neela.PNG` following a racer impact.
+Lolanthe itself
+wrecked racers
+finished racers
+racers currently refusing debuffs
+an ulting Verdant
 
-Give this rule one authoritative predicate/helper instead of spreading checks like:
+The Verdant immunity is absolute for the whole time Verdant’s ultimate is active, including during Verdant’s brief collision reveal.
 
-`car === "neela" && ultOn`
+10. Lolanthe forced-lane behavior
 
-through many files.
+Whenever a racer affected by Lolanthe’s aura is in the same logical lane as Lolanthe, Lolanthe forces that racer out of the lane.
 
-For example, conceptually separate:
+This is not normal driver steering. It must happen even though the victim is Mind Controlled and its ordinary controls are locked.
 
-* “Neela’s ultimate is active and therefore may clear solid hazards”
-* “Neela is currently in the alternate sprite form”
+From an outer lane, there is only one valid destination and the victim must move inward.
 
-Those are NOT the same thing after a racer impact.
+From the middle lane, choose left or right without treating occupancy as a reason to cancel. A stable random choice or similarly unbiased one-time choice is acceptable.
 
----
+Crucially, do not require the destination lane to be empty.
 
-# 7. Collision with another racer while in the alternate form
+If there is another racer in the forced destination lane, route the situation through Seren’s real racer-contact/barge resolution rather than teleporting one model through another. The forced movement can therefore shove, wreck, ram, or otherwise interact with the racer already occupying that lane according to the normal special-contact rules.
 
-This is the core mechanic.
+This is intentionally capable of producing chain reactions and racers destroying one another.
 
-While Neela is still in `vtm_neela.PNG` form, physically contacting another eligible racer must NOT wreck either racer.
+A forced lane move should change the logical lane immediately and then use Seren’s existing lateral interpolation so the car visibly transitions rather than teleports sideways.
 
-Instead perform exactly one swap/teleport event.
+The forced movement must ignore things such as Skidded steering reversal because this is Lolanthe commanding the vehicle, not the driver steering it.
 
-The contacted racer must be a racer that can legitimately participate in contact under Seren’s existing rules.
+Do not let the ordinary mind-control input lock accidentally block Lolanthe’s forced movement. Give forced movement its own internal path.
 
-Finished racers, wrecked racers and racers protected by respawn Invulnerability must remain excluded through the existing contact protection rules.
+11. Complete control lock during Mind Controlled
 
-When a valid collision occurs:
+For the entire three-second Mind Controlled duration, the affected driver must be unable to issue meaningful actions.
 
-1. Capture the impacted racer’s exact world pose at the instant of impact.
-2. Start the white-screen sequence for Neela.
-3. Start the same white-screen sequence for the impacted racer if that racer owns a human view.
-4. Trigger Neela’s transformation flash.
-5. Trigger an equivalent white teleport flash on the impacted racer.
-6. Exit Neela’s alternate `vtm_neela.PNG` form immediately.
-7. Render Neela using normal `v_neela.PNG` again.
-8. Teleport Neela to the exact world position/lane occupied by the impacted racer at impact.
-9. Teleport the impacted racer to the world position/lane Neela occupied immediately before activating the ultimate.
-10. Neither racer is destroyed by this swap.
+This must work identically for:
 
-The saved Neela origin is the position from immediately before ultimate activation.
+player one
+bots
+local multiplayer humans
 
-It is NOT:
+Block manual steering.
 
-* Neela’s position one frame before impact
-* the point where the alternate form currently is
-* merely Neela’s old lane
-* a stale screen-space `y`
+Block starting or maintaining an active driver-controlled boost. The car should not continue consuming boost because the player happened to be holding the button when control was taken.
 
-The exchange must work correctly in every ordering:
+Block firing a new ultimate.
 
-* player Neela → bot
-* player Neela → local human
-* bot Neela → player one
-* bot Neela → local human
-* local-human Neela → player one
-* local-human Neela → another local human
+Block using an item.
 
-Handle player one specially only inside the centralized world-pose/teleport helper.
+Block bot lane-choice/action decisions.
 
-Do not make separate versions of the entire mechanic for player and rival objects.
+Block bot item use and bot ultimate activation.
 
----
+Do not freeze the racer in space. Its vehicle physics, ordinary forward movement, timed effects, collision handling, active ultimate clock, hazards, wreck lifecycle, and other passive race-state updates should continue.
 
-# 8. What happens AFTER Neela hits a racer
+If a racer was already in an ultimate before becoming Mind Controlled, do not arbitrarily cancel that existing ultimate. The driver simply cannot initiate actions while controlled.
 
-A racer collision ends the alternate visual form, but it does NOT necessarily end the ultimate.
+Centralize the “controls are locked” question so one input surface cannot accidentally bypass the restriction.
 
-If Neela still has ultimate time remaining:
+Do not rely only on suppressing keyboard events. The mechanics-level actions themselves must refuse player commands during mind control.
 
-* `ultOn` remains true
-* the meter continues from its current remaining value
-* the normal 2× speed remains
-* Neela stays in normal `v_neela.PNG` car form
-* Neela retains the solid-hazard clearing permission described above
-* Neela MUST NOT gain the ability to destroy racers
-* racer-to-racer contacts revert to Seren’s normal rear-end/barge/contact rules
-* Neela must not perform another teleport swap during that same ultimate
+12. Lolanthe queen-note ultimate visual
 
-In other words:
+Preload queen_note.PNG exactly once. Do not create a new Image() every frame.
 
-**one alternate-form racer swap maximum per ultimate.**
+While Lolanthe’s ultimate is active, display one queen_note.PNG floating above Lolanthe’s car.
 
-After that first impact, the rest of the ultimate is a boosted normal-looking Neela with the special solid-hazard permission until the meter reaches zero.
+Anchor it relative to racerDims(who) so it remains correctly positioned for all viewport sizes and split-screen columns.
 
-When the meter reaches zero, all Neela-specific ultimate privileges disappear immediately.
+It should be an upright floating UI/world effect rather than rotating with the car’s steering tilt.
 
----
+On ultimate activation, give it a short polished pop-in animation using scale and opacity.
 
-# 9. If Neela never hits a racer
+While active, keep the icon gently moving up and down.
 
-If the ultimate naturally expires while Neela is still in `vtm_neela.PNG` form:
+When the ultimate ends or is interrupted, give the queen note a matching pop-out animation rather than deleting it abruptly.
 
-* transform Neela back into `v_neela.PNG`
-* keep Neela at its current race position
-* do not teleport anyone
-* play the local vehicle transformation flash
-* stop creating new alternate-form trail
-* let the existing trail already behind the vehicle fade naturally
-* remove the solid-hazard permission because the ultimate has ended
+A short cosmetic exit timer is acceptable. It must not become a second ultimate gameplay lifecycle.
 
-Do not leave stale alternate-form state after `endUlt()`.
+Reduced-motion mode must remain respected. Under reduced motion, keep the icon visible but remove or greatly reduce continuous bobbing.
 
----
+13. Mind Controlled orbiting notes
 
-# 10. The white-screen/Obscured sequence
+Preload pion_note.PNG exactly once.
 
-The white transition must genuinely cover the racer’s view.
+Every Mind Controlled racer must be surrounded by exactly three pion_note.PNG icons.
 
-It should be pure/near-pure white and temporarily hide both the road and that racer’s interface.
+Place the three notes roughly 120 degrees apart around the vehicle and rotate/orbit the group around the car.
 
-Do not misuse the existing puddle `blind` state for this.
+Do not apply the queen note’s up-and-down bobbing to these three notes.
 
-`blind` currently drives the water-on-glass rendering. Setting `blind` for Neela would incorrectly draw puddle-water graphics.
+They should receive the same style of scale/opacity pop-in when the Condition first becomes active and a matching pop-out as the Condition expires.
 
-Instead give racers a separate Neela whiteout/transition timer.
+Repeated timer resets while already controlled must not continuously restart the pop-in.
 
-Extend the existing Condition derivation so **Obscured** is active when either:
+Position and orbit size should derive from racerDims() so the effect stays proportional to Lolanthe, Verdant, Flann, Neela, Rose, and Siren rather than being tuned only for one model.
 
-* normal puddle blindness is active, OR
-* this whiteout timer is active
+Reduced-motion mode should retain the three notes but stop the continuous orbit.
 
-Conceptually:
+14. Verdant ultimate: invisibility
 
-`obscured = blind > 0 || neelaWhiteoutT > 0`
+Verdant continues to use the normal 15-second, double-speed ultimate, but its visual behavior changes radically.
 
-Keep the Condition system derived from actual gameplay state.
+While Verdant’s ultimate is active, Verdant must be completely invisible to other racers’ views while remaining physically present in the race.
 
-Do not create an unrelated “Neela obscured badge.”
+Do not remove Verdant from collision detection.
 
-Use the existing `obscured` Condition and its existing icon/localization.
+Do not mark it dead.
 
-For single-player, remember that much of the HUD is DOM layered over the canvas. A white rectangle drawn only into the canvas may leave DOM instruments visible. The sequence must hide those instruments too.
+Do not teleport it.
 
-For local multiplayer, do NOT reuse the existing global `#flash` in a way that blinds every local player simultaneously.
+Do not disable its hitbox.
 
-Seren renders each human’s view separately. The whiteout must belong to the view owner.
+Do not make it globally noContact.
 
-A good architecture is:
+All normal physical overlap and contact tests must continue using Verdant’s real measured hitbox.
 
-* `whiteoutActive(who)` derives from that racer
-* local-play white overlay is drawn after that column’s road AND `drawSeatHud()`, so the entire column interface disappears
-* single-player uses a correctly layered white overlay / shell state that covers the road and DOM HUD
-* only affected human views are covered
+15. Owner/client-side 50% Verdant visibility
 
-If Neela hits a bot, the bot obviously has no dedicated screen to cover, but its Obscured condition state may still exist briefly and can appear beside that car in another player’s view.
+Resolve the apparent conflict between “100% invisible” and “50% visible client side” as follows:
 
-If bot Neela hits a human, whiteout the human’s view.
+In the view owned by the player actually driving Verdant, render the ulting Verdant at 50% opacity so that player can still control and locate their own vehicle.
 
-If two local humans are involved, whiteout both relevant columns independently.
+In every other player’s view, render the ulting Verdant at 0% opacity.
 
-Do not let one player’s whiteout obscure unrelated local players.
+Use VOWN or the equivalent existing split-screen viewer identity to calculate this per view.
 
----
+This must work in one-player mode and two-, three-, and four-player local split screen.
 
-# 11. Transformation/teleport vehicle flash
+The owner-specific 50% visibility is visual only. It does not make Verdant targetable by Lolanthe and does not change collision rules.
 
-Add a local visual transition directly on the affected vehicle whenever a transformation or teleport occurs.
+16. Verdant fade animations
 
-The requested visual language is a brief fade/flash toward solid white.
+When Verdant activates its ultimate, fade from fully visible to its ultimate visibility target instead of snapping:
 
-For Neela, play it when:
+owner’s view: 100% → 50%
+other views: 100% → 0%
 
-* normal car → alternate form
-* alternate form → normal car after racer impact
-* alternate form → normal car on natural ultimate expiry
+When the ultimate ends normally, fade back to 100%.
 
-For an impacted racer, play it at the teleport event as well.
+Use a short named transition constant around a quarter of a second. Keep it tunable.
 
-This effect should be generic enough to work on any impacted racer model, because the victim can be Flann, Bolt, Timestamp, Rose, Siren, etc.
+If the ultimate is terminated by a wreck, do not leave a ghost image lingering through the wreck lifecycle.
 
-Do not write a separate white-flash implementation for each car.
+The fade is cosmetic state only.
 
-The flash should preserve the racer’s actual silhouette. A white-tinted silhouette/ghost or strong white body overlay that fades away is preferable to a generic circle.
+17. Do not leak invisible Verdant’s exact position
 
-Keep the effect cosmetic. It must not modify hitboxes or gameplay state.
+A non-owner view must not show other world-space visuals attached to Verdant that reveal the supposedly invisible car’s exact location.
 
-Reduced Motion should still show a clear static/short transition cue, but without unnecessary flicker or pulsing.
+Audit:
 
----
+boost flame/exhaust
+local seat marker
+car-adjacent Condition stack
+car-attached ultimate effects
+nearby/off-screen markers that directly disclose the vehicle’s exact lane/world position
 
-# 12. `vtm_neela.PNG` rendering and precise hitbox
+Do not necessarily remove Verdant from the overall standings/race order UI; invisibility is about the vehicle in the race world. However, do not leave a floating badge sitting at the invisible car’s coordinates.
 
-Treat the alternate model as its own measured sprite geometry.
+Any boost exhaust drawn from Verdant must obey the same per-view opacity as the car itself.
 
-Do not assume the normal Neela bounds/hitbox also fit `vtm_neela.PNG`.
+18. Verdant brief reveal when hit
 
-Measure and define:
+Add a small cosmetic timer such as verdantRevealT.
 
-* alternate sprite visible bounds
-* alternate exhaust/energy-tail anchor
-* alternate collision polygon
-* any required size relationship to the normal racer dimensions
+When another racer collides into an ulting Verdant and triggers Verdant’s defensive destruction behavior, Verdant becomes fully visible for a split second, then returns to its normal ultimate visibility:
 
-Use a clear data-driven representation such as an ultimate/alternate sprite entry under Neela rather than hardcoding PNG geometry in several rendering functions.
+owner view returns to 50%
+other views return to 0%
 
-Extend sprite preloading so both `v_neela.PNG` and `vtm_neela.PNG` are loaded once and cached.
+Use a named short reveal duration around 0.15–0.20s.
 
-`carHit()` or the equivalent central geometry path should automatically select the correct Neela hit shape while the alternate form is active.
+This reveal must not cancel the ultimate.
 
-Rendering and collision must use matching dimensions and rotation.
+This reveal must not remove Verdant’s immunity to Lolanthe’s Mind Control.
 
-The alternate hitbox must:
+19. Directional Verdant collision rule
 
-* follow the visible alternate model closely
-* exclude transparent PNG padding
-* rotate with vehicle tilt
-* work identically for player one, bots and local humans
-* switch back immediately when Neela returns to car form
+This rule is asymmetric.
 
-Do not reuse the existing Seeker item’s `missileDims()` or collision implementation merely because the sprite has a similar theme. The Seeker is an independent item with autonomous tracking and its own lifecycle. Neela is still a racer.
+If another racer initiates contact into an ulting Verdant, that attacking/arriving racer is destroyed and Verdant survives.
 
----
+If an ulting Verdant initiates an ordinary collision into another racer, Verdant must not gain an offensive kill. Use the ordinary contact behavior unless one of the explicit special pair interactions below applies.
 
-# 13. Very long persistent blue energy trail
+The current code already exposes contact direction in the important places:
 
-While Neela is in `vtm_neela.PNG` form, create a distinctive, very long blue energy trail from the actual tail/emitter point of that sprite.
+rearEnd(who, victim) knows which racer ran into the back of which racer.
 
-This must be substantially longer and more persistent than the normal Neela boost effect.
+bumpTarget(victim, dir, by) knows which racer initiated a lane barge.
 
-Visual target:
+Use that directionality rather than trying to infer it later from overlapping polygons.
 
-* bright white/cyan core close to the emitter
-* saturated electric blue around it
-* softer cyan outer glow
-* trail tapers and becomes more transparent with age
-* old parts remain in the world behind Neela
-* they progressively fade instead of vanishing as soon as Neela moves
-* smooth enough to look continuous even during fast lane changes
-* trail follows the actual driven path rather than merely drawing a straight line behind the current vehicle
+Centralize the special-contact resolution so rearEnd() and bumpTarget() cannot disagree about Verdant.
 
-Do not generate an unbounded number of objects.
+Preserve invulnerability/dead/finished contact gates. An unreachable racer does not become a free Verdant kill merely because polygons overlap.
 
-Use a bounded trail-node/history system with sensible sampling distance/time and maximum age.
+20. Special case: ulting Verdant vs ulting Flann
 
-A trail lifetime around the order of a couple of seconds can be used as an initial tuning point, but choose the exact value visually so it reads as “very long” at ultimate speed.
+If an ulting Verdant and an ulting Flann physically collide, both racers are destroyed.
 
-Old nodes must finish fading after:
+This overrides Flann’s normal one-sided ram behavior.
 
-* Neela hits a racer and returns to car form
-* the ultimate expires
-* Neela wrecks
+It must apply regardless of which one initiated the contact.
 
-Stop adding new alternate-form nodes immediately when the form ends, but do not delete existing visible nodes abruptly.
+After the collision, both racers’ ultimate meters must be exactly 0%.
 
-Trail positions must move correctly with Seren’s road/world coordinate system and must survive any player-one world rebase used by the teleport mechanic.
+Do not allow the standard kill reward or wreck penalty sequencing to leave either meter above zero.
 
-Respect Reduced Motion: reduce animation/pulsation if necessary, but retain the spatial trail because it communicates the alternate form’s movement.
+Prefer a small dedicated mutual-wreck resolver that uses the existing wreck lifecycle/FX/audio but guarantees zero fuel after all meter side effects.
 
----
+Do not let one wreck make the second racer unreachable before the second wreck is processed.
 
-# 14. Preserve existing racer contact rules outside the one swap
+21. Special case: transformed Neela vs ulting Verdant
 
-Do not turn Neela into Flann against racers.
+If Neela is currently in the vtm_neela.PNG alternate/heat-seeking form and physically contacts an ulting Verdant, Neela is destroyed.
 
-Flann’s existing ultimate can wreck racers through collision priority.
+This overrides Neela’s normal exchange/swap behavior.
 
-Neela must not inherit that rule.
+It applies regardless of which of the two vehicles initiated the physical contact.
 
-Neela’s racer behavior is:
+Neela’s ultimate fuel must become exactly 0%.
 
-**Before first racer impact while in alternate form:** contact triggers the teleport swap and nobody is wrecked.
+Verdant survives.
 
-**After that swap, while ultimate remains:** ordinary racer contact rules.
+Trigger Verdant’s brief reveal because physical contact occurred.
 
-**After ultimate expires:** completely ordinary racer contact rules.
+Do not teleport either racer using Neela’s swap path.
 
-If two contacts occur in one physics/update step, resolve only one Neela teleport deterministically and guard against a second event caused by the freshly teleported positions.
+A normal, non-transformed Neela does not receive this special handling beyond Verdant’s ordinary directional-defense rule.
 
-That guard must not become seconds of hidden Invulnerability. It should only prevent duplicate handling of the same event/frame.
+22. Collision-resolution priority
 
----
+Refactor carefully enough that the priority is explicit.
 
-# 15. Rename all Phantom-facing content
+For any Verdant-involved physical racer contact, first resolve the two explicit symmetric pair overrides:
 
-Search the entire repository for both:
+ulting Verdant + ulting Flann → both wrecked, both 0% ultimate
 
-`phantom`
+ulting Verdant + transformed Neela → Neela wrecked, Neela 0%, Verdant survives/reveals
 
-and
+Then resolve the general asymmetric Verdant defense when a non-special racer initiates contact into ulting Verdant.
 
-`Phantom`
+Only after those cases should the ordinary Neela exchange, Flann ram, shunt, barge, slow, and lane-change consequences proceed where appropriate.
 
-Replace every legitimate car reference with Neela.
+For contacts that do not involve an ulting Verdant, preserve the existing rule that transformed Neela gets its exchange before Flann’s ram.
 
-At minimum inspect:
+Do not regress the current Neela-versus-Flann interaction.
 
-* `js/data.js`
-* `js/i18n.js`
-* `js/render.js`
-* `js/mechanics.js`
-* `js/race.js`
-* `js/ai.js`
-* `js/ui.js`
-* `js/hud.js`
-* local multiplayer code
-* all files under `tools/`
-* README/documentation
-* comments
-* any hardcoded six-car arrays
+23. Lolanthe versus Verdant
 
-Update `CAR_IDS` so Neela occupies Phantom’s slot rather than adding a seventh car.
+An ulting Verdant is completely immune to Lolanthe’s Mind Control aura.
 
-Update `TEMPERS` from `phantom` to `neela`, preserving Phantom’s current temperament values unless there is a gameplay reason directly caused by the new ultimate to alter them.
+Do not set mindT.
 
-Update localization keys from `phantom` / `phantomUlt` to `neela` / `neelaUlt`.
+Do not display the three pion_note.PNG effects.
 
-Add accurate English and French Neela descriptions.
+Do not force it out of Lolanthe’s lane.
 
-The description should explain, in player-facing language, that Neela briefly changes form, can smash solid road hazards while the ultimate lasts, puddles still Obscure it, and the first racer it hits exchanges race positions with Neela’s activation point instead of being wrecked.
+This remains true during Verdant’s split-second reveal.
 
-Do not expose implementation terminology such as world rebasing in the player-facing description.
+The rationale is gameplay visibility: Lolanthe cannot command a target it cannot see.
 
-If the game can actually persist a `"phantom"` car ID in saved data, add a minimal migration from `"phantom"` to `"neela"`. If no persisted car ID exists, do not add pointless legacy code.
+Physical collisions between Lolanthe and Verdant still follow the Verdant collision rules. Therefore if Lolanthe initiates physical contact into ulting Verdant, Lolanthe can be destroyed.
 
----
+Lolanthe’s ultimate itself does not protect it from this.
 
-# 16. AI and bot behavior
+24. Lolanthe and Verdant must not become offensive Flann clones
 
-Neela must work identically whether controlled by:
+Lolanthe’s direct power is Mind Control and forced lane displacement.
 
-* player one
-* a bot
-* a local multiplayer human
+Lolanthe does not automatically destroy racers by touching them.
 
-Do not give bot Neela a separate simplified implementation.
+If a forced Mind Controlled racer causes a crash, that destruction comes from the normal collision system, not from a fake Lolanthe ram rule.
 
-Existing bot steering remains active while Neela is in alternate form.
+Verdant’s only racer-destruction capability is its explicitly asymmetric defensive contact behavior plus the explicit Flann/Neela pair interactions above.
 
-Do not implement automatic homing.
+Verdant must not destroy an ordinary racer merely because Verdant rear-ended or barged into that racer.
 
-The bot continues making lane decisions through Seren’s existing AI; the special behavior happens when actual geometry produces contact.
+25. AI visibility and fairness around Verdant
 
-Review AI ultimate valuation because Neela now has a tactical effect. Do not rewrite the AI system, but make sure no assumptions say that Flann is the only car with a unique ultimate.
+Bots should not have supernatural knowledge of an ulting Verdant’s exact road position.
 
-A bot should not break because its current plan references Phantom’s old ID.
+Keep physical collision detection intact, but separate “physically touchable” from “visually detectable/targetable”.
 
----
+If necessary, add a field such as visible/detectable to the bot’s field view instead of abusing noContact.
 
-# 17. Rendering architecture
+An ulting Verdant should not be deliberately selected by bot offensive targeting, lane-blocking logic, or Lolanthe’s aura while hidden.
 
-Keep rendering read-only.
+It can still be accidentally collided with because it remains physically present.
 
-Existing Seren comments and tests explicitly treat rendering as something that must not mutate race state.
+Do not remove it from race order/place calculations.
 
-Continue that rule.
+26. AI use of the two new ultimates
 
-Trail lifetime, whiteout timers, transform timers and alternate-form state must be advanced from gameplay/update code, not inside draw functions.
+botUltExtra() currently has special valuation only for Flann and Neela. Update it so the comments and logic no longer claim there are only two special ultimates.
 
-Rendering should only inspect those values.
+Lolanthe should value its ultimate more when several racers are nearby, especially when one or more share its lane or the surrounding traffic is dense enough for forced lane changes to matter.
 
-Avoid allocating new `Image` objects every frame.
+Verdant should value its ultimate when nearby threats/traffic make invisibility and defensive contact useful.
 
-Cache both Neela images exactly once through the sprite system.
+Do not change the shared charging rate by difficulty. Difficulty continues to affect when a bot chooses to use an ultimate, not how fast it gets one.
 
-Make sure late image loading still requests a repaint just as the current sprite loader does.
+A Mind Controlled bot must not make new lane/item/boost/ultimate decisions until control returns.
 
----
+27. Sprite boost fire
 
-# 18. Tests are mandatory
+Because Lolanthe and Verdant are now sprite cars, their boost rendering must use the same measured image-space anchor pipeline currently used by Flann and Neela.
 
-Update and extend the existing Node regression suite rather than relying only on visual testing.
+Do not approximate fire placement from carW or a generic rear center.
 
-The repository already has:
+When ordinary boost or the ultimate’s shared speed state causes the exhaust effect to display, the root of each plume must sit exactly inside the measured tailpipe opening.
 
-* `tools/check.mjs`
-* `tools/menu-check.mjs`
-* `tools/ultimate-check.mjs`
-* `tools/sprite-check.mjs`
-* `tools/hitbox-check.mjs`
-* `tools/game-fixture.mjs`
+Verify both models while stationary, boosting, tilting through a lane change, at different canvas sizes, and in split-screen.
 
-Update assumptions that only Flann uses a sprite or that there is only one cached vehicle image.
+28. Rendering order
 
-### `sprite-check.mjs`
+Keep car effects coherent.
 
-Add checks for:
+A sensible ordering is:
 
-* exact filename/casing `v_neela.PNG`
-* exact filename/casing `vtm_neela.PNG`
-* both files cached once
-* normal Neela sprite centered from measured visible bounds
-* alternate sprite centered from its own measured bounds
-* Neela’s normal energy root exactly matches measured exhaust coordinates
-* alternate trail root exactly matches its measured tail anchor
-* roots remain pinned across several sizes
-* roots rotate correctly with lane-change tilt
-* menu preview always uses `v_neela.PNG`
-* menu preview never uses `vtm_neela.PNG`
-* alternate asset is used only during the relevant ultimate form
-* normal boost does not cause transformation
-* rendering remains state-pure
-* Reduced Motion behavior is deterministic
+car shadow / exhaust under appropriate alpha
+car sprite
+existing model-specific body effects
+Verdant visibility/reveal handling
+Lolanthe queen note or Mind Controlled orbiting notes
+seat marker/Condition stack only when that view is permitted to see them
 
-### `hitbox-check.mjs`
+Do not let changing ctx.globalAlpha for Verdant leak into later cars. Always isolate view-specific opacity with ctx.save() / ctx.restore() or an equally safe pattern.
 
-Add checks for:
+The three Mind Controlled notes and queen note must not alter collision geometry.
 
-* Neela normal polygon matches normal artwork
-* alternate-form polygon matches alternate artwork
-* transparent corners are rejected
-* true body points are accepted
-* rotation follows rendered rotation
-* player/rival geometry is identical
-* hit shape switches immediately on transformation
-* hit shape returns immediately after racer impact
-* hit shape returns on natural expiry
-* exact edge contact and tiny separation behave correctly
+29. State initialization and cleanup
 
-Do not weaken Flann’s existing hitbox tests.
+Add all new state fields consistently to both player-one state and newly constructed rival/local-human racer objects.
 
-### `ultimate-check.mjs`
+Likely state includes equivalents of:
 
-Add a dedicated Neela section covering player, bot and local-human forms.
+mindT
+a mind-control entry/pop animation timer if needed
+Lolanthe queen-note cosmetic exit state if needed
+Verdant fade state
+verdantRevealT
 
-Test:
+Reset/clean these correctly on:
 
-* activation starts the standard 15-second meter
-* activation captures origin exactly once
-* alternate form activates
-* controls/state continue while whiteout is running
-* whiteout does not pause the countdown
-* Neela remains reachable and is not Invulnerable
-* tumbleweed is destroyed
-* meteor cannot wreck Neela while special hazard permission applies
-* puddle still applies its normal effect
-* Obscured is active during Neela’s whiteout without requiring `blind`
-* oil/seeker behavior is not accidentally converted to broad immunity
-* natural expiry returns normal form
-* alternate trail stops receiving new nodes after form ends
-* old trail nodes fade instead of being purged instantly
+new race
+wreck
+respawn where appropriate
+ultimate start
+ultimate end
+race finish
 
-For racer impact test all important ownership directions.
+Do not leave stale note/reveal/fade timers across a restart.
 
-Verify:
+A Condition should disappear when its state disappears.
 
-* neither racer is wrecked
-* victim’s pre-impact pose is captured first
-* Neela goes to victim pose
-* victim goes to Neela’s activation pose
-* Neela immediately returns to normal sprite/form
-* ultimate timer does not reset
-* remaining ultimate speed continues
-* remaining solid-hazard privilege continues
-* second racer impact during the same ultimate does not teleport again
-* ordinary collision rules apply after the first swap
-* ultimate eventually expires normally
+30. Localization and garage descriptions
 
-Also test:
+Update both supported languages.
 
-* finished target cannot trigger swap
-* wrecked target cannot trigger swap
-* Invulnerable target cannot trigger swap
-* a collision does not trigger twice in one frame
-* wrecking Neela clears stale form state
-* finishing clears stale form state
+Lolanthe’s ultimate description should clearly explain that for fifteen seconds it runs at double pace, Mind Controls nearby racers, forces same-lane racers aside even into occupied lanes, and each Mind Control application leaves the victim without controls for three seconds.
 
-### Player-one coordinate/rebase regression
+Verdant’s ultimate description should explain that for fifteen seconds it runs at double pace and becomes invisible to opponents while remaining physically present; a racer that crashes into Verdant is destroyed; Verdant briefly reveals on that impact; and the driver sees their own Verdant at half opacity.
 
-Add a specific test for the difficult case where `"me"` is teleported.
+Also document the solid-hazard privilege consistently with Neela.
 
-Record absolute race positions of unrelated rivals and relevant world objects before the teleport.
+Add condMindControlled and its info text in both languages.
 
-Teleport player one.
+31. Static UI updates
 
-Assert that unrelated racers retain the same absolute meter positions afterward.
+Update index.html car-selection entries.
 
-Assert Neela/victim destinations are exact.
+Use id="carLolanthe" and data-car="lolanthe".
 
-Assert standings calculations remain coherent.
+Use id="carVerdant" and data-car="verdant".
 
-Assert no hazard or trail object gains an accidental world-space offset.
+Update main.js click listeners.
 
-### `menu-check.mjs`
+The existing generic carEl(id) / capitalization path should continue working.
 
-Verify:
+Check all garage/select-screen canvases and hero previews.
 
-* Neela appears where Phantom used to
-* localized name is Neela
-* Neela ultimate description is shown
-* no Phantom user-facing string remains
-* normal Neela model is the menu model
+There must still be exactly six selectable vehicles.
 
-Run the full suite after changes.
+32. Update the repository’s invariant checker
 
-Do not “fix” a failing test by deleting meaningful assertions.
+tools/check.mjs currently hard-codes several assumptions that this feature intentionally changes.
 
----
+Update the Condition assertion from five Conditions to the new correct set.
 
-# 19. Manual validation
+Update the “only two car-specific ultimates” assumptions to account for Lolanthe and Verdant.
 
-After automated tests pass, visually verify the game in a browser.
+Update the ad-hoc car-name scan so the only permitted direct special-car comparisons live inside the proper identity predicates.
 
-Test Neela in:
+Update documentation assertions and sprite-car counts where necessary.
 
-* Endless
-* Race against bots
-* 2-player local
-* 3-player local
-* 4-player local
+The checker should still enforce centralization rather than simply weakening the assertions until everything passes.
 
-Check ordinary driving first.
+33. Be careful with old test fixtures that use Bolt/Timestamp as neutral cars
 
-Normal `v_neela.PNG` must:
+The current tests frequently use "bolt" as a convenient ordinary/non-special racer and at least one test explicitly uses Timestamp as the generic normal-ultimate example.
 
-* be centered correctly
-* be the right visual scale in its lane
-* have no transparent-padding collision weirdness
-* tilt naturally
-* have the blue normal boost effect attached exactly to the rear outlet
+Do not mechanically replace every such fixture with "lolanthe" or "verdant".
 
-Then test ultimate activation.
+Lolanthe and Verdant now have special active-ultimate behavior, so they are no longer reliable neutral fixtures.
 
-Confirm:
+Where a test genuinely needs a car with no extra ultimate power, use Rose or Siren.
 
-* only Neela’s own human view whites out
-* controls still respond while white
-* `vtm_neela.PNG` is already the active form during the transition
-* the white vehicle transformation reads cleanly when the view comes back
-* the long energy trail emerges from the correct tail point
-* the trail follows lane changes smoothly
+Where a test is specifically testing the renamed vehicle, use Lolanthe or Verdant deliberately.
 
-Hit a puddle while active.
+This is especially important in tools/ultimate-check.mjs, tools/sprite-check.mjs, and tools/hitbox-check.mjs.
 
-Confirm the normal puddle behavior still happens.
+34. Required automated tests
 
-Hit solid road hazards.
+Expand the existing test suites rather than creating mocks of the new systems.
 
-Confirm they are cleared without breaking the ultimate.
+Use the real update/input/collision/render paths as the existing fixture already does.
 
-Hit another racer.
+Cover both player and rival ownership directions, and include local-human racers where the control rules differ.
 
-Confirm visually that:
+At minimum, prove every acceptance condition below.
 
-* both relevant human screens white out independently
-* no unrelated local-player view turns white
-* Neela returns to `v_neela.PNG`
-* Neela appears at the other racer’s previous position
-* the other racer appears at Neela’s activation position
-* neither is wrecked
-* both get the white transformation/teleport visual
-* the old long trail remains briefly and fades
-* Neela’s meter continues from the same remaining point
-* Neela remains fast
-* Neela can still clear the permitted solid hazards
-* Neela can no longer teleport another racer that ultimate
+35. Documentation
 
-Let the ultimate expire without hitting anybody and verify the alternate form simply changes back at its current location.
+Update README.md so Bolt/Timestamp are gone as active car identities and Lolanthe/Verdant appear in the ultimate table and project-layout asset list.
 
----
+Update docs/ARCHITECTURE.md where it currently says only Flann/Neela have car-specific powers and where it describes only two sprite cars.
 
-# 20. Code-quality constraints
+Update docs/TUNING.md for the new Condition and new tuning constants.
 
-Do this carefully and integrate with the existing code style.
+Update docs/ULTIMATE-QA.md or create an equivalent Lolanthe/Verdant QA record documenting manual browser checks, especially split-screen Verdant visibility, note animations, measured exhaust placement, and directional collisions.
 
-Prefer authoritative predicates and shared helpers over repeated car-ID checks.
+Do not leave architectural documentation describing the pre-change six-car roster.
 
-Examples of responsibilities that deserve one central answer:
+36. Acceptance criteria
 
-* Is this racer Neela?
-* Is Neela’s alternate form currently active?
-* Does this racer currently have Neela’s solid-hazard privilege?
-* What is this racer’s absolute world pose?
-* Is this racer’s screen currently white/Obscured?
-* Which hit shape should this racer use?
-* Which sprite should this racer render?
+The implementation is complete only when all of the following are true:
 
-Do not combine concepts that intentionally diverge after impact.
+* Bolt is fully replaced as a car by Lolanthe, using v_lolanthe.PNG, and Timestamp is fully replaced as a car by Verdant, using v_verdant.PNG.
+* The field remains exactly six vehicles.
+* Both PNG cars use measured spriteBounds, measured tailpipe anchors, and precise polygon hitboxes derived from their own artwork.
+* Boost fire visibly originates from the correct Lolanthe and Verdant tailpipes.
+* Both vehicles retain the shared 75-second charge, 15-second duration, and 2× ultimate pace.
+* Lolanthe continuously Mind Controls nearby valid racers during its ultimate.
+* Mind Control lasts three seconds from the most recent application and resets rather than stacking.
+* Player, bot, and local-human driver actions are all locked while Mind Controlled.
+* A racer sharing Lolanthe’s lane is forcibly moved to an adjacent valid lane even when that lane is occupied.
+* Forced movement routes through the real collision system and can therefore cause chain collisions/wrecks.
+* queen_note.PNG appears above ulting Lolanthe with pop-in, continuous vertical bob, and pop-out.
+* Exactly three pion_note.PNG icons orbit every Mind Controlled racer with pop-in/pop-out and no vertical bob.
+* An ulting Verdant is physically present with its precise hitbox despite being invisible.
+* Verdant is 0% visible in other racers’ views and 50% visible in its own driver’s view.
+* Verdant fades into and out of its ultimate visibility state.
+* An ordinary racer that initiates contact into ulting Verdant is destroyed and Verdant briefly becomes visible.
+* Ulting Verdant does not offensively destroy an ordinary racer merely by initiating contact into it.
+* Ulting Verdant + ulting Flann destroys both and leaves both ultimate meters at exactly 0%.
+* Transformed vtm_neela.PNG Neela contacting ulting Verdant destroys Neela, leaves Neela’s ultimate at exactly 0%, does not perform the Neela swap, and Verdant survives.
+* Ulting Verdant is immune to Lolanthe Mind Control even during its brief reveal.
+* Lolanthe and Verdant clear exactly the same solid-hazard class Neela clears while their ultimates are active.
+* Existing Flann and Neela mechanics continue to work, including the existing Neela-vs-Flann priority when Verdant is not involved.
+* Invisible Verdant does not leak its exact world position through car-attached exhaust, badges, seat markers, or equivalent positional visuals in another player’s view.
+* Bots do not deliberately target invisible Verdant using information a human could not see.
+* All six cars still work as player, bot, and eligible local-multiplayer selections.
+* All localization keys resolve in both languages.
+* node tools/check.mjs passes.
+* node tools/menu-check.mjs passes.
+* node tools/ultimate-check.mjs passes.
+* node tools/sprite-check.mjs passes.
+* node tools/hitbox-check.mjs passes.
+* Manual browser QA confirms correct animations, sprite scaling, tailpipe alignment, collision directionality, Verdant per-view opacity, and two-/three-/four-player split-screen behavior.
 
-Especially:
-
-`Neela ultimate active`
-
-is not identical to:
-
-`Neela alternate form active`
-
-after the first racer collision.
-
-Keep Flann’s existing mechanic working unchanged.
-
-Keep the generic ultimate lifecycle shared.
-
-Do not regress:
-
-* respawn Invulnerability
-* finish protection
-* Flann ram behavior
-* puddles
-* meteors
-* tumbleweeds
-* oil
-* seekers
-* local multiplayer
-* Conditions
-* Reduced Motion
-* menus
-* race results
-* standings
-* hit geometry
-
-Do not stop once the feature “looks about right.” Run the tests, resolve every regression, and then do the browser validation above.
-
-The finished behavior should feel like it was designed into Seren’s existing racer/Condition/render architecture rather than added as a collection of Phantom-specific hacks.
+Implement this conservatively. Reuse Seren’s current abstractions instead of creating duplicate systems, keep gameplay state deterministic and testable, and do not “solve” invisibility by disabling physical collision or “solve” Mind Control by bypassing the real collision system.
