@@ -121,15 +121,15 @@ never inherit half a custom race by accident.
 
 Every car has the same mechanical ultimate: a **75-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
-boost, never its strength, duration or charge rate. One car does something else
-with those fifteen seconds as well. Two of them do.
+boost, never its strength, duration or charge rate. Four of the six do something
+else with those fifteen seconds as well.
 
 | Car | Ultimate effect |
 | --- | --- |
 | **Flann** | 15 seconds at 2× pace, **on fire** — see below |
 | **Neela** | 15 seconds at 2× pace, **transformed** — see below |
-| **Bolt** | 15 seconds at 2× pace |
-| **Timestamp** | 15 seconds at 2× pace |
+| **Lolanthe** | 15 seconds at 2× pace, **Mind Controlling** — see below |
+| **Verdant** | 15 seconds at 2× pace, **invisible** — see below |
 | **Rose** | 15 seconds at 2× pace |
 | **Siren** | 15 seconds at 2× pace |
 
@@ -192,6 +192,71 @@ result; two transformed Neelas cancel each other out and trade an ordinary
 shunt; and Neela never gains the ability to wreck anybody. The moment the
 fifteen seconds are up, it is an ordinary car again.
 
+### Lolanthe's mind control
+
+For the whole fifteen seconds, Lolanthe takes the road with it. A single
+`queen_note.PNG` floats above the car, upright and gently rising and falling,
+and everything close enough loses its driver.
+
+- **The aura.** Every other racer within about **four car lengths** along the
+  road is **Mind Controlled**, in any of the three lanes. It is a real debuff
+  with a real badge, and it lasts **three seconds from the last moment that
+  racer was in range** — a fresh hold resets those three seconds rather than
+  adding another three, so standing in the aura keeps you held and never builds
+  up a minute of it. Three `pion_note.PNG` icons orbit every racer it has taken.
+- **What it takes.** Steering, boost, items and the ultimate button, for the
+  person holding the controller, for a local seat and for a bot alike. What it
+  does not take is the car: it keeps driving, its physics, its timed effects,
+  its hazards, its wreck lifecycle and an ultimate it was already running all
+  carry on. A driver already in its own ultimate keeps it; it simply cannot
+  start anything new.
+- **The lane.** Anything caught in Lolanthe's own lane is forced out of it —
+  inward from a wall, either way from the middle. The destination does **not**
+  have to be empty: whoever is in it is met through the ordinary barge, so the
+  shove can shunt them across, wreck them against a barrier, run them into an
+  ulting Flann or be swapped away by a transformed Neela. Chain reactions are
+  the point. Lolanthe gains no kill from any of it — the destruction comes
+  from the collision system, not from a ram Lolanthe does not have.
+- **Tumbleweed and meteor.** Smashed apart on contact, for the whole ultimate,
+  exactly as Neela's are. **Puddle** is unchanged: water is liquid.
+
+Lolanthe does not destroy racers by touching them. An ulting **Verdant** is
+immune to the whole of it, reveal included — Lolanthe cannot command a target
+it cannot see.
+
+### Verdant's invisibility
+
+For the whole fifteen seconds, Verdant disappears — and only that. It is still
+physically on the road, still in the race order, still carrying its own measured
+hitbox, and still something you can run into.
+
+- **Who sees it.** In its own driver's view it fades to **50%**, so the person
+  driving can still find their car. In every other view it fades to **0%**. In
+  local play that is worked out per column, so two, three and four players each
+  get their own answer. The fade takes about a quarter of a second in each
+  direction rather than snapping.
+- **Running into it.** Any racer that initiates contact into an ulting Verdant
+  is **destroyed**, and Verdant shows itself for a fifth of a second as it
+  happens. The reveal is cosmetic: it does not cut the ultimate short and it
+  does not hand Lolanthe a target.
+- **It running into you.** Nothing. The defence works one way only: an ulting
+  Verdant that rear-ends or barges into somebody gets the ordinary shunt and
+  barge, not a kill.
+- **Two pair rules.** An ulting Verdant and an ulting **Flann** destroy each
+  other whichever of them arrived, and both meters end at exactly **0%**. A
+  **transformed Neela** meeting an ulting Verdant is destroyed with its meter
+  emptied, no exchange and no teleport, and Verdant survives.
+- **Tumbleweed and meteor.** Smashed apart on contact, for the whole ultimate.
+  **Puddle** is unchanged.
+
+Nothing pinned to the car gives it away: the exhaust out of its pipe, its seat
+ring and flag, its Condition badges and its edge marker all follow the same
+per-view opacity, so another player's screen shows no outline of where it is.
+Its dot stays on the ladder, because it is still in the race. Bots do not get
+to see what a person could not: an ulting Verdant is out of their targeting,
+their lane reads and their threat picture, so they can blunder into one exactly
+as you can.
+
 ### The ultimate meter
 
 - **75 seconds** from empty to ready, for every car in the field.
@@ -204,13 +269,28 @@ fifteen seconds are up, it is an ordinary car again.
 
 ### How ultimates interact
 
-For the four cars that are neither Flann nor Neela, ultimates do not change
-contact rules. An active racer simply moves at boosted pace and otherwise
-interacts normally: collisions, barges, wrecks, hazards, oil and seekers still
-apply. Flann's ram and Neela's exchange are the two exceptions, and both change
-what a contact *does* rather than whether it can happen at all — see above. A
-Flann and a Neela meeting is the exchange rather than the kill, because the
-contact spends Neela's transformation either way.
+For Rose and Siren, ultimates do not change contact rules. An active racer
+simply moves at boosted pace and otherwise interacts normally: collisions,
+barges, wrecks, hazards, oil and seekers still apply. The other four change what
+a contact *does*, or who can see it, rather than whether it can happen at all —
+see above.
+
+Where they meet, the priority is fixed and in this order:
+
+1. An ulting **Verdant** and an ulting **Flann** destroy each other, both meters
+   emptied, whichever of them arrived.
+2. An ulting **Verdant** and a **transformed Neela** destroy the Neela, meter
+   emptied, with no exchange.
+3. Anything else that runs **into** an ulting Verdant is destroyed.
+4. A **transformed Neela** exchanges places, ahead of Flann's ram — a Flann and
+   a Neela meeting with no Verdant involved is the exchange rather than the
+   kill, because the contact spends Neela's transformation either way.
+5. An ulting **Flann** wrecks whatever it meets.
+6. The ordinary shunt, barge, slow and lane-change consequences.
+
+Lolanthe is nowhere in that list, because Lolanthe wins no contacts. Its forced
+lane change enters the list from the top as an ordinary barge made by the racer
+being pushed.
 
 For every car, Slowed and other legitimate debuffs coexist with the speed
 multiplier, and only **Boosted** is added to the Conditions on show, with
@@ -224,6 +304,11 @@ transforms anything. Only the ultimate does that.
 **Obscured** now has two sources rather than one: puddle water on the glass, and
 the white of a Neela transformation or exchange. It is the same Condition, the
 same badge and the same wording either way.
+
+**Mind Controlled** is the one Condition an ultimate applies directly. It is a
+debuff like Slowed and Skidded: temporary invulnerability refuses it and clears
+it, a wreck and the finish line take it away, and its badge is derived from the
+same three-second timer the control lock is.
 
 ## Driving
 
@@ -630,16 +715,20 @@ job unchanged. It verifies:
 - the Mystery Bubble reward gate is one named switch rather than a deletion, and
   the roll, the rarities, the artwork, oil, seekers and bubble rows all survive
   behind it
-- Flann's ram and Neela's exchange are the game's only car-specific ultimate
-  logic, and the two sprite cars' race sizes the only per-car dimensions:
-  `flannCar()` and `neelaCar()` are the only places a racer is compared to a
-  car, the predicates built on them are read by the contact rules, the hazards
-  and the renderer, `neelaFormActive()` is still demonstrably narrower than
-  `neelaUltActive()` (the alternate body, not the fifteen seconds), the shared
-  charge clock, duration and pace are untouched, Neela's own timings are named
-  constants with the swap guard kept to a single step, only sprite cars carry a
-  race scale and only within a measured band, and `carHit()` takes its hull and
-  its size from the same model the sprite is drawn from
+- Flann's ram, Neela's exchange, Lolanthe's aura and Verdant's invisibility are
+  the game's only car-specific ultimate logic, and three sprite cars' race sizes
+  the only per-car dimensions: `flannCar()`, `neelaCar()`, `lolantheCar()` and
+  `verdantCar()` are the only places a racer is compared to a car, the
+  predicates built on them are read by the contact rules, the hazards, the bot
+  mind, the inputs and the renderer, `neelaFormActive()` is still demonstrably
+  narrower than `neelaUltActive()` (the alternate body, not the fifteen
+  seconds), `racerDetectable()` is demonstrably a question about sight rather
+  than about contact, Mind Control is set rather than added to anywhere in the
+  source, the shared charge clock, duration and pace are untouched, every one of
+  the four cars' own timings is a named constant in the tuning layer with the
+  swap guard kept to a single step, only sprite cars carry a race scale and only
+  within a measured band, and `carHit()` takes its hull and its size from the
+  same model the sprite is drawn from
 
 Run it before you commit. It takes well under a second.
 
@@ -648,17 +737,22 @@ DOM/Canvas test doubles, including localization, every Settings preference and
 what it reaches, setup, simulated controllers, car turns and pause/results.
 `node tools/ultimate-check.mjs` runs the ultimate, Condition, hazard, contact and
 Mystery Bubble behaviour for all six cars as player, bot and local seat, plus
-Neela's exchange in every ownership direction and the world-position regression
-that says moving player one leaves the rest of the road exactly where it was;
-`node tools/sprite-check.mjs` covers race sizes, both sprite cars' sheets and
-measured emitters, the ultimate fire and the transformation flash;
+Neela's exchange, Lolanthe's aura and forced lane change and Verdant's
+directional defence in every ownership direction, the documented collision
+priority for every pair of ulting cars, and the world-position regression that
+says moving player one leaves the rest of the road exactly where it was;
+`node tools/sprite-check.mjs` covers race sizes, all four sprite cars' sheets
+and measured emitters, the ultimate fire, the transformation flash, Verdant's
+per-view opacity in one to four columns and both note effects;
 `node tools/hitbox-check.mjs` covers contact geometry, including the switch
-between Neela's two measured hulls. Browser visuals
+between Neela's two measured hulls and the invariant that hiding a Verdant
+moves nothing. Browser visuals
 and hardware still need separate checks; see
 [the redesign QA record](docs/MENU-REDESIGN-QA.md),
 [the ultimate record](docs/ULTIMATE-QA.md),
-[the Flann record](docs/FLANN-QA.md) and
-[the Neela record](docs/NEELA-QA.md).
+[the Flann record](docs/FLANN-QA.md),
+[the Neela record](docs/NEELA-QA.md) and
+[the Lolanthe and Verdant record](docs/LOLANTHE-VERDANT-QA.md).
 
 ## Project layout
 
@@ -668,6 +762,10 @@ css/app.css         the entire stylesheet
 v_flann.PNG         Flann’s image-backed vehicle, shared by menus and races
 v_neela.PNG         Neela’s, likewise
 vtm_neela.PNG       the shape Neela’s ultimate turns it into, races only
+v_lolanthe.PNG      Lolanthe’s, likewise
+v_verdant.PNG       Verdant’s, likewise
+queen_note.PNG      the note that floats above an ulting Lolanthe, races only
+pion_note.PNG       the three that orbit a Mind Controlled racer, races only
 js/                 the game, in load order (see below)
 tools/check.mjs     dependency-free validator for the invariants below
 docs/               ARCHITECTURE.md, TUNING.md and the screenshots
@@ -707,7 +805,7 @@ place.
 It is a plain static site with relative asset paths, so it works under any base
 path. This repository is served by GitHub Pages from `main` — push, and the
 `pages-build-deployment` workflow republishes it. Any static host works the same
-way: copy `index.html`, `v_flann.PNG`, `css/` and `js/` and you are done.
+way: copy `index.html`, the six `.PNG` files, `css/` and `js/` and you are done.
 
 ## Known quirks
 

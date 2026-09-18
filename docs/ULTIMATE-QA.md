@@ -18,12 +18,17 @@ Verified with the real game scripts and DOM/Canvas test doubles:
 - All six cars as the main player, a bot, and a human-controlled rival: activation,
   fixed timer, countdown fraction, ignored repeat presses, normal expiry and no
   change to the other racer; pace alongside Slowed and the rear-end shunt; no
-  cleanse, no Invulnerability and no refusal of contact.
+  cleanse, no Invulnerability and no refusal of contact. None of the four
+  car-specific powers takes its own driver's controls away, and an invisible
+  Verdant is reachable by everything while being detectable by nothing.
 - Puddles, oil and seekers affect active ultimate users, every car included.
-  Tumbleweeds and meteors affect the five cars that are not Flann.
-- Ordinary barging can move or wreck an ultimate user, for those five. Every
+  Tumbleweeds and meteors affect Rose and Siren, the two cars whose ultimates
+  carry no solid-hazard privilege.
+- Ordinary barging can move or wreck an ultimate user, for those two. Every
   pair of car models uses ordinary rear contact when both ultimates are active,
-  except the pairs containing exactly one Flann.
+  except the pairs containing exactly one Flann, exactly one transformed Neela
+  or exactly one Verdant — and the documented priority between those three is
+  asserted for every ordered pair of the six.
 - Custom rules stop ultimate activation and charging. All drivers use the
   75-second charge rate. Temporary Invulnerability and finish protection remain
   independent of the ultimate, and remain distinct from each other: a finisher
@@ -40,10 +45,14 @@ Verified with the real game scripts and DOM/Canvas test doubles:
 - A finished racer is out of every target list, collision, hazard, item and
   debuff, shows no Condition badge, and a seeker already locked on gives the mark
   up harmlessly.
-- All five Conditions have one colour, one type and one piece of icon artwork
+- All six Conditions have one colour, one type and one piece of icon artwork
   each, shared by the canvas and the SVG renderers; there is no `launched` or
-  `winner` Condition.
-- Timestamp leaves rival pace, meteor fall timing and tumbleweed motion unchanged.
+  `winner` Condition. **Mind Controlled** is the sixth, and its badge is a vector
+  path like every other one — the PNG artwork is the world effect and is
+  deliberately not in the badge system.
+- An ordinary ultimate — Rose's or Siren's, the only two left with nothing on
+  top of the shared fifteen seconds — leaves rival pace, meteor fall timing and
+  tumbleweed motion unchanged.
 - EN/FR garage, reference and menu navigation pass the existing menu suite.
 - Mystery Bubble rewards are temporarily disabled behind `MYSTERY_ITEMS_ENABLED`.
   A player, a bot and a local human seat each sweep a bubble from the same row
@@ -108,3 +117,10 @@ and by Flann's ram alike.
 
 These are automated behavioral checks, not browser visual review or physical
 controller testing. Those manual checks have not been performed.
+
+
+### Lolanthe and Verdant
+
+The two newest car-specific powers have a record of their own, including the
+manual browser checks the automated suites cannot make: see
+[the Lolanthe and Verdant record](LOLANTHE-VERDANT-QA.md).

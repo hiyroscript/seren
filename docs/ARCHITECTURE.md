@@ -145,7 +145,7 @@ frame(ts)                       race.js — requestAnimationFrame loop
 7. your status timers, then `sweepDebuffs`
 8. `updateBubbles` → `updateSlicks` → `updateMissiles` → `updateTraps`
 9. your rear-end check, then `updateRivals` (each rival's whole frame)
-10. `serveOrders`, `updateBolts`, `checkFinish`, `updateFx`, seam handover
+10. `lolantheAuras`, `checkFinish`, `updateFx`, seam handover
 
 Two things follow from that order and are easy to break:
 
@@ -347,19 +347,20 @@ Three layers sit on top of each other and are deliberately not the same thing:
   and targeting test asks this rather than reassembling it.
 
 `activeConditions(who)` is the single derivation of which Conditions a racer has
-right now, read straight off `slowT`/`slow`, `blind`, `slipT`/`slip`, the boost
-state and the invulnerability timer. There is no second, mutable copy to fall out
+right now, read straight off `slowT`/`slow`, `blind`, `slipT`/`slip`, `mindT`,
+the boost state and the invulnerability timer. There is no second, mutable copy to fall out
 of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
 `startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
-for every driver, and that lifecycle is shared by all six cars. Two cars add a
-power on top of it, and both are applied at the consequence rather than through
-`noContact()`: an ulting Flann or Neela still has to physically meet a racer or
-a hazard for anything to happen, and a puddle still gets through to both.
-`flannCar()` and `neelaCar()` are the only two places in the game a racer's
-`car` is compared to a name; everything else asks one of the predicates built
-on them.
+for every driver, and that lifecycle is shared by all six cars. Four cars add a
+power on top of it, and all of it is applied at the consequence or at the view
+rather than through `noContact()`: an ulting Flann, Neela or Lolanthe still has
+to physically meet a racer or a hazard for anything to happen, an ulting Verdant
+is invisible and still physically there to be run into, and a puddle still gets
+through to all four. `flannCar()`, `neelaCar()`, `lolantheCar()` and
+`verdantCar()` are the only four places in the game a racer's `car` is compared
+to a name; everything else asks one of the predicates built on them.
 
 **Flann is a ram** while `flannUltActive(who)` is true — the racer exists, its
 car is `flann`, and its ordinary `ultOn` is running.
@@ -390,20 +391,81 @@ the meter is not touched. `leaveNeelaForm` also runs on natural expiry, with no
 teleport; `clearNeelaState` runs on a wreck or a finish, without the flash,
 before `endUlt` is reached.
 
-`clearsSolidHazards(who)` is the one question both powers answer: `hitWeed` and
-the rival hazard sweep in `race.js` smash the tumbleweed instead of taking Slow,
-and the falling rock and `detonate`'s blast cannot reach the car. Puddles are
-the deliberate exception for both and still apply normally: water is not a solid
-thing to break.
+**Lolanthe takes the road** while `lolantheUltActive(who)` is true. There is no
+second clock and no form to spend, so that predicate is the whole of the
+question.
+
+- `lolantheAuras(dt)` runs once a frame from `update()`, after the whole field
+  has moved, so it reads one settled picture of the road rather than a
+  half-updated one. `mindRange()` is `carH * MIND_AURA_LENGTHS` — four car
+  lengths measured off the shared car box, so it is the same stretch of road at
+  any viewport size and in any column — and every racer is measured against it
+  in the master frame, which is what keeps the answer independent of `VOWN`.
+- `mindTakes(by, target)` is the guest list: not Lolanthe itself, not a wreck,
+  not a finisher, nothing refusing debuffs, and never an ulting Verdant.
+- `applyMindControl(target)` **sets** `mindT` to `MIND_CONTROL_TIME` and never
+  adds to it, so exposure holds a racer rather than accumulating. The entrance
+  animation and the one-time coin toss for the middle lane belong to the
+  inactive-to-active transition alone; a timer being reset replays neither.
+- `controlsLocked(who)` is the single question every input surface asks —
+  `move()`, `humanSteer()`, `humanBoost()`, `setBoost()`, `canFireUlt()`,
+  `fireUltRival()`, `useItem()` and the three bot decision points in
+  `updateRival`. Nothing else is needed, because every route a driver has into
+  the mechanics passes through one of them. It is not a freeze: physics, the
+  road, timed effects, the wreck lifecycle and an ultimate already running all
+  carry on.
+- `mindShove(victim)` is the forced lane change, and it deliberately goes
+  nowhere near `move()` or `rivalLaneTo()`: it ignores the control lock it would
+  otherwise trip over and ignores a Skidded car's reversed steering, because
+  both are facts about the driver and the driver is not the one doing this. The
+  destination does not have to be empty — whatever is in it is met through
+  `bumpTarget` with the *victim* named as the racer that arrived, so a crash
+  belongs to the collision system and never to a ram Lolanthe does not have.
+
+**Verdant disappears** while `verdantUltActive(who)` is true, and that is all it
+does to itself. `verdantHide` is a cosmetic 0-to-1 ramp advanced by
+`tickVerdant`; the hitbox, the contact rules, the race order and `noContact()`
+never read it.
+
+- `racerViewAlpha(who, viewer)` answers per view off the existing split-screen
+  viewer identity: `VERDANT_OWN_ALPHA` in its own driver's column, nothing in
+  everybody else's. `drawCar` takes it as a scale, and the few places inside the
+  car that set an absolute alpha ask `carAlpha()` instead of writing
+  `ctx.globalAlpha` themselves, so a hidden car cannot be outlined by its own
+  exhaust and nothing leaks into the next car.
+- `racerDetectable(who)` separates "physically touchable" from "visually
+  detectable". Contact, hazards and the hull go on asking `noContact()`;
+  anything that is a driver reading the road — `botTarget`, `laneRisk`,
+  `laneScore`, `threatOf`, `softness`, the front/back reads in `botSense`, the
+  lane-cover loop and the HUD's edge markers — asks this instead. `carSeenAt()`
+  is `carAt()` filtered through it.
+- `specialContact(by, victim)` is the one resolver both `rearEnd` and
+  `bumpTarget` call before anything else, so the two ways a contact is detected
+  cannot disagree. In order: an ulting Flann and an ulting Verdant destroy each
+  other through `mutualWreck` with both meters emptied afterwards, an
+  alternate-form Neela meeting one is destroyed with its meter emptied and no
+  exchange, and anything else that *arrives into* one is destroyed. A Verdant
+  that did the arriving gets `null` and the ordinary rules underneath. Two
+  ulting Verdants cancel, exactly as two Flanns do.
+- `verdantReveal(who)` is the split second of full visibility a hit buys. It is
+  cosmetic: the ultimate is not cut short, the meter is untouched, and the
+  immunity to Lolanthe's aura holds right through it.
+
+`clearsSolidHazards(who)` is the one question all four powers answer: `hitWeed`
+and the rival hazard sweep in `race.js` smash the tumbleweed instead of taking
+Slow, and the falling rock and `detonate`'s blast cannot reach the car. Puddles
+are the deliberate exception for all four and still apply normally: water is not
+a solid thing to break.
 
 `bumpTarget` returns the outcome — `none`, `moved`, `wrecked`, `rammed`,
 `stopped` or `swapped` — and `laneChangeDied()` says which of those leave no
 lane change to finish, so `move()` and `rivalLaneTo()` never go on to move a car
 that has just been wrecked on an ulting Flann or traded away by a Neela.
 
-For every other car, for Flann the moment its ultimate expires, and for Neela
-from the exchange onwards, `rearEnd` and `bumpTarget` apply ordinary contact
-rules regardless of ultimate state; the short forward shove a rear-end hands its
+For Rose and Siren, for Flann the moment its ultimate expires, for Neela from
+the exchange onwards, and for Lolanthe throughout — its power is the aura and
+the shove, never a contact it wins — `rearEnd` and `bumpTarget` apply ordinary
+contact rules regardless of ultimate state; the short forward shove a rear-end hands its
 victim is `SHUNT_TIME` / `SHUNT_BOOST` and shows as Boosted. `swapGuard` is a
 single step's worth of "this contact has already been dealt with", not
 protection: it exists only so the two bodies an exchange has just put down
@@ -468,12 +530,16 @@ hazards, particles, and the Conditions that sit over them.
 is the order for one view; `render()` is the loop over views, with the clip and
 translate per column.
 
-Flann and Neela use the exact `v_flann.PNG` and `v_neela.PNG` through the
-`sprite` branch of `drawCar()`, and Neela's ultimate uses `vtm_neela.PNG`. All
-three sheets are loaded once each into `CAR_SPRITES` — a car with an `altForm`
-contributes both of its sheets, so the alternate body is decoded and cached at
-boot rather than the first time an ultimate is pressed. On load, the shared menu
-canvases repaint. The other four racers retain their procedural Canvas models.
+Flann, Neela, Lolanthe and Verdant use the exact `v_flann.PNG`, `v_neela.PNG`,
+`v_lolanthe.PNG` and `v_verdant.PNG` through the `sprite` branch of `drawCar()`,
+and Neela's ultimate uses `vtm_neela.PNG`. All five sheets are loaded once each
+into `CAR_SPRITES` — a car with an `altForm` contributes both of its sheets, so
+the alternate body is decoded and cached at boot rather than the first time an
+ultimate is pressed. On load, the shared menu canvases repaint. `FX_SPRITES` is
+the same arrangement for the two world effects, `queen_note.PNG` and
+`pion_note.PNG`, which are not bodies anybody drives. Rose and Siren retain
+their procedural Canvas models; the two that belonged to the cars Lolanthe and
+Verdant replaced are gone with them.
 Showroom, garage, player, bot and local columns all use this same dispatch, and
 the menus paint from `CARS` directly, so a preview is always the car and never
 the shape it turns into.
@@ -488,13 +554,20 @@ drifting off a tailpipe at another size, tilt or race scale.
 `racerTailPoint(who)` is the world-space version, used by the update code that
 drops trail nodes; it reads and changes nothing.
 The local draw order is shadow, exhaust, image, ultimate fire, transformation
-flash; race markers and Conditions remain outside the model.
+flash; then, outside the model and in the world rather than in the car's rotated
+space, Lolanthe's queen note and the three orbiting notes of a Mind Controlled
+racer; then the seat marker and the Condition stack, which a view only draws for
+a car it is allowed to see. All of it reads timers the update code advances and
+the wall clock, exactly as the exhaust pulse does, so drawing the same frame
+twice draws the same frame — and none of it is collision geometry.
 
-The shared `carW`/`carH` the road is built on are unchanged, and four of the six
+The shared `carW`/`carH` the road is built on are unchanged, and three of the six
 racers are drawn at exactly them. What a car may have is a race scale of its
-own — `CARS.<id>.raceScale` — and the two sprite cars do, each measured off its
-own artwork: Flann 1.12× and Neela 1.18×, so both read properly against the
-lane. An alternate form may also carry a `scale` against its racer's own box —
+own — `CARS.<id>.raceScale` — and three of the four sprite cars do, each measured
+off its own artwork: Flann 1.12×, Neela 1.18× and Verdant 1.10×, so all three
+read properly against the lane. Lolanthe has none, and that is a measurement
+too: its body fills the car box across at 1:1, which is what makes it the one
+sprite car that needs no adjustment. An alternate form may also carry a `scale` against its racer's own box —
 Neela's is 1.09×, measured so the craft's fuselage and fin span come out the
 size of the car it replaced. `raceScale()`, `carDims()`, `racerModel()` and
 `racerDims()` in `runtime.js` are the only readers, and everything that needs a
@@ -503,7 +576,10 @@ them, so `paintCarIcon()`'s previews are untouched.
 
 `CARS.<id>.exhaust` holds the measured emitter anchors: Flann's two at source
 pixels (355, 1377) and (669, 1377), Neela's two at (352, 1355) and (671, 1355),
-and the alternate form's single thruster at (512, 1306). They share the image's
+the alternate form's single thruster at (512, 1306), Lolanthe's two oval outlets
+at (455, 1354) and (568, 1354), and Verdant's one at (738, 1314) — the bore of
+the side-exit pipe, which is the only outlet its artwork has, because the
+slatted box under its tail is a diffuser with no bore. They share the image's
 transform, including tilt. `CARS.<id>.exhaustStyle` picks what comes out of
 them — `drawSpriteFlame` for Flann's fire, `drawSpriteEnergy` for Neela's blue
 energy, which is drawn lightened and is a clean streak rather than a pointed
