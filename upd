@@ -1,665 +1,1130 @@
-Seren: Replace Bolt/Timestamp with Lolanthe/Verdant and implement both ultimates
+You are modifying the Seren repository:
 
-Work directly against the current hiyroscript/seren repository. Do not treat this as a greenfield implementation. First inspect the existing architecture, especially js/data.js, js/runtime.js, js/mechanics.js, js/race.js, js/render.js, js/ai.js, js/input.js, js/hud.js, js/i18n.js, js/ui.js, js/main.js, index.html, the tools/*.mjs test harnesses, and the architecture/QA documentation.
+* Repository: hiyroscript/seren
+* Branch: main
+* The current project is a dependency-free browser Canvas game. There is no build system, package manager, multiplayer server, or backend.
+* Preserve the existing architecture and coding style.
+* Do not introduce a framework, bundler, server, physics engine, or unnecessary abstraction.
+* Work directly within the existing CARS, shared race simulation, mechanics, renderer, HUD, i18n, tests, and documentation.
 
-The repository already contains these required assets at the project root:
+The goal is to completely replace the existing Rose racer with Rhosyn, use the already-present root asset v_rhosyn.PNG, and give Rhosyn a carefully integrated ultimate called Aero-Glow.
 
-v_lolanthe.PNG
-v_verdant.PNG
-queen_note.PNG
-pion_note.PNG
+This is not merely a visual rename. Rose’s old generic coupe model must be replaced by a properly measured sprite-backed Rhosyn model with accurate collision geometry and accurately anchored exhaust. Rhosyn must also receive a unique ultimate that temporarily renders the owner inside a completely separate black-and-pink void world while the canonical race simulation continues normally underneath.
 
-Do not generate substitute artwork and do not use procedural Bolt/Timestamp bodies after this change.
+Non-negotiable design rule
 
-1. Architectural constraints that must be preserved
+Aero-Glow must never create a second race simulation.
 
-Seren currently has a shared ultimate lifecycle. Preserve it.
+Do not teleport the canonical racer away from the race. Do not freeze its canonical position. Do not create a shadow race position and later estimate where the racer should return. Do not temporarily replace G.biome. Do not advance an independent distance counter.
 
-Every car still uses the existing shared:
+There must always be exactly one authoritative/canonical Rhosyn race state.
 
-ULT_CHARGE = 75 seconds
-ULT_TIME = 15 seconds
-ULT_SPEED = 2.0
+While Aero-Glow is active:
 
-Do not create separate ultimate clocks or an alternate parallel ultimate state machine for Lolanthe or Verdant. Follow the existing Flann/Neela pattern: the shared startUlt(), tickUlt(), and endUlt() lifecycle remains authoritative, while named racer-specific predicates and small state fields implement the extra behavior.
+* Rhosyn’s canonical race position continues to advance normally in the existing shared simulation.
+* Its lane, lateral x, tilt, forward distance, speed, ultimate speed multiplier, race ranking, finish progress, biome progression, seams, track transitions, etc. continue to update normally.
+* The owner simply receives an entirely different rendered world.
+* Other racers’ normal views omit Rhosyn from the road.
+* Rhosyn cannot physically interact with the normal race while it is inside Aero-Glow.
+* Nothing in the normal race can reach Rhosyn.
+* When Aero-Glow ends, the owner returns to the shared-world renderer at the exact canonical state that already exists at that frame.
 
-The field must remain six cars. Lolanthe replaces Bolt and Verdant replaces Timestamp. Do not add a seventh or eighth vehicle.
+Therefore, if the race changes from City to Desert, Rainbow Space, or another biome while Rhosyn is inside Aero-Glow, Rhosyn must emerge into the biome that the canonical race has actually reached. There must be no saved-entry-biome restoration and no approximation.
 
-Rendering must remain read-only. Gameplay state and timers must advance from the update/mechanics code, not from rendering functions.
+Think of Aero-Glow as:
 
-Continue using the existing invariant that the model being drawn is also the model being collided. racerModel(), racerDims(), and carHit() must stay consistent.
+one simulation, two possible views of that simulation.
 
-Do not break split-screen/local multiplayer. Anything based on visibility must be evaluated per view using the existing view owner concept (VOWN), while gameplay collision/state remains shared globally.
+The normal race keeps existing and advancing. Aero-Glow is a private presentation layer around the canonical Rhosyn racer.
 
-2. Fully replace Bolt with Lolanthe
+⸻
 
-Replace the car identity bolt with lolanthe everywhere it actually refers to the Bolt vehicle.
+1. Completely rename Rose to Rhosyn
 
-In CARS, replace the procedural Bolt definition with a sprite-backed Lolanthe definition:
+Perform a repository-wide rename of the racer identity.
 
-key: "lolanthe"
-style: "sprite"
-sprite: "v_lolanthe.PNG"
+The canonical internal car ID must become:
 
-Replace "bolt" with "lolanthe" in CAR_IDS. The final six-car identity list should be equivalent to:
+rhosyn
 
-["flann", "neela", "lolanthe", "verdant", "rose", "siren"]
+Do not leave the actual racer internally named rose.
 
-Move Bolt’s existing temperament values to Lolanthe unless there is a strong implementation reason not to. Do not accidentally change AI personality at the same time as changing the vehicle.
+Update at minimum:
 
-The current Bolt temperament is:
+js/data.js
 
-nerve: 0.54
-spite: 0.64
-patience: 0.68
-guard: 0.52
+Replace the existing:
 
-Rename the corresponding i18n identity and ultimate-description keys to lolanthe and lolantheUlt.
+rose: { ... key:"rose", style:"coupe", ... }
 
-Replace the static selector button with carLolanthe, update data-car, data-i18n, labels, main.js click wiring, menu tests, garage references, documentation, and any other vehicle-specific UI reference.
+with a real sprite-backed Rhosyn entry.
 
-There should be no stale user-visible Bolt vehicle after this implementation.
+Update:
 
-Do not blindly rename unrelated uses of the English word “bolt” if they refer to some unrelated mechanic or historical comment. Audit each occurrence based on meaning.
+CAR_IDS
 
-3. Fully replace Timestamp with Verdant
+from:
 
-Replace the car identity timestamp with verdant everywhere it actually identifies the Timestamp vehicle.
+["flann","neela","lolanthe","verdant","rose","siren"]
 
-In CARS, replace the procedural Timestamp definition with:
+to:
 
-key: "verdant"
-style: "sprite"
-sprite: "v_verdant.PNG"
+["flann","neela","lolanthe","verdant","rhosyn","siren"]
 
-Move Timestamp’s existing temperament values to Verdant:
+Rename TEMPERS.rose to TEMPERS.rhosyn, preserving its current temperament values unless there is a concrete gameplay reason not to.
 
-nerve: 0.38
-spite: 0.32
-patience: 0.88
-guard: 0.74
+Update comments referring to Rose.
 
-Rename the corresponding localization keys to verdant and verdantUlt.
+js/i18n.js
 
-Replace the selector button with carVerdant, update static HTML, menu wiring, documentation, tests, and every other vehicle-specific Timestamp reference.
+Replace the Rose keys with canonical Rhosyn keys:
 
-After the migration, old "bolt" and "timestamp" car IDs must not remain as active car identities or aliases.
+* rhosyn
+* rhosynUlt
 
-4. Measure both new PNG models properly
+The displayed English name is:
 
-Do not copy Flann’s or Neela’s geometry.
+Rhosyn
 
-Inspect v_lolanthe.PNG and v_verdant.PNG and measure the actual artwork.
+Update the French localization too. Do not leave user-facing “Rose” references.
 
-For each vehicle, determine the actual visible-body pixel bounds in the PNG and store normalized spriteBounds exactly as the existing Flann/Neela sprite system expects.
+Write an ultimate description that accurately explains Aero-Glow rather than the current generic “Fifteen seconds at double pace.”
 
-Measure the center of every actual rear tailpipe/exhaust outlet and store those as normalized exhaust anchors. Boost fire must visibly originate from the actual tailpipe mouths at all race scales, tilts, screen sizes, and split-screen column widths.
+The description should make clear that for 15 seconds Rhosyn drives through Aero-Glow at the normal ultimate 2× pace, cannot be reached by the race, and reappears at the position it would naturally have reached, followed by 2 seconds of Invulnerable protection.
 
-Both cars should use the normal sprite flame path, not Neela’s energy exhaust, unless the artwork itself makes a different treatment clearly necessary. The user’s requirement is boost fire from the actual tailpipe.
+Keep the wording readable rather than explaining implementation internals.
 
-Trace a precise polygonal hitShape around each visible vehicle body. Do not give either car the generic CAR_HIT_RECT. Exclude transparent padding and non-body trailing visual details in the same way Neela/Flann geometry is currently measured.
+index.html
 
-If a raceScale adjustment is necessary to make the visible body occupy a sensible amount of the lane, derive it from the measured image rather than guessing. Keep scaling uniform so artwork, hitbox, sprite bounds, and exhaust anchors remain aligned.
+Rename:
 
-Extend tools/sprite-check.mjs and tools/hitbox-check.mjs so these measurements become regressions rather than undocumented visual guesses.
+* carRose → carRhosyn
+* data-car="rose" → data-car="rhosyn"
+* data-i18n="rose" → data-i18n="rhosyn"
+* visible Rose → Rhosyn
 
-5. Add first-class Lolanthe/Verdant predicates
+js/main.js
 
-Extend the existing car-power predicate architecture in js/mechanics.js.
+Replace the existing Rose button listener/pick:
 
-Add identity and active-ultimate helpers equivalent in role to the existing Flann/Neela helpers, for example:
+pickCar("rose")
 
-lolantheCar(who)
-lolantheUltActive(who)
-verdantCar(who)
-verdantUltActive(who)
+with Rhosyn.
 
-Do not scatter checks such as o.car === "lolanthe" or o.car === "verdant" throughout unrelated files.
+Documentation and tests
 
-Update tools/check.mjs, which currently assumes Flann and Neela are the only car-specific power identities. The invariant should become that all four special cars use centralized identity/power predicates rather than ad-hoc car-name checks.
+Search the entire repository, not only production JS.
 
-6. Shared solid-hazard destruction
+Current Rose references exist in areas including:
 
-Lolanthe and Verdant must gain the same solid-hazard privilege Neela currently has while their ultimates are running.
+* README.md
+* docs/ARCHITECTURE.md
+* docs/LOLANTHE-VERDANT-QA.md
+* docs/TUNING.md
+* docs/ULTIMATE-QA.md
+* tools/hitbox-check.mjs
+* tools/menu-check.mjs
+* tools/sprite-check.mjs
+* tools/ultimate-check.mjs
 
-Extend clearsSolidHazards(who) so it is true for:
+Replace semantic Rose references with Rhosyn and update old assertions whose meaning changes because Rhosyn is no longer a generic rectangle/generic ultimate.
 
-an ulting Flann
-an ulting Neela
-an ulting Lolanthe
-an ulting Verdant
+At completion, a case-insensitive source search for rose should find no active Rose racer identity.
 
-Use the exact existing Neela semantics. This means the solid road hazards that Neela currently smashes, such as tumbleweeds and meteors, are destroyed by Lolanthe/Verdant too.
+If persistent saved user data can contain the literal old car ID "rose", add a narrow backwards-compatibility migration at the persistence/load boundary:
 
-Do not silently broaden this to puddles, oil, or unrelated effects if Neela does not currently destroy those. Puddles should continue behaving according to the existing Neela rule.
+"rose" → "rhosyn"
 
-Lolanthe and Verdant do not become offensive Flann-style rams merely because they can clear hazards.
+That legacy conversion is the only acceptable place for the old ID to remain. Do not carry a duplicate CARS.rose, alias racer, duplicated translation, or permanent runtime compatibility branch.
 
-7. Create the new Mind Controlled Condition
+⸻
 
-Add a real new debuff Condition for Lolanthe’s power.
+2. Replace Rose’s procedural coupe with v_rhosyn.PNG
 
-Use an internal ID such as mindControlled or another consistent project-style identifier, with localized display text “Mind Controlled”.
+The asset already exists at the repository root:
 
-Add it to the CONDITIONS table as a debuff. Give it a royal-violet visual treatment and a recognizable musical/control-themed vector icon in COND_PATHS so it works with both canvas condition badges and the garage’s inline SVG condition cards.
+v_rhosyn.PNG
 
-Do not try to place pion_note.PNG inside the existing Condition badge system; use the existing vector-path architecture for the small HUD badge. The actual pion_note.PNG artwork is for the three large orbiting world-space notes described later.
+Rhosyn must use the exact existing sprite pipeline already used by Flann, Neela, Lolanthe and Verdant:
 
-Add English and French name/info localization entries and update the Conditions documentation.
+style:"sprite"
 
-The Condition description must communicate that the racer loses control for three seconds and that a new application resets the timer rather than stacking additional duration.
+Do not manually draw Rhosyn using drawCoupe().
 
-Every racer, including player one and rival/local-human racer objects, needs a mind-control timer such as mindT.
+Do not approximate it with the old Rose geometry.
 
-Add:
+Do not stretch the PNG independently of the existing spriteFrame() system.
 
-MIND_CONTROL_TIME = 3
+A proper Rhosyn entry in CARS must contain measured values for at least:
 
-or an equivalently named tuning constant in the shared tuning/data layer.
+* key:"rhosyn"
+* style:"sprite"
+* sprite:"v_rhosyn.PNG"
+* accent
+* optional raceScale, only if visual measurement shows it is necessary
+* spriteBounds
+* exhaust
+* hitShape
+* flame
 
-conditionOn() must derive the Condition directly from mindT > 0.
+Use the same design philosophy as Flann’s current data:
 
-clearDebuffs() must clear mindT.
+flann: {
+  key:"flann",
+  style:"sprite",
+  sprite:"v_flann.PNG",
+  raceScale:1.12,
+  spriteBounds:[...],
+  exhaust:[...],
+  hitShape:[...],
+  flame:[...]
+}
 
-The existing invulnerability/dead/finished debuff refusal rules must apply. A racer that refuses debuffs must not receive mind control, and becoming protected must clear it consistently with the rest of Seren’s debuffs.
+Do not copy Flann’s measurements. Rhosyn must be measured independently from v_rhosyn.PNG.
 
-8. Mind-control timer reset semantics
+⸻
 
-Applying mind control must set:
+3. Measure v_rhosyn.PNG; do not guess the geometry
 
-target.mindT = MIND_CONTROL_TIME
+Inspect/decode the actual PNG and record the source dimensions.
 
-It must never do:
+Then measure the actual Rhosyn artwork.
 
-target.mindT += MIND_CONTROL_TIME
+Do not invent coordinates because they “look close.”
 
-Repeated application resets the timer to three seconds. It does not stack to six, nine, twelve seconds, etc.
+spriteBounds
 
-If a target remains continuously inside Lolanthe’s aura, repeated application can keep resetting the timer to three seconds. Therefore the racer can remain controlled for the duration of exposure and then remain controlled for up to three seconds after the last application.
+Determine the tight visible car-art bounds in source pixels.
 
-Do not replay the “pop in” animation every frame while the timer is merely being reset. The pop-in is for the inactive → active transition.
+Convert those source coordinates to normalized image coordinates exactly as the existing sprite cars do.
 
-9. Lolanthe ultimate aura
+The full PNG should still be drawn. spriteBounds controls its fitting and centering through the existing spriteFrame() function; it is not a crop.
 
-While Lolanthe’s shared 15-second ultimate is active, continuously evaluate every other active racer around Lolanthe.
+Precise hitShape
 
-“Nearby” must be implemented as one named, tunable range rather than a magic number scattered through code. Use a distance equivalent to roughly four car lengths along the road. Make it scale correctly with the game rather than tying it to one hardcoded viewport size.
+Trace a sensible polygon around Rhosyn’s actual contact body.
 
-The aura reaches racers in any of the three lanes. Lane does not determine whether a racer becomes Mind Controlled; lane only determines whether the forced “move aside” behavior happens.
+The existing collision pipeline is already correct:
 
-Use shared/master race coordinates or an absolute racer-distance helper. The answer must not depend on which split-screen view happens to be rendering.
+* racerModel(who)
+* racerDims(who)
+* carHit()
+* model.hitShape
 
-Skip:
+Use it.
 
-Lolanthe itself
-wrecked racers
-finished racers
-racers currently refusing debuffs
-an ulting Verdant
+The Rhosyn hitShape must be expressed in normalized logical car coordinates like Flann’s polygon.
 
-The Verdant immunity is absolute for the whole time Verdant’s ultimate is active, including during Verdant’s brief collision reveal.
+Follow the project’s existing convention: collide the meaningful body rather than transparent PNG padding, exhaust fire, decorative glow or obviously non-body visual space.
 
-10. Lolanthe forced-lane behavior
+The polygon should be symmetrical where the actual vehicle is symmetrical and should follow meaningful tapering of the nose/rear instead of defaulting to CAR_HIT_RECT.
 
-Whenever a racer affected by Lolanthe’s aura is in the same logical lane as Lolanthe, Lolanthe forces that racer out of the lane.
+Do not alter carHit() specifically for Rhosyn. Put the geometry in the model data so rendering dimensions and collision dimensions continue to use the same model.
 
-This is not normal driver steering. It must happen even though the victim is Mind Controlled and its ordinary controls are locked.
+Test rotated collision too; carHit() rotates the polygon with the car and that behavior must remain intact.
 
-From an outer lane, there is only one valid destination and the victim must move inward.
+Race scale
 
-From the middle lane, choose left or right without treating occupancy as a reason to cancel. A stable random choice or similarly unbiased one-time choice is acceptable.
+Only assign a raceScale after comparing Rhosyn’s measured visible body to the other cars in a lane.
 
-Crucially, do not require the destination lane to be empty.
+The objective is visual consistency, not forcing every sprite to the same raw PNG dimensions.
 
-If there is another racer in the forced destination lane, route the situation through Seren’s real racer-contact/barge resolution rather than teleporting one model through another. The forced movement can therefore shove, wreck, ram, or otherwise interact with the racer already occupying that lane according to the normal special-contact rules.
+Do not alter the garage/menu sprite sizing just to make the race sprite fit.
 
-This is intentionally capable of producing chain reactions and racers destroying one another.
+⸻
 
-A forced lane move should change the logical lane immediately and then use Seren’s existing lateral interpolation so the car visibly transitions rather than teleports sideways.
+4. Anchor Rhosyn’s boost fire precisely to its tailpipe
 
-The forced movement must ignore things such as Skidded steering reversal because this is Lolanthe commanding the vehicle, not the driver steering it.
+This is important.
 
-Do not let the ordinary mind-control input lock accidentally block Lolanthe’s forced movement. Give forced movement its own internal path.
+Use the same sprite-space exhaust mechanism used by Flann.
 
-11. Complete control lock during Mind Controlled
+Current Seren behavior:
 
-For the entire three-second Mind Controlled duration, the affected driver must be unable to issue meaningful actions.
+* spriteFrame() determines exactly how the full PNG is transformed.
+* spriteAnchor() converts normalized source-image coordinates into the rendered car’s local coordinate system.
+* drawSpriteExhaust() uses each model’s exhaust anchors.
+* Because the exhaust root uses the same sprite transform, it stays attached through scaling, rotation, lane changes and split-screen rendering.
 
-This must work identically for:
+Rhosyn must use this exact system.
 
-player one
-bots
-local multiplayer humans
+Inspect v_rhosyn.PNG.
 
-Block manual steering.
+Find the exact center of every real rear tailpipe/exhaust outlet.
 
-Block starting or maintaining an active driver-controlled boost. The car should not continue consuming boost because the player happened to be holding the button when control was taken.
+For each outlet, record its center in source-image pixels, then normalize it:
 
-Block firing a new ultimate.
+x / sourceWidth
 
-Block using an item.
+y / sourceHeight
 
-Block bot lane-choice/action decisions.
+Store those coordinates under:
 
-Block bot item use and bot ultimate activation.
+CARS.rhosyn.exhaust
 
-Do not freeze the racer in space. Its vehicle physics, ordinary forward movement, timed effects, collision handling, active ultimate clock, hazards, wreck lifecycle, and other passive race-state updates should continue.
+If Rhosyn has one true outlet, use one anchor.
 
-If a racer was already in an ultimate before becoming Mind Controlled, do not arbitrarily cancel that existing ultimate. The driver simply cannot initiate actions while controlled.
+If it has two true outlets, use two anchors.
 
-Centralize the “controls are locked” question so one input surface cannot accidentally bypass the restriction.
+Do not add fake symmetric exhausts where the art does not have them.
 
-Do not rely only on suppressing keyboard events. The mechanics-level actions themselves must refuse player commands during mind control.
+The flame must visibly originate from inside the actual tailpipe opening, not from:
 
-12. Lolanthe queen-note ultimate visual
+* the rear bumper center,
+* the bottom of the PNG,
+* the old Rose car’s generic flame position,
+* a hard-coded world-space offset.
 
-Preload queen_note.PNG exactly once. Do not create a new Image() every frame.
+Verify the effect at normal scale, ultimate speed, boost, rotated lane changes, every supported viewport, and local split-screen.
 
-While Lolanthe’s ultimate is active, display one queen_note.PNG floating above Lolanthe’s car.
+⸻
 
-Anchor it relative to racerDims(who) so it remains correctly positioned for all viewport sizes and split-screen columns.
+5. Rhosyn’s ultimate: Aero-Glow
 
-It should be an upright floating UI/world effect rather than rotating with the car’s steering tilt.
+Rhosyn retains Seren’s shared ultimate fundamentals:
 
-On ultimate activation, give it a short polished pop-in animation using scale and opacity.
+* charge time: ULT_CHARGE = 75
+* active duration: ULT_TIME = 15
+* speed: ULT_SPEED = 2.0
 
-While active, keep the icon gently moving up and down.
+Do not create a second ultimate timer.
 
-When the ultimate ends or is interrupted, give the queen note a matching pop-out animation rather than deleting it abruptly.
+Continue using the existing shared startUlt(), tickUlt(), endUlt() lifecycle.
 
-A short cosmetic exit timer is acceptable. It must not become a second ultimate gameplay lifecycle.
+Add Rhosyn-specific behavior around that lifecycle in the same style as Neela, Lolanthe and Verdant.
 
-Reduced-motion mode must remain respected. Under reduced motion, keep the icon visible but remove or greatly reduce continuous bobbing.
+Add centralized predicates such as:
 
-13. Mind Controlled orbiting notes
+* rhosynCar(who)
+* rhosynUltActive(who)
+* rhosynElsewhere(who) or another appropriately named single source of truth
 
-Preload pion_note.PNG exactly once.
+Do not scatter direct checks like:
 
-Every Mind Controlled racer must be surrounded by exactly three pion_note.PNG icons.
+o.car === "rhosyn"
 
-Place the three notes roughly 120 degrees apart around the vehicle and rotate/orbit the group around the car.
+through ten unrelated systems.
 
-Do not apply the queen note’s up-and-down bobbing to these three notes.
+The existing mechanics deliberately centralize car-specific predicates. Preserve that pattern.
 
-They should receive the same style of scale/opacity pop-in when the Condition first becomes active and a matching pop-out as the Condition expires.
+⸻
 
-Repeated timer resets while already controlled must not continuously restart the pop-in.
+6. Aero-Glow transition state
 
-Position and orbit size should derive from racerDims() so the effect stays proportional to Lolanthe, Verdant, Flann, Neela, Rose, and Siren rather than being tuned only for one model.
+The activation should not simply make Rhosyn disappear on the same frame.
 
-Reduced-motion mode should retain the three notes but stop the continuous orbit.
+The requested sequence is:
 
-14. Verdant ultimate: invisibility
+Entering Aero-Glow
 
-Verdant continues to use the normal 15-second, double-speed ultimate, but its visual behavior changes radically.
+1. The ultimate activates.
+2. Rhosyn’s physical car visibly flashes toward bright white.
+3. The owner/player’s entire view flashes white.
+4. While the screen is covered by white, the owner’s renderer changes from the shared race world to Aero-Glow.
+5. For every other racer/view, Rhosyn finishes its white vehicle flash and disappears from the normal road.
+6. The owner’s white screen fades away, revealing Rhosyn driving inside Aero-Glow.
 
-While Verdant’s ultimate is active, Verdant must be completely invisible to other racers’ views while remaining physically present in the race.
+During Aero-Glow
 
-Do not remove Verdant from collision detection.
+* Rhosyn remains visible to its own owner.
+* Rhosyn is not visible in any other normal-race view.
+* No condition badge, seat marker, exhaust plume, shadow or other attached visual may reveal Rhosyn’s hidden canonical location to another racer.
+* Rhosyn continues driving at the shared ultimate’s 2× pace.
+* The canonical race simulation continues normally.
+* Aero-Glow contains no other racers and no normal hazards.
 
-Do not mark it dead.
+Leaving Aero-Glow
 
-Do not teleport it.
+When the 15-second ultimate ends:
 
-Do not disable its hitbox.
+1. The owner’s Aero-Glow view flashes white again.
+2. While covered by white, switch that owner’s renderer back to the normal shared race.
+3. Rhosyn reappears at its already-current canonical race position, not a calculated teleport destination.
+4. Other racers should perceive the reappearance as the corresponding white vehicle flash rather than a raw one-frame pop.
+5. The owner’s white transition fades, revealing the actual current shared biome and actual current race state.
+6. At the moment Rhosyn truly rejoins the shared road, grant 2 full seconds of the existing Invulnerable condition.
 
-Do not make it globally noContact.
+Use a small explicit transition state rather than overloading ultOn to mean all of these phases.
 
-All normal physical overlap and contact tests must continue using Verdant’s real measured hitbox.
+For example, a per-racer state conceptually equivalent to:
 
-15. Owner/client-side 50% Verdant visibility
+* inactive
+* entering
+* aeroGlow
+* exiting
 
-Resolve the apparent conflict between “100% invisible” and “50% visible client side” as follows:
+plus the minimum timer needed for the transition.
 
-In the view owned by the player actually driving Verdant, render the ulting Verdant at 50% opacity so that player can still control and locate their own vehicle.
+The exact representation is up to the implementation, but it must be deterministic and carried by every racer object just as Neela/Lolanthe/Verdant state is.
 
-In every other player’s view, render the ulting Verdant at 0% opacity.
+Do not use arbitrary asynchronous setTimeout() calls to control gameplay state.
 
-Use VOWN or the equivalent existing split-screen viewer identity to calculate this per view.
+Advance transitions from the normal update loop so pausing the race pauses them correctly.
 
-This must work in one-player mode and two-, three-, and four-player local split screen.
+⸻
 
-The owner-specific 50% visibility is visual only. It does not make Verdant targetable by Lolanthe and does not change collision rules.
+7. Reuse/generalize Seren’s existing white transition system
 
-16. Verdant fade animations
+Neela already provides useful infrastructure:
 
-When Verdant activates its ultimate, fade from fully visible to its ultimate visibility target instead of snapping:
+* whiteT
+* morphT
+* startWhiteout(who)
+* whiteoutActive(who)
+* startMorph(who)
+* morphFlash(who)
+* drawMorphFlash()
+* drawWhiteout()
 
-owner’s view: 100% → 50%
-other views: 100% → 0%
+Current timings are:
 
-When the ultimate ends normally, fade back to 100%.
+* whiteout: 0.42s
+* body flash: 0.6s
 
-Use a short named transition constant around a quarter of a second. Keep it tunable.
+Rhosyn should use the same visual language unless there is a concrete rendering issue.
 
-If the ultimate is terminated by a wreck, do not leave a ghost image lingering through the wreck lifecycle.
+Do not duplicate a second almost-identical white-screen renderer.
 
-The fade is cosmetic state only.
+Because these helpers are no longer conceptually Neela-only once Rhosyn uses them, clean up naming/comments where appropriate. For example, it is reasonable to generalize transition constants/helpers while keeping behavior identical for Neela.
 
-17. Do not leak invisible Verdant’s exact position
+Be careful not to regress Neela.
 
-A non-owner view must not show other world-space visuals attached to Verdant that reveal the supposedly invisible car’s exact location.
+The white flash must remain per-view, which the current renderer already supports:
 
-Audit:
+* normal play draws the owner’s whiteout after renderView()
+* local play clips each player’s column, sets VOWN, renders that player’s view, then applies drawWhiteout(who) only to that column
 
-boost flame/exhaust
-local seat marker
-car-adjacent Condition stack
-car-attached ultimate effects
-nearby/off-screen markers that directly disclose the vehicle’s exact lane/world position
+Preserve that behavior.
 
-Do not necessarily remove Verdant from the overall standings/race order UI; invisibility is about the vehicle in the race world. However, do not leave a floating badge sitting at the invisible car’s coordinates.
+A Rhosyn in player 2’s local column must not flash players 1, 3, or 4’s screens white.
 
-Any boost exhaust drawn from Verdant must obey the same per-view opacity as the car itself.
+⸻
 
-18. Verdant brief reveal when hit
+8. Aero-Glow is view-specific, not a TRACKS biome
 
-Add a small cosmetic timer such as verdantRevealT.
+Do not put Aero-Glow into normal biome progression.
 
-When another racer collides into an ulting Verdant and triggers Verdant’s defensive destruction behavior, Verdant becomes fully visible for a split second, then returns to its normal ultimate visibility:
+Do not set:
 
-owner view returns to 50%
-other views return to 0%
+G.biome = "aeroglow"
 
-Use a named short reveal duration around 0.15–0.20s.
+Do not overwrite:
 
-This reveal must not cancel the ultimate.
+* G.biome
+* G.next
+* G.seam
+* G.trackT
+* canonical scenery arrays
+* normal track state
 
-This reveal must not remove Verdant’s immunity to Lolanthe’s Mind Control.
+Doing so would break the exact re-entry requirement.
 
-19. Directional Verdant collision rule
+Instead, use the existing VOWN view-owner mechanism.
 
-This rule is asymmetric.
+Inside renderView(), determine whether the current viewer owns a Rhosyn that is presently inside Aero-Glow.
 
-If another racer initiates contact into an ulting Verdant, that attacking/arriving racer is destroyed and Verdant survives.
+Conceptually:
 
-If an ulting Verdant initiates an ordinary collision into another racer, Verdant must not gain an offensive kill. Use the ordinary contact behavior unless one of the explicit special pair interactions below applies.
+aeroGlowViewActive(VOWN)
 
-The current code already exposes contact direction in the important places:
+If false:
 
-rearEnd(who, victim) knows which racer ran into the back of which racer.
+render the existing shared world exactly as before.
 
-bumpTarget(victim, dir, by) knows which racer initiated a lane barge.
+If true:
 
-Use that directionality rather than trying to infer it later from overlapping polygons.
+render a dedicated drawAeroGlowWorld(...) path instead of the shared biome/world contents.
 
-Centralize the special-contact resolution so rearEnd() and bumpTarget() cannot disagree about Verdant.
+This must work equally for:
 
-Preserve invulnerability/dead/finished contact gates. An unreachable racer does not become a free Verdant kill merely because polygons overlap.
+* single-player player-one Rhosyn
+* a local multiplayer human Rhosyn in any split-screen column
 
-20. Special case: ulting Verdant vs ulting Flann
+A bot Rhosyn has no private screen, so it simply disappears from human shared views while its canonical bot simulation continues.
 
-If an ulting Verdant and an ulting Flann physically collide, both racers are destroyed.
+⸻
 
-This overrides Flann’s normal one-sided ram behavior.
+9. Aero-Glow visual design
 
-It must apply regardless of which one initiated the contact.
+The world is named:
 
-After the collision, both racers’ ultimate meters must be exactly 0%.
+Aero-Glow
 
-Do not allow the standard kill reward or wreck penalty sequencing to leave either meter above zero.
+It should be unmistakably separate from every normal track.
 
-Prefer a small dedicated mutual-wreck resolver that uses the existing wreck lifecycle/FX/audio but guarantees zero fuel after all meter side effects.
+The intended visual identity is:
 
-Do not let one wreck make the second racer unreachable before the second wreck is processed.
+* void-like
+* near-total black
+* luminous pink/magenta
+* surreal
+* isolated
+* no ordinary scenery
+* no other racers
+* no hazards
 
-21. Special case: transformed Neela vs ulting Verdant
+Build it procedurally with the existing Canvas renderer.
 
-If Neela is currently in the vtm_neela.PNG alternate/heat-seeking form and physically contacts an ulting Verdant, Neela is destroyed.
+Do not require another image asset unless truly necessary.
 
-This overrides Neela’s normal exchange/swap behavior.
+Possible visual vocabulary:
 
-It applies regardless of which of the two vehicles initiated the physical contact.
+* near-black background/void
+* deep black road-space
+* hot-pink/magenta glowing perspective traces
+* subtle pink horizon haze
+* sparse luminous particles/streaks
+* abstract lane/ribbon guidance so the player can still understand steering
+* distant pink lines/shapes moving relative to G.scroll
+* restrained glow around the route
+* optional subtle vignette
 
-Neela’s ultimate fuel must become exactly 0%.
+It should still be readable as forward motion at 2× speed.
 
-Verdant survives.
+Use canonical scrolling/speed information so Aero-Glow motion visually agrees with how quickly Rhosyn is really advancing.
 
-Trigger Verdant’s brief reveal because physical contact occurred.
+Do not render any of these normal shared-world elements in the owner Aero-Glow view:
 
-Do not teleport either racer using Neela’s swap path.
+* other racers
+* their exhaust
+* their Conditions
+* their notes
+* shared track scenery
+* tumbleweeds
+* meteors
+* puddles
+* item bubbles
+* oil slicks
+* seeker missiles
+* shared collision FX
+* normal biome props
+* finish-world clutter that would imply another racer is present
 
-A normal, non-transformed Neela does not receive this special handling beyond Verdant’s ordinary directional-defense rule.
+Only the owning Rhosyn and Aero-Glow-specific presentation belong in that world.
 
-22. Collision-resolution priority
+The existing normal HUD may remain available. The ultimate meter should continue visibly counting down.
 
-Refactor carefully enough that the priority is explicit.
+Display the name Aero-Glow somewhere tasteful within that private view if useful, but do not mutate the global #trackName in a way that makes another local player’s HUD claim their track is Aero-Glow.
 
-For any Verdant-involved physical racer contact, first resolve the two explicit symmetric pair overrides:
+In split-screen, world-name presentation must be per-view.
 
-ulting Verdant + ulting Flann → both wrecked, both 0% ultimate
+⸻
 
-ulting Verdant + transformed Neela → Neela wrecked, Neela 0%, Verdant survives/reveals
+10. Rhosyn must remain at its canonical race position
 
-Then resolve the general asymmetric Verdant defense when a non-special racer initiates contact into ulting Verdant.
+This is the most important correctness requirement.
 
-Only after those cases should the ordinary Neela exchange, Flann ram, shunt, barge, slow, and lane-change consequences proceed where appropriate.
+Do not call a teleport function when Rhosyn enters Aero-Glow.
 
-For contacts that do not involve an ulting Verdant, preserve the existing rule that transformed Neela gets its exchange before Flann’s ram.
+Do not call teleportRacerToPose().
 
-Do not regress the current Neela-versus-Flann interaction.
+Do not save an entry pose for later restoration.
 
-23. Lolanthe versus Verdant
+Do not restore:
 
-An ulting Verdant is completely immune to Lolanthe’s Mind Control aura.
+* entry m
+* entry lane
+* entry x
+* entry biome
 
-Do not set mindT.
+Rhosyn should simply keep using the exact normal update path.
 
-Do not display the three pion_note.PNG effects.
+For player one, the existing G.speed, G.scroll, and G.meters continue to advance.
 
-Do not force it out of Lolanthe’s lane.
+For rival/local-human Rhosyn racers, their existing canonical R.y, lane, x, speed-relative movement, and metersOf(R) continue to advance normally.
 
-This remains true during Verdant’s split-second reveal.
+Lane inputs must continue controlling canonical lane/x while inside Aero-Glow.
 
-The rationale is gameplay visibility: Lolanthe cannot command a target it cannot see.
+The player is “driving freely” because the private world contains nobody who can interfere with them, not because a second free-roam coordinate system replaces Seren’s race controls.
 
-Physical collisions between Lolanthe and Verdant still follow the Verdant collision rules. Therefore if Lolanthe initiates physical contact into ulting Verdant, Lolanthe can be destroyed.
+Normal personal speed mechanics may continue:
 
-Lolanthe’s ultimate itself does not protect it from this.
+* ultimate’s 2× speed
+* boost
+* boost can where already active
+* normal lane steering
 
-24. Lolanthe and Verdant must not become offensive Flann clones
+Do not let the Aero-Glow presentation itself change canonical movement rules.
 
-Lolanthe’s direct power is Mind Control and forced lane displacement.
+When the render switches back, the car is already exactly where it belongs.
 
-Lolanthe does not automatically destroy racers by touching them.
+There should be no correction, lerp, teleport or snap on re-entry.
 
-If a forced Mind Controlled racer causes a crash, that destruction comes from the normal collision system, not from a fake Lolanthe ram rule.
+⸻
 
-Verdant’s only racer-destruction capability is its explicitly asymmetric defensive contact behavior plus the explicit Flann/Neela pair interactions above.
+11. Rhosyn is unreachable while in Aero-Glow
 
-Verdant must not destroy an ordinary racer merely because Verdant rear-ended or barged into that racer.
+Seren already has a centralized contact gate:
 
-25. AI visibility and fairness around Verdant
+noContact(who)
 
-Bots should not have supernatural knowledge of an ulting Verdant’s exact road position.
+It currently represents racers that are unreachable because they are:
 
-Keep physical collision detection intact, but separate “physically touchable” from “visually detectable/targetable”.
+* finished
+* wrecked
+* temporarily Invulnerable
 
-If necessary, add a field such as visible/detectable to the bot’s field view instead of abusing noContact.
+Extend this architecture carefully so a Rhosyn that has actually left for Aero-Glow is also unreachable.
 
-An ulting Verdant should not be deliberately selected by bot offensive targeting, lane-blocking logic, or Lolanthe’s aura while hidden.
+Prefer one centralized predicate over dozens of scattered guards.
 
-It can still be accidentally collided with because it remains physically present.
+During the departure/Aero-Glow state, Rhosyn must be excluded from every normal-world interaction, including:
 
-Do not remove it from race order/place calculations.
+* racer-to-racer rear contact
+* lane barging
+* Flann ram interactions
+* Neela swap interactions
+* Verdant contact mechanics
+* Lolanthe Mind Control
+* tumbleweed contact
+* meteor damage
+* puddles
+* oil slicks
+* seekers
+* offensive targeting
+* AI target selection
+* collision queries such as carAt()
+* item bubbles/pickups on the shared road
+* any future debuff path that respects the project’s centralized contact rules
 
-26. AI use of the two new ultimates
+Audit every interaction path rather than assuming noContact() already guards all of them.
 
-botUltExtra() currently has special valuation only for Flann and Neela. Update it so the comments and logic no longer claim there are only two special ultimates.
+For example, some pickup/update loops historically test dead/finished directly rather than noContact(). These need to be reviewed.
 
-Lolanthe should value its ultimate more when several racers are nearby, especially when one or more share its lane or the surrounding traffic is dense enough for forced lane changes to matter.
+The desired semantic rule is:
 
-Verdant should value its ultimate when nearby threats/traffic make invisibility and defensive contact useful.
+If Rhosyn is in Aero-Glow, the shared road must behave as if there is no interactable body at Rhosyn’s canonical position.
 
-Do not change the shared charging rate by difficulty. Difficulty continues to affect when a bot chooses to use an ultimate, not how fast it gets one.
+But the racer still exists for:
 
-A Mind Controlled bot must not make new lane/item/boost/ultimate decisions until control returns.
+* race distance
+* ranking
+* finish progression
+* ultimate countdown
+* canonical movement
+* AI movement if bot-controlled
+* biome/world progression
 
-27. Sprite boost fire
+Do not remove Rhosyn from standings/race order.
 
-Because Lolanthe and Verdant are now sprite cars, their boost rendering must use the same measured image-space anchor pipeline currently used by Flann and Neela.
+Do not mark it dead or finished.
 
-Do not approximate fire placement from carW or a generic rear center.
+Do not use the existing Invulnerable timer for the entire 15-second Aero-Glow duration; Aero-Glow isolation is its own ultimate state. Invulnerability is only the requested 2-second post-return protection.
 
-When ordinary boost or the ultimate’s shared speed state causes the exhaust effect to display, the root of each plume must sit exactly inside the measured tailpipe opening.
+⸻
 
-Verify both models while stationary, boosting, tilting through a lane change, at different canvas sizes, and in split-screen.
+12. Make isolation effectively symmetric
 
-28. Rendering order
+Aero-Glow should not become a loophole allowing a racer that has left the road to attack the shared field from another dimension.
 
-Keep car effects coherent.
+While actually inside Aero-Glow:
 
-A sensible ordering is:
+* Rhosyn cannot collide with anyone.
+* Nobody can collide with Rhosyn.
+* Shared hazards cannot affect Rhosyn.
+* Rhosyn should not collect shared-road bubbles that it cannot see.
+* Rhosyn should not drop shared oil into a world it is not rendering.
+* Rhosyn should not fire a seeker into the shared race from Aero-Glow.
+* Other racers should not target it.
 
-car shadow / exhaust under appropriate alpha
-car sprite
-existing model-specific body effects
-Verdant visibility/reveal handling
-Lolanthe queen note or Mind Controlled orbiting notes
-seat marker/Condition stack only when that view is permitted to see them
+Preserve any held item rather than silently consuming it if its use is refused during Aero-Glow.
 
-Do not let changing ctx.globalAlpha for Verdant leak into later cars. Always isolate view-specific opacity with ctx.save() / ctx.restore() or an equally safe pattern.
+Boost is personal movement and may continue functioning.
 
-The three Mind Controlled notes and queen note must not alter collision geometry.
+If an effect was already active before entry, handle it consistently and deterministically rather than duplicating it into Aero-Glow.
 
-29. State initialization and cleanup
+⸻
 
-Add all new state fields consistently to both player-one state and newly constructed rival/local-human racer objects.
+13. Viewer-specific disappearance
 
-Likely state includes equivalents of:
+Seren already has viewer-specific opacity through:
 
-mindT
-a mind-control entry/pop animation timer if needed
-Lolanthe queen-note cosmetic exit state if needed
-Verdant fade state
-verdantRevealT
+racerViewAlpha(who, viewer)
 
-Reset/clean these correctly on:
+used for Verdant.
 
-new race
-wreck
-respawn where appropriate
-ultimate start
-ultimate end
-race finish
+Extend this concept rather than creating an unrelated visibility system.
 
-Do not leave stale note/reveal/fade timers across a restart.
+For Rhosyn:
 
-A Condition should disappear when its state disappears.
+* before departure reaches its disappearance point, observers see the white body-transition flash
+* while fully inside Aero-Glow, every non-owner shared-world view sees alpha 0 / no attached rendering
+* the owner sees Rhosyn normally inside the Aero-Glow renderer
+* during re-entry, observers see the car return through the white flash sequence
 
-30. Localization and garage descriptions
+Everything attached to a hidden Rhosyn must follow the same visibility decision:
 
-Update both supported languages.
+* shadow
+* PNG body
+* boost/ultimate exhaust
+* seat marker
+* Conditions
+* Lolanthe/other attached notes if applicable
+* any other car-pinned effect
 
-Lolanthe’s ultimate description should clearly explain that for fifteen seconds it runs at double pace, Mind Controls nearby racers, forces same-lane racers aside even into occupied lanes, and each Mind Control application leaves the victim without controls for three seconds.
+Do not leave a floating badge or exhaust plume on the shared road after hiding the car.
 
-Verdant’s ultimate description should explain that for fifteen seconds it runs at double pace and becomes invisible to opponents while remaining physically present; a racer that crashes into Verdant is destroyed; Verdant briefly reveals on that impact; and the driver sees their own Verdant at half opacity.
+Do not make Aero-Glow behave like Verdant mechanically. Verdant is invisible but physically present. Rhosyn is actually removed from shared-world interaction while the ultimate world is active.
 
-Also document the solid-hazard privilege consistently with Neela.
+Keep those concepts separate.
 
-Add condMindControlled and its info text in both languages.
+⸻
 
-31. Static UI updates
+14. Exact 2-second protection after Aero-Glow
 
-Update index.html car-selection entries.
+The project already defines:
 
-Use id="carLolanthe" and data-car="lolanthe".
+INVULNERABLE_TIME = 2
 
-Use id="carVerdant" and data-car="verdant".
+and the existing Invulnerable Condition already means:
 
-Update main.js click listeners.
+nothing can reach the racer, debuffs are cleared/refused, and collision/targeting paths use the shared protection mechanism.
 
-The existing generic carEl(id) / capitalization path should continue working.
+Use it.
 
-Check all garage/select-screen canvases and hero previews.
+At the precise re-entry moment:
 
-There must still be exactly six selectable vehicles.
+For player one, conceptually:
 
-32. Update the repository’s invariant checker
+G.invuln = Math.max(G.invuln, INVULNERABLE_TIME)
 
-tools/check.mjs currently hard-codes several assumptions that this feature intentionally changes.
+For another racer:
 
-Update the Condition assertion from five Conditions to the new correct set.
+R.invuln = Math.max(R.invuln, INVULNERABLE_TIME)
 
-Update the “only two car-specific ultimates” assumptions to account for Lolanthe and Verdant.
+Use whichever shared helper/style best fits the codebase.
 
-Update the ad-hoc car-name scan so the only permitted direct special-car comparisons live inside the proper identity predicates.
+Do not create:
 
-Update documentation assertions and sprite-car counts where necessary.
+* rhosynImmune
+* a second shield timer
+* special hazard-by-hazard exceptions
 
-The checker should still enforce centralization rather than simply weakening the assertions until everything passes.
+The existing condition should be the source of truth.
 
-33. Be careful with old test fixtures that use Bolt/Timestamp as neutral cars
+The full two seconds must begin when Rhosyn is actually back in the shared road, not while the owner is still hidden in Aero-Glow’s exit transition.
 
-The current tests frequently use "bolt" as a convenient ordinary/non-special racer and at least one test explicitly uses Timestamp as the generic normal-ultimate example.
+This should automatically produce the existing Invulnerable condition badge and existing blink/protection behavior.
 
-Do not mechanically replace every such fixture with "lolanthe" or "verdant".
+⸻
 
-Lolanthe and Verdant now have special active-ultimate behavior, so they are no longer reliable neutral fixtures.
+15. Finish-line and lifecycle edge cases
 
-Where a test genuinely needs a car with no extra ultimate power, use Rose or Siren.
+Handle lifecycle cases deliberately.
 
-Where a test is specifically testing the renamed vehicle, use Lolanthe or Verdant deliberately.
+Rhosyn reaches the finish while Aero-Glow is active
 
-This is especially important in tools/ultimate-check.mjs, tools/sprite-check.mjs, and tools/hitbox-check.mjs.
+The canonical race must still be allowed to detect the finish because Rhosyn’s canonical race distance continues to advance.
 
-34. Required automated tests
+Do not make Aero-Glow prevent a legitimate finish.
 
-Expand the existing test suites rather than creating mocks of the new systems.
+Once Rhosyn has finished, clean up Aero-Glow state so the renderer cannot remain trapped in the void after the race has actually ended.
 
-Use the real update/input/collision/render paths as the existing fixture already does.
+Use the existing finish lifecycle rather than manufacturing a second finish.
 
-Cover both player and rival ownership directions, and include local-human racers where the control rules differ.
+Pause
 
-At minimum, prove every acceptance condition below.
+All Aero-Glow transition timing and ultimate timing must pause with the normal frame/update loop.
 
-35. Documentation
+Race restart / leave / new race
 
-Update README.md so Bolt/Timestamp are gone as active car identities and Lolanthe/Verdant appear in the ultimate table and project-layout asset list.
+Reset all Rhosyn-specific phase/timer fields.
 
-Update docs/ARCHITECTURE.md where it currently says only Flann/Neela have car-specific powers and where it describes only two sprite cars.
+No Aero-Glow state can leak into the next race.
 
-Update docs/TUNING.md for the new Condition and new tuning constants.
+Wreck
 
-Update docs/ULTIMATE-QA.md or create an equivalent Lolanthe/Verdant QA record documenting manual browser checks, especially split-screen Verdant visibility, note animations, measured exhaust placement, and directional collisions.
+Rhosyn should not normally be wreckable while fully inside Aero-Glow because it is unreachable.
 
-Do not leave architectural documentation describing the pre-change six-car roster.
+Nevertheless, cleanup routines must be robust if a forced/debug lifecycle path wrecks or removes the racer.
 
-36. Acceptance criteria
+Invulnerability
 
-The implementation is complete only when all of the following are true:
+If another source has already granted longer remaining Invulnerable protection at re-entry, do not shorten it to exactly 2. Use max(existing, 2) semantics.
 
-* Bolt is fully replaced as a car by Lolanthe, using v_lolanthe.PNG, and Timestamp is fully replaced as a car by Verdant, using v_verdant.PNG.
-* The field remains exactly six vehicles.
-* Both PNG cars use measured spriteBounds, measured tailpipe anchors, and precise polygon hitboxes derived from their own artwork.
-* Boost fire visibly originates from the correct Lolanthe and Verdant tailpipes.
-* Both vehicles retain the shared 75-second charge, 15-second duration, and 2× ultimate pace.
-* Lolanthe continuously Mind Controls nearby valid racers during its ultimate.
-* Mind Control lasts three seconds from the most recent application and resets rather than stacking.
-* Player, bot, and local-human driver actions are all locked while Mind Controlled.
-* A racer sharing Lolanthe’s lane is forcibly moved to an adjacent valid lane even when that lane is occupied.
-* Forced movement routes through the real collision system and can therefore cause chain collisions/wrecks.
-* queen_note.PNG appears above ulting Lolanthe with pop-in, continuous vertical bob, and pop-out.
-* Exactly three pion_note.PNG icons orbit every Mind Controlled racer with pop-in/pop-out and no vertical bob.
-* An ulting Verdant is physically present with its precise hitbox despite being invisible.
-* Verdant is 0% visible in other racers’ views and 50% visible in its own driver’s view.
-* Verdant fades into and out of its ultimate visibility state.
-* An ordinary racer that initiates contact into ulting Verdant is destroyed and Verdant briefly becomes visible.
-* Ulting Verdant does not offensively destroy an ordinary racer merely by initiating contact into it.
-* Ulting Verdant + ulting Flann destroys both and leaves both ultimate meters at exactly 0%.
-* Transformed vtm_neela.PNG Neela contacting ulting Verdant destroys Neela, leaves Neela’s ultimate at exactly 0%, does not perform the Neela swap, and Verdant survives.
-* Ulting Verdant is immune to Lolanthe Mind Control even during its brief reveal.
-* Lolanthe and Verdant clear exactly the same solid-hazard class Neela clears while their ultimates are active.
-* Existing Flann and Neela mechanics continue to work, including the existing Neela-vs-Flann priority when Verdant is not involved.
-* Invisible Verdant does not leak its exact world position through car-attached exhaust, badges, seat markers, or equivalent positional visuals in another player’s view.
-* Bots do not deliberately target invisible Verdant using information a human could not see.
-* All six cars still work as player, bot, and eligible local-multiplayer selections.
-* All localization keys resolve in both languages.
-* node tools/check.mjs passes.
-* node tools/menu-check.mjs passes.
-* node tools/ultimate-check.mjs passes.
-* node tools/sprite-check.mjs passes.
-* node tools/hitbox-check.mjs passes.
-* Manual browser QA confirms correct animations, sprite scaling, tailpipe alignment, collision directionality, Verdant per-view opacity, and two-/three-/four-player split-screen behavior.
+⸻
 
-Implement this conservatively. Reuse Seren’s current abstractions instead of creating duplicate systems, keep gameplay state deterministic and testable, and do not “solve” invisibility by disabling physical collision or “solve” Mind Control by bypassing the real collision system.
+16. Do not accidentally freeze the normal world
+
+While a human Rhosyn sees Aero-Glow, the shared race must continue processing:
+
+* other racers
+* hazards
+* items
+* track seams
+* biome transitions
+* finish logic
+* standings
+* race timer
+* speed tier changes
+* AI
+
+Aero-Glow only changes what that Rhosyn view renders and whether the Rhosyn body is eligible for shared interaction.
+
+Other human players in local split-screen must continue seeing and playing the normal race at the same time.
+
+This is an important local-play acceptance test:
+
+Player 1 can be in Aero-Glow while Player 2’s column continues rendering the real race normally.
+
+⸻
+
+17. Update model/comments that currently assume only four special ultimates
+
+js/mechanics.js currently describes “the four car-specific ultimates” and only has special predicates for Flann, Neela, Lolanthe and Verdant.
+
+Update this documentation and related comments to account for Rhosyn.
+
+Do not misleadingly continue documenting Rose/Rhosyn as a generic ultimate.
+
+Similarly update documentation that currently says Rose and Siren are the remaining ordinary ultimate cars.
+
+After this change, Siren is the generic/simple ultimate case; Rhosyn is not.
+
+⸻
+
+18. Remove or clean up obsolete Rose-only renderer code
+
+js/render.js currently contains a Rose-specific procedural coupe section/comment.
+
+Once Rhosyn is a sprite:
+
+* remove Rose-specific drawing assumptions
+* remove dead Rose-only code if drawCoupe() is no longer used anywhere
+* if another legitimate path still relies on a generic coupe helper, keep the generic helper but remove Rose-specific semantics/comments
+
+Do not delete helpers blindly. Confirm usage first.
+
+⸻
+
+19. AI behavior
+
+A bot Rhosyn should be capable of firing its ultimate through the same AI ultimate decision mechanism as every other bot.
+
+Once it enters Aero-Glow:
+
+* it is omitted from human normal-race views
+* it remains canonically simulated
+* its AI may continue choosing lanes/speed using the canonical simulation
+* it cannot physically interact with the shared race while phased out
+* other bots should not detect/target it as an interactable racer
+
+When it returns, grant the same 2-second Invulnerable condition as a human Rhosyn.
+
+Do not create separate human-only ultimate mechanics.
+
+⸻
+
+20. HUD and Conditions
+
+Keep the existing ultimate meter lifecycle.
+
+While Aero-Glow is active:
+
+* the meter counts down using the same ultT / ultMax
+* boosted status continues to reflect the active ultimate as existing Seren logic does
+* the private owner can still understand how much Aero-Glow time remains
+
+On exit:
+
+* ultimate reaches 0 normally
+* Rhosyn gains Invulnerable for 2 seconds
+* existing condition rendering displays Invulnerable
+* do not add a redundant “Aero-Glow Shield” condition
+
+If the HUD has text/reference descriptions of Rose, replace them with Rhosyn/Aero-Glow.
+
+⸻
+
+21. Tests are required, not optional
+
+Extend the existing dependency-free test suite rather than creating an unrelated harness.
+
+The repo already provides:
+
+node tools/check.mjs
+node tools/menu-check.mjs
+node tools/ultimate-check.mjs
+node tools/sprite-check.mjs
+node tools/hitbox-check.mjs
+
+All five must pass after the change.
+
+Update old Rose assertions rather than deleting coverage.
+
+Add specific Rhosyn regression tests.
+
+Rename tests
+
+Verify:
+
+* CAR_IDS includes rhosyn
+* CAR_IDS no longer includes rose
+* Rhosyn car button exists
+* correct data-car
+* correct i18n keys
+* Rhosyn selection works
+* old Rose selector is gone
+* sprite v_rhosyn.PNG is registered through CAR_SPRITES
+
+Sprite tests
+
+Verify:
+
+* Rhosyn is style sprite
+* sprite file is exactly v_rhosyn.PNG
+* valid measured spriteBounds
+* valid hitShape
+* valid exhaust anchor count
+* drawSpriteExhaust() is used
+* boost flame root resolves to the measured tailpipe coordinate
+* scaling and rotation do not detach the exhaust from the outlet
+* menu preview and race rendering both use Rhosyn’s model
+
+Hitbox tests
+
+Test Rhosyn independently.
+
+Verify:
+
+* collision uses CARS.rhosyn.hitShape
+* it does not fall back to CAR_HIT_RECT
+* test points just inside representative body edges collide
+* test points just outside representative visible body edges do not
+* rotated Rhosyn uses the rotated polygon correctly
+* race scale and hitbox scale stay synchronized
+
+Do not simply replace "rose" with "rhosyn" in old rectangle-car tests; several old assertions are no longer conceptually valid because Rhosyn is no longer a generic rectangle model.
+
+Use Siren where a generic rectangular control car is still required by a test.
+
+Ultimate lifecycle tests
+
+Verify:
+
+* Rhosyn charges for the shared 75-second duration
+* activates through startUlt()
+* runs for exactly 15 seconds
+* receives the shared 2× pace multiplier
+* enters the transition
+* reaches Aero-Glow state
+* exits when the same ultT reaches zero
+* resets the ultimate meter normally
+
+Canonical-position continuity test
+
+This is essential.
+
+Set up a Rhosyn, record its canonical state, activate Aero-Glow, simulate several seconds, including ordinary movement and ideally a biome seam transition.
+
+Verify while Aero-Glow is running that:
+
+* G.meters / metersOf(R) continues changing normally
+* canonical lane/x continues responding to input/AI
+* canonical biome progression continues
+* no alternate “Aero-Glow metres” becomes authoritative
+
+Then end the ultimate.
+
+Verify the returned shared-world position is exactly the canonical position already present on that frame.
+
+There should be no teleport delta.
+
+Biome-transition test
+
+Begin Aero-Glow before a track seam.
+
+Advance the canonical simulation until the biome changes.
+
+End Aero-Glow afterward.
+
+Verify Rhosyn renders back into the new/current biome, not the biome it entered from.
+
+Isolation tests
+
+While Rhosyn is fully inside Aero-Glow, verify all of these fail to affect it:
+
+* rear contact
+* lane barge
+* Flann ultimate ram
+* Neela swap
+* Verdant contact
+* Lolanthe aura/Mind Control
+* tumbleweed
+* meteor
+* puddle
+* oil
+* seeker
+* ordinary targeting
+* shared bubble pickup
+
+Also verify Rhosyn cannot affect those systems from Aero-Glow.
+
+Visibility tests
+
+For a fully active Aero-Glow Rhosyn:
+
+* owner’s Aero-Glow view includes Rhosyn
+* normal view belonging to another racer does not draw Rhosyn
+* it also does not draw Rhosyn’s shadow
+* exhaust
+* seat marker
+* attached Conditions
+* notes/effects that would reveal its shared-road location
+
+During entry and exit, verify the white-car transition is visible at the intended stage.
+
+Split-screen tests
+
+Set one local human to Rhosyn and another to another car.
+
+Activate Rhosyn’s ultimate.
+
+Verify:
+
+* only Rhosyn’s view gets the full-screen white transition
+* only Rhosyn’s view switches to Aero-Glow
+* the other player’s view remains the ordinary race
+* the other view cannot see Rhosyn once departure is complete
+* normal world simulation continues
+* exit switches only Rhosyn’s column back
+* both columns remain aligned with the same canonical race state
+
+Post-return immunity
+
+At the actual re-entry frame:
+
+* invuln becomes at least INVULNERABLE_TIME
+* INVULNERABLE_TIME remains 2 seconds
+* immediate contact/hazard/attack is rejected
+* after two simulated seconds, normal contact resumes
+* existing Invulnerable condition reporting/badge works
+* no separate Rhosyn shield timer exists
+
+Finish test
+
+Allow canonical Rhosyn distance to reach the finish while Aero-Glow is active.
+
+Verify:
+
+* finish is registered correctly
+* race result is correct
+* Aero-Glow state is cleaned up
+* renderer does not remain trapped in Aero-Glow
+
+⸻
+
+22. Documentation
+
+Update the relevant docs to describe the actual behavior.
+
+At minimum audit:
+
+* README.md
+* docs/ARCHITECTURE.md
+* docs/TUNING.md
+* docs/ULTIMATE-QA.md
+* other QA docs whose expected car roster contains Rose
+
+Document Aero-Glow’s core invariant clearly:
+
+Rhosyn never has a second race position. Aero-Glow is a view/isolation state over the same canonical racer simulation.
+
+Also document why it must not be implemented by changing G.biome or teleporting/restoring the racer.
+
+Document the measured Rhosyn sprite bounds, exhaust anchor source pixels, normalized exhaust coordinates, race scale if any, and hitbox methodology in the same style as the existing Flann/Neela/Lolanthe/Verdant notes.
+
+⸻
+
+23. Code-quality constraints
+
+Preserve Seren’s existing patterns:
+
+* shared player/bot mechanics
+* deterministic frame-loop state
+* model data rather than car-name branches where data is sufficient
+* centralized car-specific predicates where branches really are necessary
+* renderer reads state rather than mutating gameplay state
+* no per-frame Image construction
+* no duplicated player-vs-bot ultimate implementation
+* no magic pixel offsets when sprite-space anchors exist
+* no duplicated immunity logic
+* no fake teleport to simulate Aero-Glow
+
+Keep drawing functions pure with respect to gameplay wherever possible.
+
+drawAeroGlowWorld() must render. It must not secretly mutate canonical race state.
+
+⸻
+
+24. Final acceptance behavior
+
+The finished experience should read like this:
+
+Rhosyn charges its ultimate normally.
+
+The player activates it.
+
+Rhosyn’s car floods white. The driver’s screen flashes completely white. To the other racers, the glowing white Rhosyn vanishes from the road.
+
+The white clears for Rhosyn’s driver into Aero-Glow: an isolated black void streaked with luminous pink energy. There are no rivals, hazards, missiles, bubbles or ordinary scenery. Rhosyn’s correctly measured v_rhosyn.PNG sprite is the only racer there, with boost fire rooted precisely in its real tailpipe.
+
+The player continues driving.
+
+Underneath that presentation, Seren’s single canonical race continues normally. Rhosyn continues gaining distance at the same shared ultimate 2× pace, responds to steering, crosses track seams, changes biomes and changes race position exactly as it would have done without a custom rendered world. It simply cannot touch or be touched by the shared race while away.
+
+Fifteen seconds after activation, the Aero-Glow view flashes white.
+
+During the white transition the renderer switches back to the real race.
+
+Rhosyn appears through the matching white-car flash at the exact canonical position it has already reached. If the race moved into another biome during Aero-Glow, that is the biome visible immediately on return.
+
+There is no teleport correction because there is nothing to correct.
+
+At that re-entry moment, Rhosyn receives the existing Invulnerable condition for exactly 2 seconds, protecting it from racers, traps, hazards, seekers and debuffs through Seren’s normal centralized protection system.
+
+After those 2 seconds expire, Rhosyn becomes an ordinary interactable racer again.
+
+⸻
+
+25. Before declaring the task complete
+
+Perform a final repository-wide search for:
+
+* rose
+* Rose
+* carRose
+* roseUlt
+* "rose"
+
+Resolve every occurrence appropriately, except an intentionally documented legacy save migration if one is actually necessary.
+
+Then run:
+
+node tools/check.mjs
+node tools/menu-check.mjs
+node tools/ultimate-check.mjs
+node tools/sprite-check.mjs
+node tools/hitbox-check.mjs
+
+Do not report completion unless every check passes.
+
+Finally, manually verify at minimum:
+
+1. Rhosyn sprite in car select.
+2. Rhosyn sprite in the race.
+3. Accurate physical hitbox.
+4. Flame precisely rooted at the actual tailpipe.
+5. Aero-Glow entry flash.
+6. Observer disappearance.
+7. Completely isolated black/pink owner world.
+8. No shared racers/hazards/items rendered in Aero-Glow.
+9. Canonical distance keeps progressing.
+10. Biome can change underneath Aero-Glow.
+11. Exact, snap-free canonical re-entry.
+12. Observer reappearance flash.
+13. Two full seconds of existing Invulnerable protection.
+14. Correct single-player behavior.
+15. Correct bot behavior.
+16. Correct split-screen/per-view behavior.
+17. Neela, Lolanthe, Verdant and Flann still behave exactly as before.
