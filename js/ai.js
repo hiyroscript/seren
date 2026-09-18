@@ -105,7 +105,7 @@ function fieldView(self){
    bothers - hitting a car that can hit back is worth much less than
    finishing one that cannot. */
 function softness(a){
-  if(!a || a.out || a.safe || !a.touch) return 0;
+  if(!a || a.out || a.safe || !a.touch || !a.seen) return 0;
   let v = 0;
   if(a.slip > 0)    v += 0.50;                 /* its steering is backwards */
   if(a.slow > 0)    v += 0.40;
@@ -120,6 +120,11 @@ function softness(a){
    whoever that is. */
 function threatOf(R, a, mine){
   if(!a || a.out) return 0;
+  /* A car nobody can see is a car nobody is worried about. It is still there
+     to be run into - `touch` says so, and the contact rules read that - but
+     being frightened of something invisible is exactly the supernatural
+     knowledge a person driving would not have. */
+  if(!a.seen) return 0;
   const gap = Math.abs(a.m - mine);
   if(gap > 240) return 0;
   let v = 1 - gap/240;
@@ -165,7 +170,11 @@ function botSense(R){
     if(a.m > mine) s.place++;
     const gy = R.y - a.y;                       /* + this car is up the road */
     if(Math.abs(a.m - mine) < 90) close++;
-    if(a.lane === R.lane && a.touch){
+    /* The car in front and the car behind are what a driver can see in front
+       and behind. An ulting Verdant is in neither, which is how a bot comes to
+       drive into one - it is physically there and the contact rules will say
+       so, but nothing here knew to leave room for it. */
+    if(a.lane === R.lane && a.touch && a.seen){
       if(gy > 0 && gy < s.frontGap){ s.frontGap = gy; s.front = a; }
       if(gy < 0 && -gy < s.backGap){ s.backGap = -gy; s.back = a; }
     }

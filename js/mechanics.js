@@ -983,10 +983,10 @@ function endUlt(who){
      form before getting here, so there is nothing left for this to flash. */
   if(o.neelaForm) leaveNeelaForm(who);
   o.neelaOrigin = null; o.neelaSwapped = false; o.swapGuard = 0;
-  /* Lolanthe's note leaves the way it arrived. A wreck has already cleared the
-     pop state before getting here, so there is nothing left for this to play
-     in that case - exactly as with Neela's flash. */
-  if(o.queenPop > 0 || lolantheCar(who)) o.queenOut = QUEEN_POP;
+  /* Lolanthe's note leaves the way it arrived. A wreck and a finish both clear
+     the note state immediately after ending the ultimate, so neither of them
+     leaves one popping out over a car that is no longer there. */
+  if(lolantheCar(who)) o.queenOut = QUEEN_POP;
   o.queenPop = 0;
   o.ultOn = false; o.ultT = 0; o.ultMax = ULT_TIME;
   o.ult = 0;
@@ -1054,9 +1054,9 @@ function wreckRival(R, by, force){
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
   R.dead = DEAD_TIME;
   clearNeelaState(R);                          /* no alternate form on a wreck */
-  clearLolantheState(R);                       /* and no note left floating over it */
   clearVerdantState(R);                        /* nor a ghost dissolving through the wreck */
   if(R.ultOn) endUlt(R);                       /* a running ultimate is lost outright */
+  clearLolantheState(R);                       /* and no note popping out over it */
   /* The meter itself survives, exactly as the player's does: destroyCar takes
      ULT_ON_WRECK off the top and no more. Wiping it here contradicted the
      ultDelta two lines above and quietly taxed the violent difficulties
@@ -1829,9 +1829,9 @@ function clearMyUlt(){
 }
 function destroyCar(by){
   clearNeelaState("me");                       /* no alternate form on a wreck */
-  clearLolantheState("me");                    /* and no note left floating over it */
   clearVerdantState("me");                     /* nor a ghost dissolving through the wreck */
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
+  clearLolantheState("me");                    /* and no note popping out over it */
   clearDebuffs("me");
   ultDelta("me", ULT_ON_WRECK);
   if(by) ultDelta(by, ULT_ON_KILL);

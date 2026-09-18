@@ -1889,18 +1889,27 @@ test('bots do not aim at what they cannot see, and still collide with it',()=>{
   pair('me','bot','verdant','rose');
   run(`ao.ult = 1; startUlt(A); B.lane = 1; B.x = laneCX(1); B.y = playerY - carH*3;
        G.lane = 1; G.x = laneCX(1); B.human = false;
+       /* Everybody else out of the bot's lane and far up the road, so what is
+          in front of it and behind it is the hidden car or nothing. */
+       others().forEach(r => { r.y = playerY - 20000; r.lane = 0; r.x = laneCX(0); });
        for(let i=0;i<20;i++) update(1/60);
        globalThis.s = botSense(B);`);
   equal('s.all.find(x => x.who === A).seen',false);
-  equal('botTarget(B, s)',null,'a bot picked the invisible car as a target');
+  equal('botTarget(B, s) === null',true,'a bot picked the invisible car as a target');
+  /* It is not the car in front or behind either, which is how a bot comes to
+     drive into one: nothing told it to leave room. */
+  equal('s.front === null && s.back === null',true);
+  equal('threatOf(B, s.all.find(x => x.who === A), s.mine)',0);
+  equal('softness(s.all.find(x => x.who === A))',0);
   /* It is not in the lane picture either - a person could not see it. */
   equal(`laneRisk(B).every(v => v === 0)`,true);
-  equal(`carSeenAt(1, B.y, B)`,null);
+  equal(`carSeenAt(1, B.y, B) === null`,true);
   /* But it is physically there, so a contact still lands. */
   equal(`carAt(1, playerY, B) !== null || carAt(G.lane, B.y, B) !== null`,true);
   /* And once it is visible again the bot sees it like anybody else. */
   run(`endUlt(A); for(let i=0;i<30;i++) update(1/60); globalThis.s2 = botSense(B);`);
   equal('s2.all.find(x => x.who === A).seen',true);
+  equal('threatOf(B, s2.all.find(x => x.who === A), s2.mine) > 0',true);
 });
 test('both new ultimates value themselves without claiming the other two do not',()=>{
   /* A crowd is worth something to Lolanthe and an empty road is not. */
@@ -1947,6 +1956,37 @@ test('both clear exactly the solid hazards Neela clears, and no more',()=>{
     hit('player','meteor');
     equal('G.dead',0);equal('G.ultOn',true);
   }
+});
+test('a wreck takes the note and the fade with it, leaving nothing over the car',()=>{
+  /* Ending naturally pops the note out; being wrecked does not leave one
+     floating over a car that is no longer on the road. */
+  pair('me','bot','lolanthe','verdant');
+  run(`ao.ult = 1; startUlt(A);`);
+  equal('ao.queenPop > 0',true);
+  run(`endUlt(A);`);
+  equal('ao.queenOut > 0',true,'a natural end should pop the note out');
+  pair('me','bot','lolanthe','verdant');
+  run(`ao.ult = 1; startUlt(A); wreckRacer(A);`);
+  equal('ao.dead > 0',true);
+  equal('ao.queenPop',0);equal('ao.queenOut',0,'a wreck left the note behind');
+  equal('ao.ultOn',false);
+  /* And the same for the fade: no ghost dissolving through the wreck. */
+  pair('me','bot','verdant','rose');
+  run(`ao.ult = 1; startUlt(A); for(let i=0;i<20;i++) update(1/60);`);
+  near('ao.verdantHide',1);
+  run(`wreckRacer(A);`);
+  equal('ao.dead > 0',true);
+  equal('ao.verdantHide',0);equal('ao.verdantRevealT',0);
+  equal('racerViewAlpha(A, A)',1,'the wreck is drawn solid, like any other');
+  /* Crossing the line clears both the same way. */
+  pair('me','bot','lolanthe','verdant');
+  run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
+       for(let i=0;i<20;i++) update(1/60);
+       G.finishAt = (A === 'me' ? G.meters : metersOf(A)) - 1;
+       G.finishAt = Math.min(G.finishAt, (B === 'me' ? G.meters : metersOf(B)) - 1);
+       checkFinish();`);
+  equal('ao.queenOut',0);equal('ao.queenPop',0);
+  equal('bo.verdantHide',0);equal('bo.verdantRevealT',0);
 });
 test('nothing of either ultimate survives a restart',()=>{
   pair('me','bot','lolanthe','verdant');

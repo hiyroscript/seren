@@ -335,8 +335,9 @@ function checkFinish(){
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
       clearNeelaState(R);                        /* out of play: no alternate form */
-      clearLolantheState(R); clearVerdantState(R);   /* nor a note, nor a fade */
+      clearVerdantState(R);                      /* nor a fade half-finished */
       if(R.ultOn) endUlt(R);
+      clearLolantheState(R);                     /* nor a note over a parked car */
       R.boosting = false;
       clearDebuffs(R);                           /* out of play, and clean */
     }
@@ -346,8 +347,9 @@ function checkFinish(){
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
     clearNeelaState("me");                      /* out of play: no alternate form */
-    clearLolantheState("me"); clearVerdantState("me");   /* nor a note, nor a fade */
+    clearVerdantState("me");                    /* nor a fade half-finished */
     if(G.ultOn) endUlt("me");
+    clearLolantheState("me");                   /* nor a note over a parked car */
     G.boosting = false;
     G.keyBoost = G.ptrBoost = G.ultKey = G.padBoost = false;
     clearDebuffs("me");                         /* out of play, and clean */
