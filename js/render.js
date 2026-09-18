@@ -373,10 +373,9 @@ function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white, alpha){
   ctx.globalAlpha = a;
   ctx.translate(x, y);
   if(tilt) ctx.rotate(tilt);
-  /* One car has a fire of its own; the other three sprites and the two shared
-     models have the ordinary pipes. */
+  /* One car has a fire of its own; the other four sprites and Siren's shared
+     model have the ordinary pipes. */
   if(p.style === "sprite") drawSpriteCar(w, h, p, boosting, !!ulting && p.key === "flann");
-  else if(p.style === "coupe") drawCoupe(w, h, p, isPlayer, boosting);
   else if(p.style === "cruiser") drawCruiser(w, h, p, isPlayer, boosting);
   if(white) drawMorphFlash(w, h, p, white);
   ctx.restore();
@@ -393,73 +392,6 @@ function flames(w, h, hot, cool){
   carAlpha(1);
 }
 
-/* Rose: soft and round, petal shapes worked into the bodywork */
-function drawCoupe(w, h, p, isPlayer, boosting){
-  ctx.save(); ctx.translate(3, 7);
-  coupeShell(w, h); ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fill();
-  ctx.restore();
-
-  const ww = w*0.16, wh = h*0.155;                    /* four wheels, wide rear track */
-  fillRR(-w*0.42-ww*0.5, -h*0.30, ww, wh, ww*0.42, "#0C0D10");
-  fillRR( w*0.42-ww*0.5, -h*0.30, ww, wh, ww*0.42, "#0C0D10");
-  fillRR(-w*0.50-ww*0.5,  h*0.15, ww, wh, ww*0.42, "#0C0D10");
-  fillRR( w*0.50-ww*0.5,  h*0.15, ww, wh, ww*0.42, "#0C0D10");
-
-  coupeShell(w, h);
-  ctx.fillStyle = p.body; ctx.fill();
-  ctx.strokeStyle = "rgba(24,6,34,0.45)"; ctx.lineWidth = Math.max(1, w*0.03); ctx.stroke();
-
-  ctx.save(); coupeShell(w, h); ctx.clip();
-  ctx.fillStyle = p.trim;                             /* pink flanks and a centre stripe */
-  ctx.fillRect(-w*0.54, -h*0.06, w*0.10, h*0.40);
-  ctx.fillRect( w*0.44, -h*0.06, w*0.10, h*0.40);
-  if(isPlayer) ctx.fillRect(-w*0.05, -h*0.54, w*0.10, h*1.08);
-  ctx.restore();
-
-  fillRR(-w*0.40, -h*0.50, w*0.80, h*0.055, w*0.03, p.dark);      /* front bumper */
-  fillRR(-w*0.33, -h*0.487, w*0.17, h*0.033, w*0.016, "#FFF0FA"); /* headlights */
-  fillRR( w*0.16, -h*0.487, w*0.17, h*0.033, w*0.016, "#FFF0FA");
-
-  fillRR(-w*0.33, -h*0.26, w*0.66, h*0.46, w*0.14, p.dark);       /* glasshouse */
-  ctx.beginPath();                                                 /* windscreen */
-  ctx.moveTo(-w*0.27, -h*0.13); ctx.lineTo(w*0.27, -h*0.13);
-  ctx.lineTo(w*0.22, -h*0.22);  ctx.lineTo(-w*0.22, -h*0.22);
-  ctx.closePath(); ctx.fillStyle = p.glass; ctx.fill();
-  ctx.beginPath();                                                 /* rear glass */
-  ctx.moveTo(-w*0.25, h*0.06); ctx.lineTo(w*0.25, h*0.06);
-  ctx.lineTo(w*0.21, h*0.15);  ctx.lineTo(-w*0.21, h*0.15);
-  ctx.closePath(); ctx.fill();
-
-  ctx.beginPath();                                                 /* bloom badge */
-  for(let i=0;i<5;i++){
-    const a = -1.5708 + (i/5)*6.2832;
-    ctx.moveTo(0, -h*0.36);
-    ctx.arc(Math.cos(a)*w*0.075, -h*0.36 + Math.sin(a)*h*0.042, w*0.055, 0, 6.2832);
-  }
-  ctx.fillStyle = p.trim; ctx.fill();
-  ctx.beginPath(); ctx.arc(0, -h*0.36, w*0.036, 0, 6.2832);
-  ctx.fillStyle = "#FFF0FA"; ctx.fill();
-
-  fillRR(-w*0.42, h*0.40, w*0.84, h*0.065, w*0.03, p.dark);        /* boot lid */
-  fillRR(-w*0.34, h*0.415, w*0.19, h*0.034, w*0.016, "#FFD9F2");
-  fillRR( w*0.15, h*0.415, w*0.19, h*0.034, w*0.016, "#FFD9F2");
-
-  if(boosting) flames(w, h, p.flame[0], p.flame[1]);
-}
-function coupeShell(w, h){
-  /* a car: rounded nose, straight doors, full hips over the rear wheels */
-  ctx.beginPath();
-  ctx.moveTo(-w*0.22, -h*0.52);
-  ctx.lineTo( w*0.22, -h*0.52);
-  ctx.quadraticCurveTo( w*0.42, -h*0.50,  w*0.44, -h*0.30);
-  ctx.lineTo( w*0.46, h*0.10);
-  ctx.quadraticCurveTo( w*0.50, h*0.44,  w*0.30, h*0.52);
-  ctx.lineTo(-w*0.30, h*0.52);
-  ctx.quadraticCurveTo(-w*0.50, h*0.44, -w*0.46, h*0.10);
-  ctx.lineTo(-w*0.44, -h*0.30);
-  ctx.quadraticCurveTo(-w*0.42, -h*0.50, -w*0.22, -h*0.52);
-  ctx.closePath();
-}
 /* Siren: a big square patrol cruiser with a light bar across the roof */
 function drawCruiser(w, h, p, isPlayer, boosting){
   /* Siren: a long, square patrol sedan - notched three-box shape, push bar
@@ -1074,7 +1006,7 @@ function drawQueenNote(who, cx, cy, alpha){
 }
 /* And the three around a Mind Controlled racer. A third of a turn apart on a
    ring measured off that racer's own box, so they surround a Lolanthe, a
-   Neela, a Flann, a Verdant, a Rose and a Siren alike. No rise and fall: that
+   Neela, a Flann, a Verdant, a Rhosyn and a Siren alike. No rise and fall: that
    belongs to the queen note and is what tells the two effects apart at a
    glance. */
 function drawMindNotes(who, cx, cy, alpha){
@@ -1106,6 +1038,216 @@ function drawRacerNotes(who, cx, cy, alpha){
   drawMindNotes(who, cx, cy, alpha);
 }
 
+/* ================================================================
+   AERO-GLOW  -  one racer's private world
+   ================================================================
+   What Rhosyn's own driver is shown while its ultimate is running. It is a
+   view and nothing else: everything below reads canonical race state and
+   writes none of it, so drawing this frame twice draws the same frame and the
+   race underneath is entirely unaware of it.
+
+   In particular it is not a track. G.biome, G.next, G.seam and G.trackT are
+   untouched and go on meaning what they always meant - which is the whole
+   reason the driver can come out of here into whichever biome the race has
+   actually reached rather than the one it left.
+
+   Everything that moves is derived from how far the owner has itself travelled
+   down the canonical road, so the void runs past at exactly the pace the racer
+   is really covering ground: double, under the ultimate, and faster again on a
+   boost. There is no clock in it, which is what keeps it deterministic.
+
+   The palette is deliberately nothing the shared world has: near-total black,
+   with hot magenta as the only light in it. */
+const AERO_VOID = "#04010A";              /* the black the whole world sits on */
+const AERO_PINK = "#FF2E9E";              /* the one colour in it */
+const AERO_PALE = "#FFA8DA";              /* and its highlight */
+const AERO_HORIZON = 0.30;                /* where the vanishing point sits, in view heights */
+const AERO_RIBBON = 190;                  /* px of travel between two route markers */
+const AERO_MOTES = 34;                    /* luminous specks adrift in the void */
+
+/* How far this racer has travelled down the canonical road, in road pixels.
+   Read straight off the one distance the race keeps for it, so a metre covered
+   in here is the same metre everybody else's world moved by. */
+function aeroTravel(who){
+  return (who === "me" ? G.meters : metersOf(who))/0.075;
+}
+/* Its canonical pace, for how hard the void streaks. */
+function aeroPace(who){
+  const o = who === "me" ? G : who;
+  return who === "me" ? G.speed : Math.abs(o.abs || 0);
+}
+/* One deterministic number per index, so the motes and the distant shapes are
+   scattered rather than ruled and are in the same places every time. */
+function aeroSeed(i, salt){
+  const v = Math.sin(i*12.9898 + salt*78.233)*43758.5453;
+  return v - Math.floor(v);
+}
+
+/* The void itself: black everywhere, with a band of magenta bleeding off the
+   horizon and nothing else. The band is deliberately tight - the world has to
+   read as near-total black with one light in it, so a wash over half the view
+   would make it a purple sky rather than a void. */
+function aeroBackdrop(top, height, horizon){
+  ctx.fillStyle = AERO_VOID;
+  ctx.fillRect(0, top, W, height);
+  const haze = ctx.createLinearGradient(0, horizon - height*0.20, 0, horizon + height*0.13);
+  haze.addColorStop(0,    withA(AERO_PINK, 0));
+  haze.addColorStop(0.46, withA(AERO_PINK, 0.10));
+  haze.addColorStop(0.62, withA(AERO_PINK, 0.24));
+  haze.addColorStop(0.72, withA(AERO_PALE, 0.15));
+  haze.addColorStop(1,    withA(AERO_PINK, 0));
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, top, W, height);
+  /* and the foreground sunk back into the black it came out of */
+  const sink = ctx.createLinearGradient(0, horizon + height*0.30, 0, top + height);
+  sink.addColorStop(0, "rgba(0,0,0,0)");
+  sink.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = sink;
+  ctx.fillRect(0, horizon, W, top + height - horizon);
+  /* the line the whole world converges on */
+  ctx.fillStyle = withA(AERO_PALE, 0.5);
+  ctx.fillRect(0, horizon, W, 1);
+}
+
+/* Perspective traces: straight lines out of the vanishing point, sweeping
+   outward as the racer advances. They are what says "forward" in a world with
+   no scenery to pass. */
+function aeroTraces(top, height, horizon, travel){
+  const n = 16;
+  ctx.save();
+  ctx.lineCap = "round";
+  for(let i=0;i<n;i++){
+    /* Each trace walks from the vanishing point to the bottom of the view and
+       starts again, offset so the sixteen of them are spread through the
+       cycle rather than arriving together. */
+    const k = ((travel/1400 + i/n) % 1 + 1) % 1;
+    const reach = k*k;                        /* accelerating out of the distance */
+    const spread = (aeroSeed(i, 3) - 0.5)*2.6;
+    const y0 = horizon + (top + height - horizon)*reach*0.24;
+    const y1 = horizon + (top + height - horizon)*Math.min(1, reach*1.15 + 0.06);
+    const x0 = W/2 + spread*W*reach*0.24;
+    const x1 = W/2 + spread*W*Math.min(1.4, reach*1.15 + 0.06);
+    ctx.strokeStyle = withA(i % 3 ? AERO_PINK : AERO_PALE, 0.10 + (1 - reach)*0.30);
+    ctx.lineWidth = Math.max(1, SCENE*(0.6 + reach*2.6));
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* The route. Not a road - there is no tarmac in here - but the three lanes
+   the racer is genuinely still steering between, drawn as glowing ribbons so
+   the controls keep meaning what they mean on the shared road. */
+function aeroRoute(top, height, horizon, travel){
+  const bot = top + height;
+  ctx.save();
+  /* the darker corridor the route runs down, fading out at the horizon */
+  const body = ctx.createLinearGradient(0, horizon, 0, bot);
+  body.addColorStop(0,    withA(AERO_PINK, 0.10));
+  body.addColorStop(0.35, withA(AERO_PINK, 0.05));
+  body.addColorStop(1,    "rgba(0,0,0,0)");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(W/2 - roadW*0.04, horizon);
+  ctx.lineTo(W/2 + roadW*0.04, horizon);
+  ctx.lineTo(roadX + roadW, bot);
+  ctx.lineTo(roadX, bot);
+  ctx.closePath(); ctx.fill();
+
+  /* the two edges, and the two lane divisions between them */
+  const rails = [[roadX, 1], [roadX + roadW, 1],
+                 [roadX + laneW, 0], [roadX + laneW*2, 0]];
+  for(let i=0;i<rails.length;i++){
+    const x = rails[i][0], edge = rails[i][1];
+    const xv = W/2 + (x - W/2)*0.04;
+    ctx.strokeStyle = withA(edge ? AERO_PALE : AERO_PINK, edge ? 0.55 : 0.30);
+    ctx.lineWidth = Math.max(1, SCENE*(edge ? 2 : 1.2));
+    ctx.beginPath(); ctx.moveTo(xv, horizon); ctx.lineTo(x, bot); ctx.stroke();
+  }
+
+  /* and the markers running down it, spaced by travel so they arrive at
+     exactly the rate the racer is covering ground */
+  const gap = AERO_RIBBON;
+  const phase = ((travel % gap) + gap) % gap;
+  for(let m=0;m<12;m++){
+    const d = m*gap + phase;
+    const k = clamp(d/(gap*11), 0, 1);
+    /* pushed away from the horizon on a curve, so the spacing opens out */
+    const t = k*k;
+    const y = horizon + (bot - horizon)*t;
+    if(y < horizon || y > bot) continue;
+    const half = (roadW/2)*(0.04 + 0.96*t);
+    ctx.fillStyle = withA(AERO_PALE, 0.10 + 0.42*t);
+    ctx.fillRect(W/2 - half, y, half*2, Math.max(1, SCENE*1.6*t + 0.4));
+  }
+  ctx.restore();
+}
+
+/* Sparse luminous specks adrift in the void, and a few distant bars that pass
+   far out to the sides. Both scroll off the same travel figure, so nothing in
+   here moves on a clock. */
+function aeroMotes(top, height, horizon, travel, streak){
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const span = height + 200;
+  for(let i=0;i<AERO_MOTES;i++){
+    const depth = 0.25 + aeroSeed(i, 1)*0.75;
+    const y = top - 100 + (((travel*depth*0.55 + aeroSeed(i, 2)*span) % span) + span) % span;
+    if(y < horizon) continue;
+    const x = aeroSeed(i, 5)*W;
+    const r = SCENE*(0.7 + depth*2.2);
+    const len = depth*streak;
+    ctx.fillStyle = withA(i % 4 ? AERO_PINK : AERO_PALE, 0.22 + depth*0.5);
+    ctx.fillRect(x - r*0.5, y - len, r, r + len);
+  }
+  ctx.restore();
+}
+
+/* The world's name, low-key and inside the view it belongs to. Deliberately
+   drawn here rather than written into #trackName: that element is the page's
+   single HUD, and in split-screen it belongs to whoever is not in here. */
+function aeroName(top, horizon){
+  ctx.save();
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.font = "600 " + Math.round(clamp(13*SCENE, 10, 20)) + "px " + HUD_DISPLAY;
+  ctx.fillStyle = withA(AERO_PALE, 0.62);
+  trackText(t("aeroGlow").toUpperCase(), W/2, horizon - 18*SCENE, 4, "center");
+  ctx.restore();
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
+/* One frame of Aero-Glow, for the one racer it belongs to. Called instead of
+   the shared world's layers, so none of the shared world's contents - other
+   racers, their exhaust, their Conditions, their notes, scenery, tumbleweeds,
+   meteors, puddles, bubbles, oil, seekers, collision sparks - is drawn here at
+   all. The only body in this world is the one driving through it. */
+function drawAeroGlowWorld(){
+  const who = VOWN;
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  const top = CT, height = CB - CT;
+  const horizon = top + height*AERO_HORIZON;
+  const travel = aeroTravel(who);
+  /* how far a speck smears, off the owner's canonical pace */
+  const streak = clamp((aeroPace(who) - 260)/900, 0, 1)*46*SCENE;
+
+  aeroBackdrop(top, height, horizon);
+  aeroTraces(top, height, horizon, travel);
+  aeroMotes(top, height, horizon, travel, streak);
+  aeroRoute(top, height, horizon, travel);
+  aeroName(top, horizon);
+
+  /* And the car, at its canonical lane, x and tilt - the same numbers the
+     shared renderer would have drawn it at, because they are the same numbers.
+     Its own view draws it whole: the fade the rest of the field watched it
+     leave through is theirs, not its driver's. */
+  const model = racerModel(who);
+  const d = racerDims(who);
+  const x = who === "me" ? G.x : o.x, y = who === "me" ? playerY : o.y;
+  drawCar(x, y, d.w, d.h, model, o.tilt, true,
+          o.boosting || o.ultOn, false, morphFlash(who), 1);
+  ctx.globalAlpha = 1;
+}
+
 /* ---- the white transition ---------------------------------------
    Belongs to a view, not to the canvas: it is drawn over one column, after
    that column's road and after that column's instruments, so the whole of one
@@ -1118,7 +1260,7 @@ function drawRacerNotes(who, cx, cy, alpha){
 function whiteoutAlpha(who){
   const o = who === "me" ? G : who;
   if(!o || !(o.whiteT > 0)) return 0;
-  const k = clamp(o.whiteT/NEELA_WHITEOUT, 0, 1);
+  const k = clamp(o.whiteT/WHITEOUT_TIME, 0, 1);
   /* full white for the first half, then out */
   return k > 0.5 ? 1 : k*2;
 }
@@ -1175,6 +1317,21 @@ function renderView(dy){
   if(shakeX || shakeY) ctx.translate(shakeX, shakeY);
   ctx.save();
   ctx.translate(0, dy);          /* out of the master frame and into this one */
+
+  /* One view of the world, or the other. The owner of a Rhosyn that is away in
+     Aero-Glow is shown its private world in place of the shared one - and this
+     is the whole of the difference, per view: the biome, the seam, the field
+     and the race itself are all exactly where they were and go on exactly as
+     they were, which is why the branch below can simply be taken again the
+     other way when the fifteen seconds are up. Every other column carries on
+     drawing the real race at the same time. */
+  if(aeroGlowViewActive(VOWN)){
+    drawAeroGlowWorld();
+    ctx.restore();
+    drawGlassLayer();
+    ctx.restore();
+    return;
+  }
 
   if(G.seam === null){
     drawGroundLayer(G.biome, null);
@@ -1262,16 +1419,22 @@ function renderView(dy){
   drawBubbles();
   drawMissiles();
   ctx.restore();                 /* back to the screen this view is drawn on */
+  drawGlassLayer();
+  ctx.restore();
+}
 
-  /* Everything from here is on the glass rather than on the road, so it does
-     not move with the camera - and it belongs to whoever is looking through
-     this particular window. */
+/* Everything on the glass rather than on the road, so it does not move with
+   the camera - and it belongs to whoever is looking through this particular
+   window. Both worlds end with it: the instruments, the running order and the
+   water on the screen are facts about the driver rather than about which world
+   that driver is being shown, and the ultimate meter counting Aero-Glow down is
+   the clearest of them. */
+function drawGlassLayer(){
   const o = VOWN === "me" ? G : VOWN;
   ctx.fillStyle = vign; ctx.fillRect(0,0,W,H);
   drawLadder();
   const blind = o.blind || 0;
   if(blind > 0) drawBlind(blind, o.blindPts);
-  ctx.restore();
 }
 
 function bubbleFlash(row){

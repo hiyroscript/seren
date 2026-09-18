@@ -90,10 +90,11 @@ All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
 
-Four of the six cars add something on top of that shared lifecycle, for exactly
-as long as it runs and never a frame longer. Rose and Siren add nothing, which
-is what makes either of them the right car for a test that needs an ordinary
-ultimate.
+Five of the six cars add something on top of that shared lifecycle, for exactly
+as long as it runs and never a frame longer. Siren adds nothing, which is what
+makes it the right car for a test that needs an ordinary ultimate — and the
+right car for a test that needs an ordinary rectangular body, now that the other
+five all carry a traced hull of their own.
 
 ### Flann's ram
 
@@ -149,12 +150,17 @@ untouched.
 
 | Constant | Value | Means |
 | --- | --- | --- |
-| `NEELA_WHITEOUT` | `0.42` | seconds an involved human's view is white |
-| `NEELA_MORPH` | `0.6` | seconds the white flash on the body burns off |
+| `WHITEOUT_TIME` | `0.42` | seconds an involved human's view is white |
+| `MORPH_TIME` | `0.6` | seconds the white flash on the body burns off |
 | `NEELA_SWAP_GUARD` | `0.05` | seconds a just-exchanged pair is skipped for |
 | `NEELA_TRAIL_LIFE` | `1.8` | seconds a trail node takes to fade out |
 | `NEELA_TRAIL_GAP` | `9` | px of travel between trail nodes |
 | `NEELA_TRAIL_MAX` | `170` | trail nodes kept per racer, hard cap |
+
+The first two are shared rather than Neela's: Rhosyn flashes through the same
+transition on the way into Aero-Glow and on the way back out, so they are named
+for what they are and not for the car that used them first. The values and the
+behaviour are unchanged.
 
 The whiteout is a transformation flash and not a blindfold: long enough to hide
 the change of shape, short enough that a car travelling at twice pace is never
@@ -249,6 +255,90 @@ ghost dissolving through somebody else's wreck animation.
 | Lolanthe's aura | Refused for the whole ultimate, reveal included |
 | Tumbleweed, meteor | Smashed apart, exactly as Neela's are |
 | Puddle, oil, seekers | Unchanged |
+
+### Rhosyn's Aero-Glow
+
+Rhosyn is the fifth and last car with something on top of the shared lifecycle,
+and the only one whose power is not a collision priority. The other four decide
+who loses a contact between two bodies; this one says that for fifteen seconds
+one of those bodies is not on the shared road at all.
+
+**The invariant, first, because everything else follows from it: Rhosyn never
+has a second race position.** Aero-Glow is a view and an isolation over the same
+canonical racer. Nothing in the mechanic teleports the racer, freezes it, saves
+a pose to restore it from, advances a distance counter of its own or writes
+`G.biome`, `G.next`, `G.seam` or `G.trackT`. The racer's lane, lateral x, tilt,
+speed, metres, ranking, finish progress, seam crossings and biome progression
+are the canonical ones the shared simulation goes on advancing throughout.
+
+That is why the return needs no correction, no lerp and no snap: the car is
+already exactly where the race has put it. It is also why it emerges into
+whatever track the race has actually reached rather than the one it left — there
+is no saved entry biome to restore, because restoring one would be the bug.
+
+Implementing it the other way — a temporary `G.biome`, or a teleport away and a
+teleport back — would break exactly that. The racer's position would have to be
+guessed on the way home, every other racer's metres are measured against player
+one's camera and would move with it, and a biome swapped under the whole field
+would change what every other column is looking at.
+
+| Constant | Value | Means |
+| --- | --- | --- |
+| `AERO_SHIFT` | `WHITEOUT_TIME/2` | seconds under full white, each way: when the view changes hands |
+| `AERO_FADE` | `MORPH_TIME` | seconds the body takes to leave, and to arrive back on, every other view |
+
+Both are derived rather than invented. The whiteout is opaque for its first half
+and fades over its second, so half of it is exactly the moment the screen is
+covered — the renderer swaps worlds behind a curtain and the driver never sees
+the seam. The fade is the body flash's own length, so what the rest of the field
+sees is one white flash that ends in an empty lane rather than a car blinking
+out mid-flash.
+
+The phase is carried by every racer as `aeroPhase`, advanced from the ordinary
+update loop so a pause pauses it:
+
+| Phase | The racer | Its own view | Every other view |
+| --- | --- | --- | --- |
+| `"off"` | on the shared road | the shared world | the car, solid |
+| `"in"` | already unreachable | the shared world, going white | the car, flashing white and fading out |
+| `"glow"` | away | Aero-Glow | nothing at all |
+| `"out"` | still away | Aero-Glow, going white | the car, flashing white and fading back in |
+
+| While it runs | What happens |
+| --- | --- |
+| Any racer contact, either way | None. `noContact()` is true, so there is no body at that position to meet and none to meet with |
+| Flann's ram, Neela's exchange, Verdant's defence | None of them, in either direction — they all settle contacts that cannot happen |
+| Lolanthe's aura | Refused. `mindTakes()` asks `refusesDebuffs()`, which is `noContact()` |
+| Tumbleweed, meteor, puddle, oil, seeker | None reach it, and none are spent on it: the hazard is still there afterwards for whoever does drive over it |
+| Shared bubble rows | Not collected. It cannot see the row it is driving through |
+| Its own items | Refused and **kept**, not silently spent into a world it is not in |
+| Offensive targeting | It is off every target list, and an in-flight seeker waits it out as it would waits out invulnerability |
+| Boost, steering, the 2× pace | All normal. This is personal movement, not contact |
+| The race order, the ladder, the finish | All normal. It is never marked dead or finished and never removed from the standings |
+
+On the frame the phase reaches `"off"` the racer is granted the existing
+**Invulnerable** Condition for `INVULNERABLE_TIME`, as `max(existing, 2)` so a
+longer protection already running is never shortened. There is deliberately no
+second shield timer and no per-hazard exception: the Condition is the source of
+truth, which is what gives the return its badge and its blink for free.
+
+A wreck, the finish line and a restart all clear the phase outright rather than
+sending the car through the return, so none of them hands out the two seconds
+and none of them can leave a renderer stranded in the void.
+
+The world itself is drawn by `drawAeroGlowWorld()` in `render.js`, from the
+owner's own canonical travel and pace. It is a renderer and nothing else — it
+reads race state and writes none — and it is deliberately not a `TRACKS` entry,
+because Aero-Glow is never a track the race is on.
+
+| Constant | Value | Means |
+| --- | --- | --- |
+| `AERO_VOID` | `#04010A` | the black the whole world sits on |
+| `AERO_PINK` | `#FF2E9E` | the one colour in it |
+| `AERO_PALE` | `#FFA8DA` | and its highlight |
+| `AERO_HORIZON` | `0.30` | where the vanishing point sits, in view heights |
+| `AERO_RIBBON` | `190` | px of travel between two route markers |
+| `AERO_MOTES` | `34` | luminous specks adrift in the void |
 
 ## Hazards
 
@@ -424,12 +514,19 @@ width; reduced motion disables that pulse but keeps the plume.
 | `vtm_neela.PNG` | (228, 22)–(795, 1506) | (512, 1306) |
 | `v_lolanthe.PNG` | (90, 12)–(933, 1477) | (455, 1354), (568, 1354) |
 | `v_verdant.PNG` | (167, 36)–(856, 1508) | (738, 1314) |
+| `v_rhosyn.PNG` | (75, 33)–(948, 1437) | (473, 1333), (551, 1333) |
 
 Verdant has one anchor because its artwork has one outlet — the side-exit pipe,
 whose bore is measured at (723, 1307)–(754, 1321). The slatted box under its
 tail is a diffuser with no bore, so nothing is drawn out of it. Lolanthe's two
 are the centres of the oval outlets in its rear valance, (422, 1343)–(488, 1366)
-and (535, 1343)–(602, 1366).
+and (535, 1343)–(602, 1366). Rhosyn's two are the centres of the stadium outlets
+in its rear valance, (447, 1320)–(500, 1344) and (525, 1322)–(577, 1346), which
+puts them 39 source pixels either side of the sheet's own centre line — the
+artwork is symmetrical and the anchors say so. They are normalized the same way
+every other anchor is, `x/1024` and `y/1536`, so `spriteAnchor()` places them
+through the same transform the body is drawn with and the fire stays in the pipe
+at any size, any tilt and in any column.
 
 | Constant | Value | Means |
 | --- | --- | --- |
@@ -447,7 +544,10 @@ the hull a car's. Verdant's is narrow too, at 0.871 of the box across at 1:1, so
 a tenth brings it to 0.958. **Lolanthe deliberately has none**, and that is a
 measurement rather than an omission: its body is wider against its own length
 than any other on the road and already fills the car box across at 1:1, so an
-adjustment would make it a different class of vehicle. The alternate form's 1.09 is measured rather than chosen: it
+adjustment would make it a different class of vehicle. **Rhosyn has none for the
+same reason**, and it is broader still: 874 × 1405 of visible artwork against
+Lolanthe's 844 × 1466, so sized into the shared box the width runs out first and
+the body fills the box across and 86% of it down. The alternate form's 1.09 is measured rather than chosen: it
 is what makes the craft's fuselage and fin span come out the size of the car it
 replaced, so transforming changes the shape on the road and not how much road it
 takes up. Every scale is uniform, so aspect ratios, the measured `spriteBounds`
@@ -470,8 +570,8 @@ separate `ulting` flag, never by `boosting`, so an ordinary boost and a boost
 can leave the paint alone.
 
 What comes out of a sprite car's pipes is `exhaustStyle`: `drawSpriteEnergy` for
-Neela's blue energy, and `drawSpriteFlame` — the default — for Flann, Lolanthe
-and Verdant. All of them are the ordinary `boosting` flag, so a boost, a boost
+Neela's blue energy, and `drawSpriteFlame` — the default — for Flann, Lolanthe,
+Verdant and Rhosyn. All of them are the ordinary `boosting` flag, so a boost, a boost
 can and an ultimate's own speed all light them and none of them transforms
 anything. The transformation flash is `drawMorphFlash`, drawn from whichever
 model's own hull, which is why it works on any of the six without per-car code.
@@ -488,13 +588,24 @@ turning.
 ### Body hitboxes
 
 `CAR_HIT_RECT` retains the default body half-width 0.40 and half-height 0.42
-in logical car units, and Rose and Siren use it. A sprite car's `hitShape`
+in logical car units, and Siren alone uses it. A sprite car's `hitShape`
 traces its own artwork to exclude empty corners and trailing decoration:
 `CARS.flann.hitShape` is eight points, `CARS.neela.hitShape` eighteen,
-`CARS.neela.altForm.hitShape` twenty, and Lolanthe's and Verdant's twenty-four
-each — Lolanthe's stopping short of the gold spikes trailing off its rear
-corners and the ornament above its crown, Verdant's at the root of its swept
-rear blades and clear of the side pipe. `carHit()` reads whichever
+`CARS.neela.altForm.hitShape` twenty, Lolanthe's and Verdant's twenty-four
+each and Rhosyn's thirty-two — Lolanthe's stopping short of the gold spikes
+trailing off its rear corners and the ornament above its crown, Verdant's at the
+root of its swept rear blades and clear of the side pipe, and Rhosyn's at the
+top of the diffuser blades under its tail.
+
+Rhosyn's is the one hull in the game that is not a simple convex blob. Its
+artwork has a forked nose, and the V between the two prongs is empty space a car
+can pass through rather than body, so the polygon traces it: the inner edge of
+the right prong up to its tip, across, down the outer edge, round the canard
+shoulder, in at the waist, out over the rear haunch to the widest point of the
+car, and back in to the tail — then the mirror of all of it, because the vehicle
+is symmetrical and the hull says so. `insideHitPolygon()` and
+`hitPolygonsOverlap()` already handle a concave outline correctly, so nothing in
+the contact pipeline needed changing for it. `carHit()` reads whichever
 belongs to the model `racerModel()` says the racer is wearing, rotates it with
 the vehicle and multiplies it up by that model's size out of `racerDims()` — so
 a hull always carries its own race scale, and Neela's swaps to the alternate

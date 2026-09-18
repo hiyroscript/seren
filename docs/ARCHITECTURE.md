@@ -343,8 +343,12 @@ Three layers sit on top of each other and are deliberately not the same thing:
 - `invulnerableCar` / `invulnerableMe` / `invulnerableWho` — the temporary
   Invulnerable Condition and nothing else. This is what `activeConditions` reads.
 - `noContact` — the one internal answer to "can anything reach this car?", which
-  is any of the three (finished, wrecked, invulnerable). Every contact, hazard
-  and targeting test asks this rather than reassembling it.
+  is any of four: finished, wrecked, invulnerable, or away in Aero-Glow. Every
+  contact, hazard and targeting test asks this rather than reassembling it. The
+  first three are protections — the racer is there and something is refusing to
+  let the road have it. The fourth is not: `rhosynElsewhere(who)` says there is
+  no body at that position to reach, because the body is somewhere the race does
+  not go.
 
 `activeConditions(who)` is the single derivation of which Conditions a racer has
 right now, read straight off `slowT`/`slow`, `blind`, `slipT`/`slip`, `mindT`,
@@ -353,14 +357,17 @@ of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
 `startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
-for every driver, and that lifecycle is shared by all six cars. Four cars add a
-power on top of it, and all of it is applied at the consequence or at the view
-rather than through `noContact()`: an ulting Flann, Neela or Lolanthe still has
-to physically meet a racer or a hazard for anything to happen, an ulting Verdant
-is invisible and still physically there to be run into, and a puddle still gets
-through to all four. `flannCar()`, `neelaCar()`, `lolantheCar()` and
-`verdantCar()` are the only four places in the game a racer's `car` is compared
-to a name; everything else asks one of the predicates built on them.
+for every driver, and that lifecycle is shared by all six cars. Five cars add a
+power on top of it. Four of those five are applied at the consequence or at the
+view rather than through `noContact()`: an ulting Flann, Neela or Lolanthe still
+has to physically meet a racer or a hazard for anything to happen, an ulting
+Verdant is invisible and still physically there to be run into, and a puddle
+still gets through to all four. Rhosyn's is the fifth and the exception — the
+one car-specific state `noContact()` reads, because it is the one that is about
+there being a body at all. `flannCar()`, `neelaCar()`, `lolantheCar()`,
+`verdantCar()` and `rhosynCar()` are the only five places in the game a racer's
+`car` is compared to a name; everything else asks one of the predicates built on
+them.
 
 **Flann is a ram** while `flannUltActive(who)` is true — the racer exists, its
 car is `flann`, and its ordinary `ultOn` is running.
@@ -451,18 +458,69 @@ never read it.
   cosmetic: the ultimate is not cut short, the meter is untouched, and the
   immunity to Lolanthe's aura holds right through it.
 
-`clearsSolidHazards(who)` is the one question all four powers answer: `hitWeed`
-and the rival hazard sweep in `race.js` smash the tumbleweed instead of taking
-Slow, and the falling rock and `detonate`'s blast cannot reach the car. Puddles
-are the deliberate exception for all four and still apply normally: water is not
-a solid thing to break.
+**Rhosyn goes somewhere else** while its phase is running, and this is the one
+power whose whole point is an absence. The invariant the section exists to keep:
+**Rhosyn never has a second race position.** Aero-Glow is a view and an
+isolation over the same canonical racer. Nothing in the mechanic teleports the
+racer, freezes it, captures a pose to restore it from, advances a distance
+counter of its own, or writes `G.biome`, `G.next`, `G.seam` or `G.trackT`. The
+racer's lane, lateral x, tilt, speed, metres, ranking, finish progress, seam
+crossings and biome progression are the canonical ones the shared simulation
+goes on advancing throughout.
+
+That is the whole reason the return needs no correction: the car is already
+exactly where the race has put it, in whatever biome the race has actually
+reached. Implementing it by swapping `G.biome` or by teleporting away and back
+would break precisely that — the position would have to be guessed on the way
+home, every rival's metres are measured against player one's camera and would
+move with it, and a biome swapped under the whole field changes what every other
+column is looking at.
+
+- `aeroPhase` is the state, carried by every racer like Neela's form and
+  Verdant's fade: `"off"`, `"in"`, `"glow"`, `"out"`. `aeroT` is the transition
+  clock, running only in `"in"` and `"out"`. `aeroHide` is a cosmetic 0-to-1
+  ramp, derived every frame from the phase exactly as `verdantHide` is.
+- `beginAeroGlow(who)` (from `startUlt`) sets the phase and starts the shared
+  whiteout and body flash. It reads no position and saves none, because nothing
+  is ever going to be put back on one. `beginAeroReturn(who)` (from `endUlt`)
+  starts the way home; a racer wrecked or finished has had its phase cleared
+  before `endUlt` is reached, the same order `clearNeelaState` is called in, so
+  neither of those goes through the return.
+- `tickAeroGlow(who, dt)` advances both from the ordinary update loop, so a
+  paused race pauses the departure, the void and the return. At the end of
+  `"out"` it calls `rejoinSharedRoad(who)`, which grants the existing
+  Invulnerable Condition for `INVULNERABLE_TIME` as `max(existing, 2)`. There is
+  no second shield timer and no per-hazard exception.
+- `rhosynElsewhere(who)` is the single source of truth every other system reads,
+  and the isolation is symmetric by construction: every contact test in the file
+  asks `noContact()` of both sides, so a racer nothing can reach reaches nothing.
+  `racerDetectable()` is false for it too, so no driver and no bot is shown a
+  marker or a gap reading for a car that is not on the road.
+- `aeroGlowViewActive(who)` is which world that racer's own view draws, and it
+  is deliberately not the same question: the view changes hands under full white
+  in each direction, so the car is unreachable while its driver is still looking
+  at the shared road, and still looking at the void for the moment after the
+  meter has run out.
+- The paths that tested `dead`/`finished` directly rather than asking
+  `noContact()` were audited and now ask: the player's hazards in `updateTraps`,
+  the rivals' in `updateRival`, both halves of the bubble sweep in
+  `updateBubbles`, `seekerTarget` and `markShielded`. `useItem()` refuses and
+  **keeps** the item rather than spending it into a world its owner is not in.
+
+`clearsSolidHazards(who)` is the one question those four powers answer:
+`hitWeed` and the rival hazard sweep in `race.js` smash the tumbleweed instead
+of taking Slow, and the falling rock and `detonate`'s blast cannot reach the
+car. Puddles are the deliberate exception for all four and still apply normally:
+water is not a solid thing to break. Rhosyn is deliberately not in that list and
+does not need to be: nothing reaches a car that is not on the road, which is
+stronger than a privilege over two of the hazards.
 
 `bumpTarget` returns the outcome — `none`, `moved`, `wrecked`, `rammed`,
 `stopped` or `swapped` — and `laneChangeDied()` says which of those leave no
 lane change to finish, so `move()` and `rivalLaneTo()` never go on to move a car
 that has just been wrecked on an ulting Flann or traded away by a Neela.
 
-For Rose and Siren, for Flann the moment its ultimate expires, for Neela from
+For Siren, for Flann the moment its ultimate expires, for Neela from
 the exchange onwards, and for Lolanthe throughout — its power is the aura and
 the shove, never a contact it wins — `rearEnd` and `bumpTarget` apply ordinary
 contact rules regardless of ultimate state; the short forward shove a rear-end hands its
@@ -530,16 +588,35 @@ hazards, particles, and the Conditions that sit over them.
 is the order for one view; `render()` is the loop over views, with the clip and
 translate per column.
 
-Flann, Neela, Lolanthe and Verdant use the exact `v_flann.PNG`, `v_neela.PNG`,
-`v_lolanthe.PNG` and `v_verdant.PNG` through the `sprite` branch of `drawCar()`,
-and Neela's ultimate uses `vtm_neela.PNG`. All five sheets are loaded once each
+`renderView` has exactly one branch in it, and it is the whole of Aero-Glow's
+presence in the renderer: if `aeroGlowViewActive(VOWN)` the view draws
+`drawAeroGlowWorld()` instead of the shared world's layers, and nothing else
+about the frame changes. Every other column carries on drawing the real race in
+the same frame. `drawGlassLayer()` — the vignette, the ladder and the water on
+the screen — runs after either, because those are facts about the driver rather
+than about which world that driver is being shown, and the ultimate meter
+counting Aero-Glow down is the clearest of them.
+
+`drawAeroGlowWorld()` renders the void, the perspective traces, the three-lane
+route the racer is genuinely still steering between, the drifting motes and the
+owner's own car, all from that racer's canonical travel and pace. It reads no
+clock, so the same state draws the same frame, and it reads race state and
+writes none. Aero-Glow is deliberately not a `TRACKS` entry and its name is
+drawn inside the view rather than written into `#trackName`, which is the page's
+one HUD and in split-screen belongs to whoever is not in there.
+
+Flann, Neela, Lolanthe, Verdant and Rhosyn use the exact `v_flann.PNG`,
+`v_neela.PNG`, `v_lolanthe.PNG`, `v_verdant.PNG` and `v_rhosyn.PNG` through the
+`sprite` branch of `drawCar()`,
+and Neela's ultimate uses `vtm_neela.PNG`. All six sheets are loaded once each
 into `CAR_SPRITES` — a car with an `altForm` contributes both of its sheets, so
 the alternate body is decoded and cached at boot rather than the first time an
 ultimate is pressed. On load, the shared menu canvases repaint. `FX_SPRITES` is
 the same arrangement for the two world effects, `queen_note.PNG` and
-`pion_note.PNG`, which are not bodies anybody drives. Rose and Siren retain
-their procedural Canvas models; the two that belonged to the cars Lolanthe and
-Verdant replaced are gone with them.
+`pion_note.PNG`, which are not bodies anybody drives. Siren alone retains a
+procedural Canvas model; the models that belonged to the cars Lolanthe, Verdant
+and Rhosyn replaced are gone with them, `drawCoupe()` included — it had exactly
+one user and no longer has it.
 Showroom, garage, player, bot and local columns all use this same dispatch, and
 the menus paint from `CARS` directly, so a preview is always the car and never
 the shape it turns into.
@@ -708,11 +785,23 @@ fonts, in case the first read landed before the stylesheet applied.
    and drawn by `paintSettings()`. A control is a view of it, never a second copy
    of it — the moment the DOM, the store and the running game each hold their own
    answer, two of them are wrong.
+10. **One race, however many views of it.** Aero-Glow is the case that makes
+   this explicit: a racer may be shown a different world and taken out of
+   contact, and neither of those may give it a second position, a second
+   distance, a second biome or a second clock. The canonical simulation is the
+   only simulation, so a private view is a view and never a race — which is why
+   coming out of one needs no correction, and why `G.biome` must never be
+   written with anything that is not a track.
 
-These nine are judgement calls — `tools/check.mjs` cannot check any of them. What
-it does check is the layer underneath: that the files load in the right order,
-that names do not collide, and that every selector, string and table entry the
-code reaches for actually exists.
+These ten are judgement calls, and `tools/check.mjs` can check almost none of
+them. The exception is the mechanical half of the tenth, which is specific
+enough to catch: it fails the build if any file writes an Aero-Glow value into
+`G.biome`, `G.next`, `G.seam` or `G.trackT`, if any racer grows a second
+Aero-Glow metre count, pose, origin or scroll, or if the departure reaches
+`teleportRacerToPose()` or `rebaseWorld()`. What it otherwise checks is the
+layer underneath: that the files load in the right order, that names do not
+collide, and that every selector, string and table entry the code reaches for
+actually exists.
 
 ## How to add things
 
@@ -723,7 +812,11 @@ code reaches for actually exists.
    An image model instead uses `style:"sprite"`, `sprite`, normalized
    `spriteBounds`, `exhaust` and an `exhaustStyle`; keep `accent` and `flame`
    for shared effects, and measure `spriteBounds`, the anchors and `hitShape`
-   off that PNG rather than copying another car's.
+   off that PNG rather than copying another car's. Measure them — decode the
+   alpha channel, find the visible bounds, find the centre of each real outlet,
+   trace the contact body. Coordinates that "look close" are the one thing that
+   cannot be checked automatically and the one thing every other car's comment
+   records so it can be re-derived.
 2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
 3. `render.js` — a body drawing function and a `drawCar` style branch. A sprite
    car needs neither: it goes through `drawSpriteCar` already.

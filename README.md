@@ -121,7 +121,7 @@ never inherit half a custom race by accident.
 
 Every car has the same mechanical ultimate: a **75-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
-boost, never its strength, duration or charge rate. Four of the six do something
+boost, never its strength, duration or charge rate. Five of the six do something
 else with those fifteen seconds as well.
 
 | Car | Ultimate effect |
@@ -130,7 +130,7 @@ else with those fifteen seconds as well.
 | **Neela** | 15 seconds at 2× pace, **transformed** — see below |
 | **Lolanthe** | 15 seconds at 2× pace, **Mind Controlling** — see below |
 | **Verdant** | 15 seconds at 2× pace, **invisible** — see below |
-| **Rose** | 15 seconds at 2× pace |
+| **Rhosyn** | 15 seconds at 2× pace, **in Aero-Glow** — see below |
 | **Siren** | 15 seconds at 2× pace |
 
 ### Flann's ram
@@ -257,6 +257,50 @@ to see what a person could not: an ulting Verdant is out of their targeting,
 their lane reads and their threat picture, so they can blunder into one exactly
 as you can.
 
+### Rhosyn's Aero-Glow
+
+For the whole fifteen seconds, Rhosyn's own driver is shown a different world —
+**Aero-Glow**, a black void streaked with luminous pink, with no rivals, no
+hazards, no bubbles and no scenery in it. Everybody else's road simply has no
+Rhosyn on it.
+
+The thing to understand about it is what does *not* happen. **There is never a
+second race.** Rhosyn is not teleported away, not frozen, not put on a private
+coordinate system and not given a distance counter of its own, and the track the
+race is running is never replaced. The canonical racer goes on being advanced by
+exactly the same simulation as everybody else: it steers, it covers ground at
+the same 2× pace, it crosses track seams, it changes biome, it moves up and down
+the running order and it can cross the finish line. Aero-Glow is a private view
+over that one racer, plus the fact that the shared road cannot touch it.
+
+- **Going.** The car floods white, the driver's screen flashes white, and the
+  renderer changes worlds while the screen is covered. To everybody else the
+  glowing white Rhosyn finishes its flash and is gone from the road.
+- **While it is away.** Nothing on the shared road can reach it — racers,
+  barges, Flann's ram, Neela's exchange, Verdant's defence, Lolanthe's aura,
+  tumbleweeds, meteors, puddles, oil, seekers and bubble rows all pass it by —
+  and it can reach none of them either, which is the point: Aero-Glow is not
+  somewhere to attack the field from. An item it is holding is kept rather than
+  spent. Boost, steering and the ultimate's own pace all work normally.
+- **Coming back.** The view flashes white again, the renderer changes back, and
+  Rhosyn reappears at the position the race has already carried it to — in
+  whatever track the race has reached, which may not be the one it left. There
+  is no teleport, no snap and no correction, because there is nothing to
+  correct. To everybody else it returns through the matching white flash.
+- **The two seconds.** At the moment it is genuinely back on the shared road it
+  is granted the existing **Invulnerable** Condition for **2 seconds** — the
+  same badge, the same blink and the same protection a respawn gets, taken as
+  `max(existing, 2)` so a longer protection is never shortened. There is no
+  second shield and no Rhosyn-only immunity.
+- **Standings.** It is never removed from the race, the order or the ladder. Its
+  dot stays on the line; what it loses is the edge badge that would print the
+  lane and the gap, because a driver could not see it to read them.
+- **In local play.** Per column, like everything else: one player can be in
+  Aero-Glow while the other two or three carry on racing the real world in the
+  same frame. Only that player's column flashes white and only that player's
+  column changes worlds. A bot Rhosyn has no screen, so it simply vanishes from
+  every human view while its canonical simulation carries on.
+
 ### The ultimate meter
 
 - **75 seconds** from empty to ready, for every car in the field.
@@ -269,14 +313,17 @@ as you can.
 
 ### How ultimates interact
 
-For Rose and Siren, ultimates do not change contact rules. An active racer
-simply moves at boosted pace and otherwise interacts normally: collisions,
-barges, wrecks, hazards, oil and seekers still apply. The other four change what
-a contact *does*, or who can see it, rather than whether it can happen at all —
-see above.
+For Siren, the ultimate does not change contact rules. An active racer simply
+moves at boosted pace and otherwise interacts normally: collisions, barges,
+wrecks, hazards, oil and seekers still apply. Flann, Neela, Lolanthe and Verdant
+change what a contact *does*, or who can see it, rather than whether it can
+happen at all. Rhosyn is the one that changes whether it can happen — see above.
 
 Where they meet, the priority is fixed and in this order:
 
+0. An ulting **Rhosyn** on either side: there is no contact. It is first because
+   it is not a priority at all — the other rules settle a contact between two
+   bodies, and this one says one of the two bodies is not on this road.
 1. An ulting **Verdant** and an ulting **Flann** destroy each other, both meters
    emptied, whichever of them arrived.
 2. An ulting **Verdant** and a **transformed Neela** destroy the Neela, meter
@@ -715,20 +762,28 @@ job unchanged. It verifies:
 - the Mystery Bubble reward gate is one named switch rather than a deletion, and
   the roll, the rarities, the artwork, oil, seekers and bubble rows all survive
   behind it
-- Flann's ram, Neela's exchange, Lolanthe's aura and Verdant's invisibility are
-  the game's only car-specific ultimate logic, and three sprite cars' race sizes
-  the only per-car dimensions: `flannCar()`, `neelaCar()`, `lolantheCar()` and
-  `verdantCar()` are the only places a racer is compared to a car, the
-  predicates built on them are read by the contact rules, the hazards, the bot
-  mind, the inputs and the renderer, `neelaFormActive()` is still demonstrably
-  narrower than `neelaUltActive()` (the alternate body, not the fifteen
-  seconds), `racerDetectable()` is demonstrably a question about sight rather
-  than about contact, Mind Control is set rather than added to anywhere in the
-  source, the shared charge clock, duration and pace are untouched, every one of
-  the four cars' own timings is a named constant in the tuning layer with the
-  swap guard kept to a single step, only sprite cars carry a race scale and only
-  within a measured band, and `carHit()` takes its hull and its size from the
-  same model the sprite is drawn from
+- Flann's ram, Neela's exchange, Lolanthe's aura, Verdant's invisibility and
+  Rhosyn's Aero-Glow are the game's only car-specific ultimate logic, and three
+  sprite cars' race sizes the only per-car dimensions: `flannCar()`,
+  `neelaCar()`, `lolantheCar()`, `verdantCar()` and `rhosynCar()` are the only
+  places a racer is compared to a car, the predicates built on them are read by
+  the contact rules, the hazards, the bot mind, the inputs and the renderer,
+  `neelaFormActive()` is still demonstrably narrower than `neelaUltActive()`
+  (the alternate body, not the fifteen seconds), `racerDetectable()` is
+  demonstrably a question about sight rather than about contact, Mind Control is
+  set rather than added to anywhere in the source, the shared charge clock,
+  duration and pace are untouched, every one of the five cars' own timings is a
+  named constant in the tuning layer with the swap guard kept to a single step,
+  only sprite cars carry a race scale and only within a measured band, and
+  `carHit()` takes its hull and its size from the same model the sprite is drawn
+  from
+- Aero-Glow is a view over the canonical racer rather than a second race: no
+  file writes an Aero-Glow value into `G.biome`, `G.next`, `G.seam` or
+  `G.trackT`, no file keeps an Aero-Glow metre count, pose, origin or scroll
+  beside the canonical one, the departure never reaches `teleportRacerToPose()`
+  or `rebaseWorld()`, and `noContact()` reads `rhosynElsewhere()` — the one
+  car-specific state it is allowed to know about, because it is the one that is
+  about there being a body at all
 
 Run it before you commit. It takes well under a second.
 
@@ -739,20 +794,28 @@ what it reaches, setup, simulated controllers, car turns and pause/results.
 Mystery Bubble behaviour for all six cars as player, bot and local seat, plus
 Neela's exchange, Lolanthe's aura and forced lane change and Verdant's
 directional defence in every ownership direction, the documented collision
-priority for every pair of ulting cars, and the world-position regression that
-says moving player one leaves the rest of the road exactly where it was;
-`node tools/sprite-check.mjs` covers race sizes, all four sprite cars' sheets
+priority for every pair of ulting cars, the world-position regression that says
+moving player one leaves the rest of the road exactly where it was, and
+Aero-Glow's own invariants — the phase lifecycle, the canonical position and
+biome continuing through it, the isolation in both directions against every
+contact rule, hazard, pickup and targeting system, the two seconds of
+Invulnerable granted at the frame the car is genuinely back, finishing from
+inside it, pause, a forced wreck and a restart;
+`node tools/sprite-check.mjs` covers race sizes, all five sprite cars' sheets
 and measured emitters, the ultimate fire, the transformation flash, Verdant's
-per-view opacity in one to four columns and both note effects;
+per-view opacity and Rhosyn's disappearance from every other view in one to four
+columns, and both note effects;
 `node tools/hitbox-check.mjs` covers contact geometry, including the switch
-between Neela's two measured hulls and the invariant that hiding a Verdant
-moves nothing. Browser visuals
+between Neela's two measured hulls, Rhosyn's traced hull with the empty V
+between its nose prongs, and the invariant that hiding a Verdant or sending a
+Rhosyn away moves nothing. Browser visuals
 and hardware still need separate checks; see
 [the redesign QA record](docs/MENU-REDESIGN-QA.md),
 [the ultimate record](docs/ULTIMATE-QA.md),
 [the Flann record](docs/FLANN-QA.md),
-[the Neela record](docs/NEELA-QA.md) and
-[the Lolanthe and Verdant record](docs/LOLANTHE-VERDANT-QA.md).
+[the Neela record](docs/NEELA-QA.md),
+[the Lolanthe and Verdant record](docs/LOLANTHE-VERDANT-QA.md) and
+[the Rhosyn and Aero-Glow record](docs/RHOSYN-QA.md).
 
 ## Project layout
 

@@ -107,6 +107,26 @@ const G = {
      by running into it. */
   mindT:0, mindPop:0, mindOut:0, mindSide:0,
   queenPop:0, queenOut:0, verdantHide:0, verdantRevealT:0,
+  /* ---- Rhosyn's ultimate, on the racer that is holding one -----
+     Carried by every racer for the same reason the three above are.
+
+     `aeroPhase` is the whole of Aero-Glow's state: "off", "in", "glow" or
+     "out". It is deliberately not the same question as "is Rhosyn's ultimate
+     running" - it starts a moment before the driver's view changes hands and
+     outlives the meter by the length of one white transition, which is the
+     stretch in which the car is neither in the void nor yet back on the road.
+     rhosynElsewhere() is the one reader anything outside the renderer uses.
+
+     None of it is a position. There is no second race `y`, no saved pose, no
+     entry biome and no Aero-Glow distance: the racer's lane, x, tilt, speed
+     and metres are the canonical ones the shared simulation goes on
+     advancing throughout, which is why coming back needs no correction.
+
+     `aeroT` is the transition clock, running only in "in" and "out".
+     `aeroHide` is how far out of the shared road the body has faded, 0 to 1,
+     and is cosmetic: every other view watches the car leave and arrive
+     through it, and the isolation itself is the phase and not this. */
+  aeroPhase:"off", aeroT:0, aeroHide:0,
   boostLock:false, rivals:[], stepFlash:0, parkWait:0, parkRot:0,
   cdT:0, cdStep:-1, wasCounting:false,
   mode:"endless", diff:"medium",
@@ -175,11 +195,12 @@ function laneCX(i){ return roadX + laneW*(i+0.5); }
    carW/carH above are the road's car: the size the lane, the grid and most of
    the six racers are built around, and nothing here makes them bigger. What a
    car may have is a race scale of its own - CARS.<id>.raceScale - and three of
-   the four sprite cars do, each measured off its own artwork: Flann is drawn
+   the five sprite cars do, each measured off its own artwork: Flann is drawn
    and collided a little over a tenth larger, Neela a shade under a fifth and
    Verdant a tenth, so all of them read properly against the asphalt. Lolanthe
-   already fills the box across at 1:1 and needs none, and the two procedural
-   cars are built around the shared box and have none.
+   and Rhosyn already fill the box across at 1:1 and need none - both are broad
+   against their own length - and Siren is built around the shared box and has
+   none.
 
    These two are the only readers of that number, and everything that genuinely
    needs a racer's physical body - the sprite, the hull in carHit(), the gap a
@@ -198,7 +219,8 @@ function carDims(carId){
   return { w:carW*k, h:carH*k };
 }
 /* ---- which body a racer is wearing ------------------------------
-   Five cars and a normal Neela are their own entry in CARS. A Neela in its
+   Five cars and a normal Neela are their own entry in CARS - the five sprite
+   bodies and Siren's. A Neela in its
    alternate form is the entry nested under Neela, which carries its own
    sprite, its own measured bounds, its own emitter, its own hull and its own
    size relative to the racer's box.

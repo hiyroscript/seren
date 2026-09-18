@@ -129,6 +129,9 @@ function spawnRivals(){
          reason. See G in runtime.js. */
       mindT:0, mindPop:0, mindOut:0, mindSide:0,
       queenPop:0, queenOut:0, verdantHide:0, verdantRevealT:0,
+      /* And Rhosyn's, carried by every racer for the same reason. It is a
+         phase and a fade, never a position. See G in runtime.js. */
+      aeroPhase:"off", aeroT:0, aeroHide:0,
       item:null, itemRow:-1, canT:0, useT:rand(0.6, 2.4), item:null, canT:0, useT:0,
       inDanger:false, willReact:true, reactT:0, swapT:0,
       ult:0, ultOn:false, ultT:0, ultMax:ULT_TIME,
@@ -191,6 +194,7 @@ function startRace(){
   G.ultT = 0; G.ultMax = ULT_TIME;
   clearNeelaState("me"); G.trail = [];     /* nothing of the last race's ultimate */
   clearLolantheState("me"); clearVerdantState("me");
+  clearAeroGlowState("me");                /* nor any of Aero-Glow's */
   G.mindT = 0; G.mindPop = 0; G.mindOut = 0; G.mindSide = 0;
   G.shuntT = 0; G.bumpCD = 0;
   G.slipT = 0;
@@ -336,6 +340,7 @@ function checkFinish(){
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
       clearNeelaState(R);                        /* out of play: no alternate form */
       clearVerdantState(R);                      /* nor a fade half-finished */
+      clearAeroGlowState(R);                     /* nor a void to be parked in */
       if(R.ultOn) endUlt(R);
       clearLolantheState(R);                     /* nor a note over a parked car */
       R.boosting = false;
@@ -348,6 +353,7 @@ function checkFinish(){
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
     clearNeelaState("me");                      /* out of play: no alternate form */
     clearVerdantState("me");                    /* nor a fade half-finished */
+    clearAeroGlowState("me");                   /* nor a renderer left in the void */
     if(G.ultOn) endUlt("me");
     clearLolantheState("me");                   /* nor a note over a parked car */
     G.boosting = false;
@@ -620,6 +626,11 @@ function update(dt){
   if(G.queenPop > 0) G.queenPop = Math.max(0, G.queenPop - dt);
   if(G.queenOut > 0) G.queenOut = Math.max(0, G.queenOut - dt);
   tickVerdant("me", dt);
+  /* And Rhosyn's phase, which is the one that has to be advanced from here
+     rather than from a timer of its own: a paused race pauses the departure
+     and the return with everything else, and the two seconds of protection
+     that the return grants are handed out on the frame it actually lands. */
+  tickAeroGlow("me", dt);
   updateTrail("me", dt, d);
   G.tapClock += dt;
   if(G.bumpCD > 0) G.bumpCD = Math.max(0, G.bumpCD - dt);
@@ -681,6 +692,7 @@ function updateRival(R, dt, st){
   if(R.queenPop > 0) R.queenPop = Math.max(0, R.queenPop - dt);
   if(R.queenOut > 0) R.queenOut = Math.max(0, R.queenOut - dt);
   tickVerdant(R, dt);
+  tickAeroGlow(R, dt);
   updateTrail(R, dt, G.speed*dt);
   if(R.bumpCD > 0) R.bumpCD = Math.max(0, R.bumpCD - dt);
   if(R.changeT > 0) R.changeT -= dt;
@@ -817,8 +829,10 @@ function updateRival(R, dt, st){
   R.tilt = clamp((nx - R.x)/dt/2600, -0.28, 0.28) || 0;
   R.x = nx;
 
-  /* hazards, on exactly the terms the player gets them */
-  if(!invulnerableCar(R) && !finishedCar(R)){
+  /* hazards, on exactly the terms the player gets them - which now includes
+     not being on this road at all. noContact() is the one answer to that, and
+     it adds nothing else here: a wrecked rival has already returned above. */
+  if(!noContact(R)){
     const rc = carHit(R);
     const bit = 2 << G.rivals.indexOf(R);
     for(let i=G.traps.length-1;i>=0;i--){

@@ -23,12 +23,19 @@ function invulnerableCar(R){ return !!R && R.invuln > 0; }
 function invulnerableWho(who){ return who === "me" ? invulnerableMe() : invulnerableCar(who); }
 
 /* The one internal answer to "can anything reach this car at all?". Temporary
-   invulnerability, being wrecked and having finished all say no, and every
-   contact, hazard and targeting test downstream asks this rather than
-   reassembling the three for itself. */
+   invulnerability, being wrecked, having finished and having left the shared
+   road for Aero-Glow all say no, and every contact, hazard and targeting test
+   downstream asks this rather than reassembling the four for itself.
+
+   The first three are protections: the racer is there and something is
+   refusing to let the road have it. The fourth is not a protection at all -
+   see rhosynElsewhere() below. There is no body at that position to reach,
+   because the body is somewhere the race does not go. */
 function noContact(who){
-  if(who === "me") return finishedMe() || G.dead > 0 || invulnerableMe();
-  return !who || finishedCar(who) || who.dead > 0 || invulnerableCar(who);
+  if(who === "me")
+    return finishedMe() || G.dead > 0 || invulnerableMe() || rhosynElsewhere("me");
+  return !who || finishedCar(who) || who.dead > 0 || invulnerableCar(who) ||
+         rhosynElsewhere(who);
 }
 /* Protection is independent of the ultimate speed multiplier. */
 function safeCar(R){ return !R || noContact(R); }
@@ -142,24 +149,31 @@ function rearContact(who){
   return front;
 }
 
-/* ---------------- the four car-specific ultimates ----------------
+/* ---------------- the five car-specific ultimates ----------------
    Every car runs the same ultimate: seventy-five seconds to charge, fifteen
    seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
-   below is shared by all six. Four of them add something on top of it, and
-   only while that shared lifecycle is running.
+   below is shared by all six. Five of them add something on top of it, and
+   only while that shared lifecycle is running. Siren is the one left with the
+   plain fifteen seconds and nothing else.
 
    These are the predicates that say which car is which, and they are the only
    place in the game a racer's `car` is compared to a name. Everything else -
    contact, hazards, the hull, the sprite - asks one of the questions built on
    them, so there is no second copy of the rule anywhere to drift out of step.
 
-   None of it is the Invulnerable Condition and none of it goes through
-   noContact(): an ulting Flann still has to physically meet a racer or a
+   Four of the five are collision priority, applied at the consequence: none of
+   them is the Invulnerable Condition and none of them goes through
+   noContact(). An ulting Flann still has to physically meet a racer or a
    hazard in order to break it, an ulting Neela still has to physically meet a
    racer in order to trade places with it, an ulting Verdant is invisible but
    still physically there to be run into, and the puddle must still get
-   through to all of them. What they are is collision priority, applied at the
-   consequence. */
+   through to all of them.
+
+   Rhosyn's is the one that is not. It is not a protection either: a racer in
+   Aero-Glow has left the shared road altogether, so there is nothing at its
+   canonical position for the road to meet in either direction - which is why
+   it is the one car-specific state that noContact() reads. See
+   rhosynElsewhere() below. */
 function flannCar(who){
   const o = who === "me" ? G : who;
   return !!o && o.car === "flann";
@@ -175,6 +189,10 @@ function lolantheCar(who){
 function verdantCar(who){
   const o = who === "me" ? G : who;
   return !!o && o.car === "verdant";
+}
+function rhosynCar(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.car === "rhosyn";
 }
 /* Flann catches fire and becomes a ram, so solid things it hits come apart
    instead of it - and so do racers. */
@@ -216,6 +234,52 @@ function lolantheUltActive(who){
 function verdantUltActive(who){
   const o = who === "me" ? G : who;
   return verdantCar(who) && !!o.ultOn;
+}
+/* And Rhosyn's. The ultimate running is what the meter, the pace and the HUD
+   read; where the driver is being shown while it runs is the phase below, and
+   the two are deliberately different questions. The phase outlives the
+   ultimate by the length of one white transition on the way back out, which is
+   exactly the stretch in which the car is neither in Aero-Glow nor yet back on
+   the road. */
+function rhosynUltActive(who){
+  const o = who === "me" ? G : who;
+  return rhosynCar(who) && !!o.ultOn;
+}
+/* ---- the one question the rest of the game asks about Aero-Glow ----
+   Whether this racer has left the shared road. True from the instant the
+   ultimate is fired, through the fifteen seconds, and until the return
+   transition has actually put the car back down - so there is exactly one
+   answer, and noContact(), the hazards, the pickups, the targeting and the
+   renderer all read it rather than each deciding for themselves.
+
+   It is the whole of the isolation and it is symmetric by construction: a
+   racer that cannot be reached also reaches nobody, because every contact
+   test in this file asks noContact() of both sides.
+
+   It says nothing at all about where the racer is. Its lane, its lateral x,
+   its distance, its speed, its ranking, its finish progress and the biome it
+   is driving through are the canonical ones the shared simulation is still
+   advancing, exactly as they would be without the ultimate. Aero-Glow is a
+   view and an isolation over that one racer, never a second race. */
+function rhosynElsewhere(who){
+  const o = who === "me" ? G : who;
+  return !!o && rhosynCar(who) && !!o.aeroPhase && o.aeroPhase !== "off";
+}
+/* Whether this racer's own view should be drawing Aero-Glow instead of the
+   shared world. It changes hands under full white in both directions, which is
+   why it is not simply rhosynElsewhere(): the car is already unreachable while
+   its driver is still looking at the shared road, and still looking at the
+   void for the moment after the meter has run out. */
+function aeroGlowViewActive(who){
+  const o = who === "me" ? G : who;
+  return !!o && rhosynCar(who) && (o.aeroPhase === "glow" || o.aeroPhase === "out");
+}
+/* How far out of the shared road the body is, 0 to 1, for the renderer to
+   read. Cosmetic throughout - the isolation above is the rule, and this is
+   only what the rest of the field watches it happen through. */
+function aeroHideK(who){
+  const o = who === "me" ? G : who;
+  return o ? clamp(o.aeroHide || 0, 0, 1) : 0;
 }
 /* Whether this racer's ultimate lets it clear Seren's solid road hazards - the
    tumbleweed and the meteor - rather than being stopped by them. Water is not
@@ -327,7 +391,7 @@ function teleportRacerToPose(who, pose){
    anybody else. */
 function startWhiteout(who){
   const o = who === "me" ? G : who;
-  if(o) o.whiteT = NEELA_WHITEOUT;
+  if(o) o.whiteT = WHITEOUT_TIME;
 }
 function whiteoutActive(who){
   const o = who === "me" ? G : who;
@@ -339,13 +403,13 @@ function whiteoutActive(who){
    hitbox and no race state. */
 function startMorph(who){
   const o = who === "me" ? G : who;
-  if(o) o.morphT = NEELA_MORPH;
+  if(o) o.morphT = MORPH_TIME;
 }
 /* How white that car is right now, 0 to 1, for the renderer to read. */
 function morphFlash(who){
   const o = who === "me" ? G : who;
   if(!o || !(o.morphT > 0)) return 0;
-  return clamp(o.morphT/NEELA_MORPH, 0, 1);
+  return clamp(o.morphT/MORPH_TIME, 0, 1);
 }
 
 /* ---- the alternate form ----
@@ -663,7 +727,15 @@ function verdantHideK(who){
    and nobody else's - and in a single-view game the one view is player one's,
    exactly as it always was. Visual only: it makes Verdant no easier and no
    harder to hit, and no easier to find. */
+/* Two cars answer this with something other than 1, and they answer it for
+   opposite reasons. Verdant is hidden and completely present; Rhosyn is
+   absent, and the fade is only the rest of the field watching it go. Rhosyn's
+   is not per-viewer: a car that has left the road has left everybody's road,
+   and its own driver is being drawn by drawAeroGlowWorld() rather than by the
+   shared renderer, so there is no owner's copy of it in a normal view to keep
+   half of. */
 function racerViewAlpha(who, viewer){
+  if(rhosynCar(who)) return 1 - aeroHideK(who);
   if(!verdantCar(who)) return 1;
   const k = verdantHideK(who);
   if(k <= 0) return 1;
@@ -699,15 +771,120 @@ function clearVerdantState(who){
   o.verdantHide = 0; o.verdantRevealT = 0;
 }
 
+/* ================================================================
+   RHOSYN'S ULTIMATE  -  AERO-GLOW
+   ================================================================
+   Fifteen seconds in which Rhosyn's own driver is shown a different world -
+   a black and pink void with nobody else in it - while the one canonical race
+   underneath carries on exactly as it would have done.
+
+   The invariant this whole section exists to keep is that there is never a
+   second race. Nothing here teleports the racer, freezes it, saves a pose to
+   put it back on, advances a distance counter of its own or touches G.biome.
+   The racer goes on being updated by the same shared simulation as everybody
+   else: it steers, it covers ground at the shared ultimate's double pace, it
+   crosses seams, it changes biome, it moves up and down the order and it can
+   cross the finish line. Two things and only two things change while the phase
+   below is running - which world its own view draws, and whether the shared
+   road has a body at its position to interact with.
+
+   Which is why, when the fifteen seconds are up, there is nothing to correct:
+   the car is already exactly where the race put it, in whatever biome the race
+   has actually reached, and the renderer simply starts drawing that again.
+
+   The phase is a small explicit state carried by every racer, exactly as
+   Neela's, Lolanthe's and Verdant's are, and it is advanced from the ordinary
+   update loop so a paused race pauses it:
+
+     "off"    on the shared road, like anybody else
+     "in"     leaving: unreachable already, still drawn on the shared road
+     "glow"   away: its own view is Aero-Glow, every other view has no car
+     "out"    returning: still away, the shared road is fading back in
+
+   `aeroT` is the transition clock and runs only in "in" and "out". `aeroHide`
+   is the cosmetic fade the rest of the field watches it leave and arrive
+   through, derived every frame from the phase exactly as Verdant's is. */
+
+/* Firing it. The shared lifecycle in startUlt() is already running by here;
+   this is the departure and nothing else. Nothing about where the racer is is
+   read, saved or changed - there is deliberately no pose taken, because
+   nothing is ever going to be put back on one. */
+function beginAeroGlow(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.aeroPhase = "in";
+  o.aeroT = AERO_SHIFT;
+  startWhiteout(who);                          /* the owner's screen */
+  startMorph(who);                             /* and the car itself, for everybody */
+}
+/* The meter ran out. The return is started here rather than in the phase tick
+   so it is the end of the ultimate that begins it, which is what keeps the two
+   clocks from drifting: the fifteen seconds are the shared ones and this is
+   what happens when they are spent. A racer that was wrecked or has finished
+   has had its phase cleared before endUlt() is reached, so this does not fire
+   for it - the same order clearNeelaState() is called in. */
+function beginAeroReturn(who){
+  const o = who === "me" ? G : who;
+  if(!o || !rhosynElsewhere(who) || o.aeroPhase === "out") return;
+  o.aeroPhase = "out";
+  o.aeroT = AERO_SHIFT;
+  startWhiteout(who);
+  startMorph(who);
+}
+/* Actually back on the shared road, which is the only moment the two seconds
+   of protection may start. It is the existing Invulnerable Condition and
+   nothing else - no second shield, no Rhosyn-only immunity and no hazard-by-
+   hazard exception - and it is taken as a maximum, so a longer protection the
+   racer already had is never shortened to two seconds by coming home. */
+function rejoinSharedRoad(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.invuln = Math.max(o.invuln || 0, INVULNERABLE_TIME);
+}
+/* One racer's phase, one frame. The transition clock first, then the fade,
+   which is derived from the phase rather than stored alongside it - so the
+   only thing that ever writes aeroHide is this line, and a frame drawn twice
+   draws the same frame. */
+function tickAeroGlow(who, dt){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  if(o.aeroPhase === "in" || o.aeroPhase === "out"){
+    o.aeroT = Math.max(0, (o.aeroT || 0) - dt);
+    if(o.aeroT === 0){
+      if(o.aeroPhase === "in") o.aeroPhase = "glow";
+      else { o.aeroPhase = "off"; rejoinSharedRoad(who); }
+    }
+  }
+  const want = (o.aeroPhase === "in" || o.aeroPhase === "glow") ? 1 : 0;
+  const step = AERO_FADE > 0 ? dt/AERO_FADE : 1;
+  const k = o.aeroHide || 0;
+  o.aeroHide = want > k ? Math.min(want, k + step) : Math.max(want, k - step);
+}
+/* Between races, on a wreck and at the flag: the car is put straight back on
+   the shared road with no transition and no protection, because none of those
+   is a return from Aero-Glow. Called before the ultimate is ended in every
+   one of those cases, so endUlt() finds no phase left to send home - and it is
+   what stops a renderer being left in the void after the race has ended. */
+function clearAeroGlowState(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.aeroPhase = "off"; o.aeroT = 0; o.aeroHide = 0;
+}
+
 /* ---- what a driver can actually see ----
    Physically touchable and visually detectable are two different questions,
-   and an invisible Verdant is the one racer they disagree about. Contact,
-   hazards and the hull go on asking noContact(); anything that is a driver
-   reading the road - a bot picking a target, covering a lane or judging what
-   is in the one beside it - asks this instead. A bot may still run into what
-   it cannot see, exactly as a person would. */
+   and two racers disagree about them in opposite directions. An ulting Verdant
+   is present and invisible; a Rhosyn in Aero-Glow is neither there nor to be
+   seen, and is here because a driver must not be shown a marker, a badge or a
+   gap reading for a car that has left the road.
+
+   Contact, hazards and the hull go on asking noContact(); anything that is a
+   driver reading the road - a bot picking a target, covering a lane or judging
+   what is in the one beside it - asks this instead. A bot may still run into
+   what it cannot see, exactly as a person would; there is simply nothing to
+   run into where Rhosyn is concerned. */
 function racerDetectable(who){
-  return !verdantUltActive(who);
+  return !verdantUltActive(who) && !rhosynElsewhere(who);
 }
 /* carAt(), but only for cars a driver could actually see. */
 function carSeenAt(lane, y, skip){
@@ -974,10 +1151,12 @@ function startUlt(who){
   ultBurst(ultOwnerCar(who), at.x, at.y);
   /* The shared lifecycle is running by here; this is only what each of the
      cars adds on top of it. Neela's pose is the car's from a moment ago;
-     Lolanthe's note is a pop-in and nothing else. Verdant needs nothing: its
-     fade is derived from the ultimate every frame rather than started here. */
+     Lolanthe's note is a pop-in and nothing else. Rhosyn starts leaving the
+     shared road. Verdant needs nothing: its fade is derived from the ultimate
+     every frame rather than started here. */
   if(neelaCar(who)) beginNeelaForm(who);
   if(lolantheCar(who)){ o.queenPop = QUEEN_POP; o.queenOut = 0; }
+  if(rhosynCar(who)) beginAeroGlow(who);
 }
 function endUlt(who){
   const o = who === "me" ? G : who;
@@ -992,6 +1171,12 @@ function endUlt(who){
      leaves one popping out over a car that is no longer there. */
   if(lolantheCar(who)) o.queenOut = QUEEN_POP;
   o.queenPop = 0;
+  /* Coming out of Aero-Glow because the meter ran out is the return, and gets
+     the white transition and, at the end of it, the two seconds of protection.
+     Coming out of it because the car was wrecked or has crossed the line is
+     not, and those callers have already cleared the phase before getting here,
+     so there is nothing left for this to send home. */
+  if(rhosynCar(who)) beginAeroReturn(who);
   o.ultOn = false; o.ultT = 0; o.ultMax = ULT_TIME;
   o.ult = 0;
 }
@@ -1059,6 +1244,7 @@ function wreckRival(R, by, force){
   R.dead = DEAD_TIME;
   clearNeelaState(R);                          /* no alternate form on a wreck */
   clearVerdantState(R);                        /* nor a ghost dissolving through the wreck */
+  clearAeroGlowState(R);                       /* nor a void to be wrecked inside */
   if(R.ultOn) endUlt(R);                       /* a running ultimate is lost outright */
   clearLolantheState(R);                       /* and no note popping out over it */
   /* The meter itself survives, exactly as the player's does: destroyCar takes
@@ -1206,8 +1392,10 @@ function updateBubbles(dt, d, st){
     for(let l=0;l<3;l++){
       if(row.gone & (1 << l)) continue;                     /* this one is already gone */
       const bx = laneCX(l), by = row.y + Math.sin(G.scroll*0.01 + l*2 + row.s*6)*6;
-      /* you */
-      if(st === "running" && G.dead <= 0 && G.finished === null){
+      /* you - unless you are not on this road at all. A racer away in
+         Aero-Glow cannot see the row and does not sweep it up, so what it
+         leaves behind is still there for whoever does reach it. */
+      if(st === "running" && G.dead <= 0 && G.finished === null && !rhosynElsewhere("me")){
         const p = nearestOnCar(c, bx, by);
         const dx = p.x - bx, dy = p.y - by;
         if(dx*dx + dy*dy <= br2){
@@ -1219,7 +1407,7 @@ function updateBubbles(dt, d, st){
       /* and everyone else */
       for(let n=0;n<G.rivals.length;n++){
         const R = G.rivals[n];
-        if(R.dead > 0 || R.finished !== null) continue;
+        if(R.dead > 0 || R.finished !== null || rhosynElsewhere(R)) continue;
         const rc = carHit(R);
         const p2 = nearestOnCar(rc, bx, by);
         const ex = p2.x - bx, ey = p2.y - by;
@@ -1279,6 +1467,10 @@ function useItem(who){
      branch below, the command is refused rather than the item being quietly
      spent or dropped on the way. */
   if(controlsLocked(who)) return false;
+  /* Nor can a driver that is not on this road: an item used out of Aero-Glow
+     would reach into a race that cannot reach back. Refused here, ahead of
+     every branch below, so the item is kept rather than spent. */
+  if(rhosynElsewhere(who)) return false;
   /* Defence in depth for the reward gate above: with Mystery rewards off, a
      Can, an Oil or a Seeker must not fire even if one somehow reached a holder
      - a saved race, a console poke, a future code path. It is dropped rather
@@ -1323,11 +1515,15 @@ function useItem(who){
 
 /* the seeker: one target, the leader, and nothing survives the trip */
 function seekerTarget(owner){
-  const all = [{ me:true, obj:null, m:G.meters, out:G.dead > 0 || finishedMe() }].concat(
+  const all = [{ me:true, obj:null, m:G.meters,
+                 out:G.dead > 0 || finishedMe() || rhosynElsewhere("me") }].concat(
     G.rivals.map(function(R){ return { me:false, obj:R, m:metersOf(R),
-                                       out:R.dead > 0 || finishedCar(R) }; }));
+                                       out:R.dead > 0 || finishedCar(R) ||
+                                           rhosynElsewhere(R) }; }));
   /* A finisher is off the target list of every offensive system, this one
-     included - it is out of play, and nothing may touch its result. */
+     included - it is out of play, and nothing may touch its result. A racer
+     away in Aero-Glow is off it for the opposite reason: there is no body at
+     that position to aim a missile at. */
   const others = all.filter(function(a){
     return (owner === "me" ? !a.me : a.obj !== owner) && !a.out;
   });
@@ -1378,9 +1574,19 @@ function markPos(mark){
 }
 /* A seeker waits out temporary invulnerability, but a racer that has crossed
    the line is gone for good - so the missile loses that mark harmlessly rather
-   than circling a finisher for the rest of its life. */
+   than circling a finisher for the rest of its life.
+
+   A mark that leaves for Aero-Glow mid-flight is waited out on exactly the
+   terms invulnerability is: the missile hangs back until there is something at
+   that position again. It cannot reach it in the meantime either way - the
+   contact sweep below asks noContact() - but hanging back is what stops a
+   seeker riding the whole fifteen seconds nose-to-tail with a car nobody can
+   see. */
 function markFinished(mark){ return mark === "me" ? finishedMe() : finishedCar(mark); }
-function markShielded(mark){ return mark === "me" ? invulnerableMe() : invulnerableCar(mark); }
+function markShielded(mark){
+  const shielded = mark === "me" ? invulnerableMe() : invulnerableCar(mark);
+  return shielded || rhosynElsewhere(mark);
+}
 
 function updateMissiles(dt, d){
   for(let i=G.missiles.length-1;i>=0;i--){
@@ -1706,7 +1912,11 @@ function nearestOnCar(c, px, py){
 }
 
 function updateTraps(dt, d, st){
-  const racing = st === "running" && G.dead <= 0;
+  /* A racer that has left the shared road for Aero-Glow is not on it to be
+     hit, and a rock must not detonate because a car that is not there passed
+     under it - so the departure is part of "is this car racing on this road
+     right now?" rather than an extra clause bolted on to the damage test. */
+  const racing = st === "running" && G.dead <= 0 && !rhosynElsewhere("me");
   const live = racing && !invulnerableMe() && !finishedMe();
   const c = carHit();
   for(let i=G.traps.length-1;i>=0;i--){
@@ -1834,6 +2044,7 @@ function clearMyUlt(){
 function destroyCar(by){
   clearNeelaState("me");                       /* no alternate form on a wreck */
   clearVerdantState("me");                     /* nor a ghost dissolving through the wreck */
+  clearAeroGlowState("me");                    /* nor a void to be wrecked inside */
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
   clearLolantheState("me");                    /* and no note popping out over it */
   clearDebuffs("me");

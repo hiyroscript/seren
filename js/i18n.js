@@ -86,8 +86,17 @@ const STR = {
   verdant:      {en:"Verdant",                     fr:"Verdant"},
   verdantUlt: {en:"Fifteen seconds at double pace, and invisible: your opponents cannot see it, though it is still physically on the road and still in the race. Any racer that crashes into Verdant is destroyed on the spot, and Verdant shows itself for a split second as it happens. Verdant wins nothing by running into anybody — the defence only works one way. Its own driver still sees it, at half opacity. It smashes straight through tumbleweeds and meteors for the whole fifteen. Puddles still get you.",
               fr:"Quinze secondes à double allure, et invisible : vos adversaires ne la voient plus, alors qu'elle est toujours physiquement sur la route et toujours en course. Tout concurrent qui la percute est détruit sur place, et Verdant se révèle un très bref instant. Verdant ne gagne rien à percuter quelqu'un — la défense ne joue que dans un sens. Son propre pilote la voit encore, à demi-opacité. Elle fracasse virevoltants et météores pendant les quinze secondes. Les flaques vous atteignent toujours."},
-  rose:         {en:"Rose",                        fr:"Rose"},
-  roseUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
+  /* And the fifth. Fifteen seconds somewhere else: the description has to make
+     plain that the race carries on underneath without it, that nothing on the
+     road can reach it while it is gone, and that where it comes back is
+     wherever it had got to by then rather than where it left. */
+  rhosyn:       {en:"Rhosyn",                      fr:"Rhosyn"},
+  rhosynUlt: {en:"Fifteen seconds at double pace, spent in Aero-Glow: a black and pink void only Rhosyn's own driver sees. The race carries on without it — Rhosyn keeps covering ground at the same double pace, keeps steering, keeps crossing into new tracks and keeps its place in the order — but nothing on the road can touch it and it can touch nothing. When the fifteen seconds are up it reappears exactly where it had got to, in whatever track the race has reached by then, and is Invulnerable for two seconds.",
+             fr:"Quinze secondes \u00e0 double allure, pass\u00e9es dans Aero-Glow : un vide noir et rose que seul le pilote de Rhosyn voit. La course continue sans elle \u2014 Rhosyn avale toujours la route \u00e0 la m\u00eame double allure, continue de se diriger, de passer d'un circuit \u00e0 l'autre et de tenir son rang \u2014 mais rien sur la route ne peut l'atteindre et elle ne peut atteindre personne. Les quinze secondes \u00e9coul\u00e9es, elle reparait exactement o\u00f9 elle en \u00e9tait rendue, sur le circuit que la course a atteint entre-temps, et reste Invuln\u00e9rable deux secondes."},
+  /* The private world's own name, drawn inside the view it belongs to. It is
+     deliberately not a TRACKS entry: Aero-Glow is never a track the race is
+     on, so it has no place in the track list the garage and the HUD read. */
+  aeroGlow:     {en:"Aero-Glow",                   fr:"Aero-Glow"},
   siren:        {en:"Siren",                       fr:"Siren"},
   sirenUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
   /* ---- conditions ----
