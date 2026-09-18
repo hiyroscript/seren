@@ -146,7 +146,7 @@ $("#carFlann").addEventListener("click", function(){ pickCar("flann"); });
 $("#carNeela").addEventListener("click", function(){ pickCar("neela"); });
 $("#carLolanthe").addEventListener("click", function(){ pickCar("lolanthe"); });
 $("#carVerdant").addEventListener("click", function(){ pickCar("verdant"); });
-$("#carRose").addEventListener("click", function(){ pickCar("rose"); });
+$("#carRhosyn").addEventListener("click", function(){ pickCar("rhosyn"); });
 $("#carSiren").addEventListener("click", function(){ pickCar("siren"); });
 $("#btnGarage").addEventListener("click", function(){ garageTab = "cars"; setTab(); show("garage"); });
 $("#btnCloseGarage").addEventListener("click", function(){ show("home"); });

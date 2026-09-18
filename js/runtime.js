@@ -107,6 +107,26 @@ const G = {
      by running into it. */
   mindT:0, mindPop:0, mindOut:0, mindSide:0,
   queenPop:0, queenOut:0, verdantHide:0, verdantRevealT:0,
+  /* ---- Rhosyn's ultimate, on the racer that is holding one -----
+     Carried by every racer for the same reason the three above are.
+
+     `aeroPhase` is the whole of Aero-Glow's state: "off", "in", "glow" or
+     "out". It is deliberately not the same question as "is Rhosyn's ultimate
+     running" - it starts a moment before the driver's view changes hands and
+     outlives the meter by the length of one white transition, which is the
+     stretch in which the car is neither in the void nor yet back on the road.
+     rhosynElsewhere() is the one reader anything outside the renderer uses.
+
+     None of it is a position. There is no second race `y`, no saved pose, no
+     entry biome and no Aero-Glow distance: the racer's lane, x, tilt, speed
+     and metres are the canonical ones the shared simulation goes on
+     advancing throughout, which is why coming back needs no correction.
+
+     `aeroT` is the transition clock, running only in "in" and "out".
+     `aeroHide` is how far out of the shared road the body has faded, 0 to 1,
+     and is cosmetic: every other view watches the car leave and arrive
+     through it, and the isolation itself is the phase and not this. */
+  aeroPhase:"off", aeroT:0, aeroHide:0,
   boostLock:false, rivals:[], stepFlash:0, parkWait:0, parkRot:0,
   cdT:0, cdStep:-1, wasCounting:false,
   mode:"endless", diff:"medium",

@@ -456,10 +456,16 @@ head("Mystery Bubble rewards");
   /* Both doors are gated: the one that grants an item and the one that spends
      it. The second is defence in depth against state that predates the gate. */
   const mech = strip(sources.mechanics || "");
+  /* The body of the function itself, rather than a fixed slice of the file
+     after it: a guard added to useItem() for an unrelated reason must not be
+     able to push the gate out of a window and quietly pass this. Top-level
+     functions in js/mechanics.js all start in column one, so the next one is
+     where this one ends. */
   const gated = (fn) => {
     const at = mech.indexOf(`function ${fn}(`);
     if (at < 0) return null;
-    return mech.slice(at, at + 900).includes("MYSTERY_ITEMS_ENABLED");
+    const next = mech.indexOf("\nfunction ", at + 1);
+    return mech.slice(at, next < 0 ? mech.length : next).includes("MYSTERY_ITEMS_ENABLED");
   };
   for (const fn of ["takeBubble", "useItem"]) {
     const g = gated(fn);
@@ -510,7 +516,16 @@ head("The car-specific ultimates and race sizes");
                          the one place a driver's eyes differ from a hitbox. */
                       "lolantheCar", "lolantheUltActive", "verdantCar",
                       "verdantUltActive", "controlsLocked", "racerDetectable",
-                      "specialContact"];
+                      "specialContact",
+                      /* And Rhosyn's, which are the odd ones out: the other
+                         four decide who loses a contact, and these say whether
+                         there is a body on the shared road to have one at all.
+                         rhosynElsewhere() is the single source of truth every
+                         other system reads; aeroGlowViewActive() is which
+                         world that racer's own view draws, which changes hands
+                         a moment later in each direction. */
+                      "rhosynCar", "rhosynUltActive", "rhosynElsewhere",
+                      "aeroGlowViewActive", "aeroHideK"];
   const gone = predicates.filter((n) => !new RegExp(`^function ${n}\\(`, "m").test(mech));
   gone.length
     ? gone.forEach((n) => fail(`${n}() is not declared in js/mechanics.js`))
@@ -528,25 +543,27 @@ head("The car-specific ultimates and race sizes");
   const adhoc = [];
   for (const n of ORDER) {
     if (!sources[n]) continue;
-    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant)["']/g)) {
+    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant|rhosyn)["']/g)) {
       const before = sources[n].slice(0, m.index);
       const inPredicate =
-        /function (flannCar|neelaCar|lolantheCar|verdantCar)\([^)]*\)\s*\{[^}]*$/.test(before);
+        /function (flannCar|neelaCar|lolantheCar|verdantCar|rhosynCar)\([^)]*\)\s*\{[^}]*$/.test(before);
       if (!inPredicate) adhoc.push(`js/${n}.js`);
     }
   }
   adhoc.length
     ? [...new Set(adhoc)].forEach((f) => fail(`${f} names a car itself instead of asking one of the identity predicates`))
-    : pass("flannCar(), neelaCar(), lolantheCar() and verdantCar() are the only places a racer is named");
+    : pass("flannCar(), neelaCar(), lolantheCar(), verdantCar() and rhosynCar() are the only places a racer is named");
   /* And they are genuinely read where the powers live: the contact rules and
      the player's hazards in mechanics, the rivals' hazards in race, the fire
      and the alternate body in render. A predicate nobody asks is a power
      nobody has. */
   const asks = { mechanics: ["flannUltActive(", "neelaCanSwap(", "clearsSolidHazards(",
-                             "verdantUltActive(", "lolantheUltActive(", "controlsLocked("],
-                 race: ["clearsSolidHazards(", "controlsLocked(", "lolantheAuras(", "tickMindControl("],
+                             "verdantUltActive(", "lolantheUltActive(", "controlsLocked(",
+                             "rhosynElsewhere("],
+                 race: ["clearsSolidHazards(", "controlsLocked(", "lolantheAuras(",
+                        "tickMindControl(", "tickAeroGlow(", "clearAeroGlowState("],
                  render: ["flannUltActive(", "racerModel(", "racerViewAlpha(",
-                          "lolantheUltActive("],
+                          "lolantheUltActive(", "aeroGlowViewActive("],
                  ai: ["racerDetectable(", "lolantheCar(", "verdantCar("],
                  input: ["controlsLocked("],
                  hud: ["racerDetectable("] };
@@ -565,7 +582,7 @@ head("The car-specific ultimates and race sizes");
   /* Neela's own numbers exist and are one named constant each rather than
      magic numbers scattered through the mechanic. */
   const data = strip(sources.data || "");
-  for (const k of ["NEELA_WHITEOUT", "NEELA_MORPH", "NEELA_SWAP_GUARD",
+  for (const k of ["WHITEOUT_TIME", "MORPH_TIME", "NEELA_SWAP_GUARD",
                    "NEELA_TRAIL_LIFE", "NEELA_TRAIL_GAP", "NEELA_TRAIL_MAX"]) {
     new RegExp(`const\\s+${k}\\s*=`).test(data)
       ? pass(`${k} is a named constant in js/data.js`)
@@ -595,6 +612,41 @@ head("The car-specific ultimates and race sizes");
   /o\.mindT = MIND_CONTROL_TIME;/.test(strip(sources.mechanics || ""))
     ? pass("Mind Control is set to MIND_CONTROL_TIME, never added to")
     : fail("applyMindControl() no longer sets mindT to MIND_CONTROL_TIME");
+  /* Rhosyn's own numbers, on the same terms, and both derived from the shared
+     white transition rather than invented beside it. */
+  for (const k of ["AERO_SHIFT", "AERO_FADE"]) {
+    new RegExp(`const\\s+${k}\\s*=`).test(data)
+      ? pass(`${k} is a named constant in js/data.js`)
+      : fail(`${k} is not declared in js/data.js`);
+  }
+  /* Aero-Glow is a view over the one race, never a second one. Nothing may
+     write a track key that is not a track, teleport a racer into or out of it,
+     or keep a race position of its own beside the canonical one. */
+  {
+    const bad = [];
+    for (const n of ORDER) {
+      const src = strip(sources[n] || "");
+      if (/G\.(biome|next|seam|trackT)\s*=\s*["']?aero/i.test(src))
+        bad.push(`js/${n}.js makes Aero-Glow a track`);
+      if (/aero\w*(Meters|Pose|Origin|Biome|Scroll|Dist)\s*[=:]/i.test(src))
+        bad.push(`js/${n}.js keeps a second race position for Aero-Glow`);
+    }
+    /* And the one function that could put a racer somewhere is never reached
+       from the mechanic that sends it away. */
+    const at = mech.indexOf("function beginAeroGlow(");
+    const end = mech.indexOf("function clearAeroGlowState(");
+    if (at >= 0 && end > at && /teleportRacerToPose|rebaseWorld/.test(mech.slice(at, end)))
+      bad.push("the Aero-Glow lifecycle teleports the racer");
+    bad.length
+      ? bad.forEach((m) => fail(m))
+      : pass("Aero-Glow is a view over the canonical racer, not a second race");
+  }
+  /* And it is the one car-specific state noContact() reads, because it is the
+     one that is about there being a body at all rather than about who wins a
+     contact between two of them. */
+  /function noContact\([^)]*\)\s*\{[^}]*rhosynElsewhere/.test(mech)
+    ? pass("noContact() reads the one state that says the body has left the road")
+    : fail("noContact() no longer knows about Aero-Glow");
   /* Verdant is hidden, never removed: nothing in the mechanic may reach for
      the one flag that would take it out of contact altogether. */
   /function verdantUltActive\([^)]*\)\s*\{[^}]*ultOn/.test(strip(sources.mechanics || ""))

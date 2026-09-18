@@ -178,10 +178,47 @@ const CARS = {
               [-0.361,-0.215],[-0.280,-0.313],[-0.139,-0.410],[-0.063,-0.457]],
     flame:["#6BC46B","#E4FFD9"]
   },
-  rose: {
-    key:"rose", style:"coupe", accent:"#FF7ACF",
-    body:"#7B3FA8", dark:"#2A1038", glass:"#FFB6E6", trim:"#FF7ACF",
-    flame:["#FF7ACF","#FFD9F2"]
+  /* ---- Rhosyn -----------------------------------------------------
+     The fifth sprite car, and the fifth ultimate that does more than run
+     fast. Its geometry is measured off v_rhosyn.PNG and off nothing else.
+
+     v_rhosyn.PNG is 1024x1536 with the body inside (75,33)-(948,1437), so the
+     visible artwork is 874 x 1405: the broadest car on the road against its
+     own length, broader even than Lolanthe. Sized into the shared car box it
+     is the width that runs out first rather than the height - the body fills
+     the box across and 86% of it down - so it already reads as a full car in
+     its lane and carries no race scale at all, for the same reason Lolanthe
+     carries none.
+
+     The two exhaust anchors are the centres of the measured stadium outlets
+     in the rear valance, (447,1320)-(500,1344) and (525,1322)-(577,1346).
+     They come out 39px either side of the sprite's own centre line, which is
+     where the artwork puts them.
+
+     The hull traces the forked nose - both prongs and the empty V between
+     them, which is real space a car can pass through and not body - then the
+     canard shoulders, the waist between them and the rear haunches, and stops
+     at the top of the diffuser blades trailing off the tail. */
+  rhosyn: {
+    key:"rhosyn", style:"sprite", sprite:"v_rhosyn.PNG", accent:"#FF4D93",
+    /* Normalized source pixels: visible body bounds (75,33)-(948,1437).
+       Keep the full PNG when drawing; bounds only control its scale and
+       centre. */
+    spriteBounds:[75/1024, 33/1536, 874/1024, 1405/1536],
+    /* The measured centre of each outlet, inside the rim. */
+    exhaust:[[473/1024, 1333/1536], [551/1024, 1333/1536]],
+    /* Inset body in logical car units, traced off the measured silhouette.
+       Excludes the transparent corners, the V between the two nose prongs and
+       the swept diffuser blades under the tail. */
+    hitShape:[[0,-0.211],[0.041,-0.256],[0.066,-0.422],[0.101,-0.420],
+              [0.183,-0.384],[0.220,-0.352],[0.293,-0.313],[0.362,-0.224],
+              [0.270,-0.107],[0.243,-0.053],[0.275,-0.003],[0.398,0.095],
+              [0.458,0.157],[0.490,0.230],[0.471,0.329],[0.389,0.389],
+              [0,0.392],[-0.389,0.389],[-0.471,0.329],[-0.490,0.230],
+              [-0.458,0.157],[-0.398,0.095],[-0.275,-0.003],[-0.243,-0.053],
+              [-0.270,-0.107],[-0.362,-0.224],[-0.293,-0.313],[-0.220,-0.352],
+              [-0.183,-0.384],[-0.101,-0.420],[-0.066,-0.422],[-0.041,-0.256]],
+    flame:["#FF2E9E","#FFD9F2"]
   },
   siren: {
     key:"siren", style:"cruiser", accent:"#4D8BFF", pip:"#FFFFFF",
@@ -190,7 +227,7 @@ const CARS = {
   }
 };
 const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
-const CAR_IDS = ["flann","neela","lolanthe","verdant","rose","siren"];
+const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","siren"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -258,7 +295,7 @@ const TEMPERS = {
   neela:     { nerve:0.88, spite:0.46, patience:0.44, guard:0.30 },
   lolanthe:  { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
   verdant:   { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
-  rose:      { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
+  rhosyn:    { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
   siren:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
 };
 function makeTemper(car){
@@ -312,22 +349,27 @@ function conditionsOfType(type){
 const ULT_CHARGE = 75;                    /* seconds from empty to ready */
 const ULT_TIME = 15;                       /* seconds it lasts */
 const ULT_SPEED = 2.0;                    /* what every ultimate is worth in pace */
+/* ---- the shared white transition --------------------------------
+   Two cars use it, so it belongs to neither: Neela flashes through it when it
+   changes shape and when it trades places with somebody, and Rhosyn flashes
+   through it on the way into Aero-Glow and on the way back out. The numbers
+   are the ones Neela always had and the behaviour is unchanged.
+
+   The whiteout is a transition flash and not a blindfold: long enough to hide
+   the change, short enough that a car travelling at twice pace is never driven
+   blind into anything. The vehicle flash outlasts it a little on purpose, so
+   the car is already back in view while it is still burning off. */
+const WHITEOUT_TIME = 0.42;               /* seconds of white over an involved view */
+const MORPH_TIME = 0.6;                   /* seconds the white body flash burns off */
 /* ---- Neela's ultimate -------------------------------------------
    The shared lifecycle above is untouched - same charge, same fifteen seconds,
    same double pace. These are the numbers for what Neela does inside it, and
    they live here rather than being spelled out wherever they happen to be
    needed.
 
-   The whiteout is a transformation flash and not a blindfold: long enough to
-   hide the change of shape, short enough that a car travelling at twice pace
-   is never driven blind into anything. The vehicle flash outlasts it a little
-   on purpose, so the car is already back in view while it is still burning off.
-
    The guard is one frame's worth and nothing like a protection: it exists only
    so a pair of bodies that have just been swapped cannot be read as a second
    contact in the same step. */
-const NEELA_WHITEOUT = 0.42;              /* seconds of white over an involved view */
-const NEELA_MORPH = 0.6;                  /* seconds the white body flash burns off */
 const NEELA_SWAP_GUARD = 0.05;            /* seconds: one step, not a shield */
 /* The alternate form's trail. Sampled by distance so it is smooth through a
    lane change at any pace, capped so it can never grow without bound, and long
@@ -359,8 +401,8 @@ const MIND_ORBIT = 0.42;                  /* turns a second the three notes make
 const MIND_NOTE_K = 0.30;                 /* one note's size, in car heights */
 /* The ring they turn on. Two radii rather than one, and both in the racer's
    own dimensions, so the three notes sit around a Lolanthe, a Neela, a Flann,
-   a Verdant, a Rose and a Siren alike instead of around whichever of them the
-   number was tuned against. */
+   a Verdant, a Rhosyn and a Siren alike instead of around whichever of them
+   the number was tuned against. */
 const MIND_ORBIT_X = 0.72;                /* orbit half width, in car widths */
 const MIND_ORBIT_Y = 0.42;                /* orbit half height, in car heights */
 /* Lolanthe's own note, the one above the car rather than around it. */
@@ -385,6 +427,29 @@ const QUEEN_BOB_RATE = 1.6;               /* seconds for one rise and fall */
 const VERDANT_FADE = 0.25;                /* seconds to fade into and out of hiding */
 const VERDANT_OWN_ALPHA = 0.5;            /* what its own driver still sees */
 const VERDANT_REVEAL = 0.18;              /* seconds of full visibility after a hit */
+/* ---- Rhosyn's ultimate ------------------------------------------
+   Again the shared lifecycle and nothing else: seventy-five seconds to charge,
+   fifteen seconds long, double pace. What changes is which world the car's own
+   driver is shown while those fifteen seconds run - and, because it has gone
+   somewhere the race cannot follow, whether the shared road may touch it.
+
+   These two numbers are the whole of the transition, and they are deliberately
+   derived from the shared flash above rather than invented beside it.
+
+   AERO_SHIFT is when the view changes hands. The whiteout is full white for
+   its first half and fades over its second, so half of it is exactly the
+   moment the screen is opaque - the renderer swaps worlds behind a white
+   curtain and the driver never sees the seam. It is also how long the racer
+   spends leaving and how long it spends coming back.
+
+   AERO_FADE is the other half of the bargain, and it belongs to everybody
+   else's view rather than to the owner's: how long the car takes to burn out
+   of the shared road on the way out and to burn back into it on the way in. It
+   is the body flash's own length on purpose, so what the rest of the field
+   sees is one white flash that ends in an empty lane rather than a car
+   blinking out mid-flash. */
+const AERO_SHIFT = WHITEOUT_TIME/2;       /* seconds under full white, each way */
+const AERO_FADE = MORPH_TIME;             /* seconds the body takes to leave the road */
 /* The two pieces of world artwork the notes are drawn from. Named here beside
    everything else the game is defined by, and loaded exactly once - see
    FX_SPRITES in render.js. The small HUD badge is not one of these: it is a

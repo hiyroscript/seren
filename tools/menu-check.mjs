@@ -166,7 +166,7 @@ for(const lang of ['en','fr']){
     assert.equal(f.run('t("neela")'),'Neela');
     const power=f.run('t("neelaUlt")');
     assert.ok(power.length>40,'Neela has a description of its own, not the shared one');
-    assert.notEqual(power,f.run('t("roseUlt")'));
+    assert.notEqual(power,f.run('t("sirenUlt")'));
     /* It says what the ultimate actually does, in the words the road uses. */
     for(const word of lang==='en'
         ? ['shape','tumbleweed','meteor','swap','Puddles']
@@ -235,7 +235,7 @@ test('every menu preview is the car model, never the alternate form',()=>{
 test('Lolanthe and Verdant hold the third and fourth slots',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
   assert.equal(ids.length,6);
-  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rose','siren']);
+  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','siren']);
   assert.equal(ids.includes('bolt'),false);
   assert.equal(ids.includes('timestamp'),false);
   for(const [id,btn] of [['lolanthe','#carLolanthe'],['verdant','#carVerdant']]){
@@ -260,7 +260,7 @@ for(const lang of ['en','fr']){
       assert.equal(name,id[0].toUpperCase()+id.slice(1));
       const power=f.run('t("'+id+'Ult")');
       assert.ok(power.length>40,id+' has a description of its own, not the shared one');
-      assert.notEqual(power,f.run('t("roseUlt")'));
+      assert.notEqual(power,f.run('t("sirenUlt")'));
       f.run('previewCar("'+id+'");');
       assert.equal(f.$('#carHeroName').textContent,name);
       assert.equal(f.$('#carHeroPower').textContent,power);
@@ -297,6 +297,83 @@ test('Mind Controlled is a Condition the garage can show',()=>{
   const svg=f.run('conditionSvg("mindControlled",22)');
   assert.ok(svg.includes('<svg')&&svg.includes(f.run('CONDITIONS.mindControlled.col')));
   assert.equal(/\.PNG/i.test(svg),false,'the badge reaches for artwork instead of a path');
+});
+/* ================================================================
+   RHOSYN IN THE MENUS
+   ================================================================
+   The same questions again. Rhosyn took the fifth slot the game's fifth car
+   has always held rather than being added as a seventh, the screens print its
+   own name and its own ultimate description, and the car it replaced does not
+   survive anywhere a player can read - nor anywhere the code can reach. */
+test('Rhosyn holds the fifth slot and is not a seventh car',()=>{
+  const ids=Array.from(f.run('CAR_IDS'));
+  assert.equal(ids.length,6);
+  assert.equal(ids[4],'rhosyn');
+  assert.equal(ids.includes('rose'),false);
+  assert.ok(f.$('#carRhosyn'),'the select screen has a Rhosyn button');
+  assert.equal(f.$('#carRhosyn').querySelector('canvas').getAttribute('data-car'),'rhosyn');
+  assert.equal(f.$('#carRhosyn').querySelector('.car-name').getAttribute('data-i18n'),'rhosyn');
+  /* The generic carEl()/capitalisation path still reaches it. */
+  assert.equal(f.run('carEl("rhosyn").id'),'carRhosyn');
+  /* The old button, the old model and the old temperament are all gone. */
+  assert.equal(f.$('#carRose'),null);
+  assert.equal(f.run('typeof CARS.rose'),'undefined');
+  assert.equal(f.run('typeof TEMPERS.rose'),'undefined');
+  /* And the temperament moved across rather than being invented. */
+  assert.deepEqual(JSON.parse(f.run('JSON.stringify(TEMPERS.rhosyn)')),
+                   {nerve:0.62,spite:0.58,patience:0.50,guard:0.58});
+  /* Its sheet is registered through the shared sprite cache like the others. */
+  assert.equal(f.run('CARS.rhosyn.sprite'),'v_rhosyn.PNG');
+  assert.equal(f.run('!!CAR_SPRITES["v_rhosyn.PNG"]'),true);
+});
+test('picking Rhosyn puts Rhosyn on the road',()=>{
+  f.click('btnStart');f.click('modeEndless');f.click('carRhosyn');
+  assert.equal(f.run('menuScreen'),'race');
+  assert.equal(f.run('G.car'),'rhosyn');
+  assert.equal(f.run('G.state'),'countdown');
+  assert.equal(f.run('racerModel("me").sprite'),'v_rhosyn.PNG');
+  /* The race sizes it off its own model, not off a rectangle. */
+  assert.equal(f.run('racerModel("me").style'),'sprite');
+  assert.equal(f.run('JSON.stringify(racerModel("me").hitShape)===JSON.stringify(CAR_HIT_RECT)'),false);
+  f.run('pause(true)');f.click('btnQuit');
+});
+for(const lang of ['en','fr']){
+  test('Rhosyn is named and described on screen in '+lang,()=>{
+    f.run(`chooseLang(${JSON.stringify(lang)});`);
+    assert.equal(f.run('t("rhosyn")'),'Rhosyn');
+    const power=f.run('t("rhosynUlt")');
+    assert.ok(power.length>40,'Rhosyn has a description of its own, not the shared one');
+    assert.notEqual(power,f.run('t("sirenUlt")'));
+    /* It says what the fifteen seconds actually do. */
+    for(const word of lang==='en'
+        ? ['Aero-Glow','double pace','two seconds','Invulnerable']
+        : ['Aero-Glow','double allure','deux secondes','Invulnérable']){
+      assert.ok(power.toLowerCase().includes(word.toLowerCase()),
+                lang+' Rhosyn mentions '+word);
+    }
+    /* And no implementation vocabulary leaked into the garage. */
+    for(const leak of ['aerophase','vown','renderer','biome','teleport','hitbox','sprite']){
+      assert.equal(power.toLowerCase().includes(leak),false,lang+' Rhosyn leaks '+leak);
+    }
+    f.run('previewCar("rhosyn");');
+    assert.equal(f.$('#carHeroName').textContent,'Rhosyn');
+    assert.equal(f.$('#carHeroPower').textContent,power);
+    assert.equal(f.$('#carHero').getAttribute('data-car'),'rhosyn');
+    /* Aero-Glow has a name of its own, and it is not a track. */
+    assert.equal(f.run('t("aeroGlow")'),'Aero-Glow');
+    assert.equal(f.run('TRACK_IDS.indexOf("aeroglow")'),-1);
+    assert.equal(f.run('typeof TRACKS.aeroglow'),'undefined');
+  });
+}
+test('no Rose string survives anywhere the player can read',()=>{
+  const strings=f.run('JSON.stringify(STR)');
+  assert.equal(/"rose/i.test(strings),false,'STR still carries a Rose entry');
+  for(const lang of ['en','fr']){
+    f.run(`chooseLang(${JSON.stringify(lang)});`);
+    const text=f.document.body.textContent;
+    assert.equal(/\bRose\b/.test(text),false,'the page still prints Rose in '+lang);
+  }
+  f.run('chooseLang("en");');
 });
 test('no Bolt or Timestamp string survives anywhere the player can read',()=>{
   const strings=f.run('JSON.stringify(STR)');

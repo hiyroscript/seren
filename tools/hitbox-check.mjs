@@ -11,13 +11,13 @@ f.boot();
 /* The shared car box the hull arithmetic below is measured against. */
 const carW0=100, carH0=186;
 run('G.local=false;G.mode="endless";G.car="flann";G.rules=defaultRules();startRace();clearTimers();G.state="running";carW=100;carH=186;G.x=200;playerY=300;G.tilt=0;');
-/* Three of the four sprite cars are drawn larger on the road than the shared
+/* Three of the five sprite cars are drawn larger on the road than the shared
    car box, so their hulls have to come out larger by exactly the same factor.
    A big car wearing a small hitbox is the failure this guards against.
 
-   Lolanthe is in the unscaled list on purpose: it is a sprite car whose
-   measured artwork already fills the box across, so it carries no race scale
-   and must be treated exactly like the two procedural cars here. */
+   Lolanthe and Rhosyn are in the unscaled list on purpose: both are sprite
+   cars whose measured artwork already fills the box across, so neither carries
+   a race scale and both must be treated exactly like Siren here. */
 test('sprite race dimensions scale by their own factors and nobody else moves',()=>{
   for(const [car,k] of [['flann',1.12],['neela',1.18],['verdant',1.10]]){
     near(`raceScale(${JSON.stringify(car)})`,k);
@@ -25,15 +25,15 @@ test('sprite race dimensions scale by their own factors and nobody else moves',(
     near(`carDims(${JSON.stringify(car)}).h/carH`,k);
     near(`carDims(${JSON.stringify(car)}).h/carDims(${JSON.stringify(car)}).w`,run('carH/carW'));
   }
-  for(const car of ['lolanthe','rose','siren']){
+  for(const car of ['lolanthe','rhosyn','siren']){
     eq(`raceScale(${JSON.stringify(car)})`,1);
     near(`carDims(${JSON.stringify(car)}).w`,run('carW'));
     near(`carDims(${JSON.stringify(car)}).h`,run('carH'));
   }
   /* And the racer-shaped reader agrees with the car-id one, for either kind. */
-  run('G.car="flann";Object.assign(G.rivals[0],{car:"rose",neelaForm:false});');
+  run('G.car="flann";Object.assign(G.rivals[0],{car:"rhosyn",neelaForm:false});');
   eq('JSON.stringify(racerDims("me"))===JSON.stringify(carDims("flann"))',true);
-  eq('JSON.stringify(racerDims(G.rivals[0]))===JSON.stringify(carDims("rose"))',true);
+  eq('JSON.stringify(racerDims(G.rivals[0]))===JSON.stringify(carDims("rhosyn"))',true);
 });
 test('the tapered eight-point hull scales with the render and stays inset',()=>{
   run('G.car="flann";G.tilt=0;');
@@ -45,10 +45,10 @@ test('the tapered eight-point hull scales with the render and stays inset',()=>{
   eq('Math.abs(carHit().points[0].x-G.x) < Math.abs(carHit().points[3].x-G.x)',true);
   /* Inset: still well inside the artwork's own width. */
   eq('Math.abs(carHit().points[3].x-G.x) < carDims("flann").w/2',true);
-  /* A rectangle car is untouched by any of it. Rose rather than one of the
-     four cars that now have a power of its own, so this measures geometry and
-     nothing else. */
-  run('G.car="rose";');
+  /* A rectangle car is untouched by any of it. Siren is the only one left -
+     the other five all carry a measured hull of their own - so it is what a
+     test measuring geometry and nothing else has to use. */
+  run('G.car="siren";');
   near('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))',0.40*100);
   near('carHit().points.map(p=>Math.abs(p.y-playerY)).reduce((a,b)=>Math.max(a,b))',0.42*186);
   eq('carHit().points.length',4);
@@ -67,7 +67,7 @@ test('Flann hit geometry exists before its image loads',()=>{
   assert.equal(run('JSON.stringify(carHit())'),before);
 });
 test('nearest-point distance detects exact side contact and a tiny separation',()=>{
-  run('G.car="rose";G.tilt=0;');
+  run('G.car="siren";G.tilt=0;');
   near('nearestOnCar(carHit(),250,300).x',240);
   near('nearestOnCar(carHit(),250,300).y',300);
   eq('insideHitPolygon(carHit().points,240,300)',true);
@@ -125,7 +125,7 @@ test('finish, wreck and invulnerability protections still exclude contact',()=>{
   }
 });
 test('rotated oil rejects empty bounding-box corners and accepts body overlap',()=>{
-  run('G.car="rose";G.x=200;playerY=300;G.tilt=Math.PI/4;globalThis.hs={x:280,y:370,rx:3,ry:3,rot:0.6,jit:0.1,s:0.3};');
+  run('G.car="siren";G.x=200;playerY=300;G.tilt=Math.PI/4;globalThis.hs={x:280,y:370,rx:3,ry:3,rot:0.6,jit:0.1,s:0.3};');
   eq('slickHits(hs,carHit())',false);run('hs.x=G.x;hs.y=playerY;');eq('slickHits(hs,carHit())',true);
 });
 test('puddle collision follows the smoothed outline and supports swept positions',()=>{
@@ -223,7 +223,7 @@ test('hull returns to the car on a racer swap and on natural expiry',()=>{
   run(`G.local=false;G.car="neela";G.rules=defaultRules();G.rules.bots=1;
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0;G.dead=0;G.invuln=0;G.lane=1;G.x=laneCX(1);
-       globalThis.v=G.rivals[0];v.car="rose";v.dead=0;v.invuln=0;v.finished=null;
+       globalThis.v=G.rivals[0];v.car="siren";v.dead=0;v.invuln=0;v.finished=null;
        v.lane=1;v.x=G.x;v.y=playerY-carH*0.3;v.tilt=0;v.changeT=1e6;
        G.ult=1;startUlt("me");`);
   eq('carHit().points.length',20);
@@ -261,7 +261,7 @@ test('alternate-form contact still meets edge touch and a tiny separation',()=>{
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0;G.lane=1;G.x=laneCX(1);G.dead=0;G.invuln=0;
        G.rivals.forEach(r=>{r.y=playerY+9000;r.finished=null;});
-       globalThis.r=G.rivals[0];r.car="rose";r.dead=0;r.invuln=0;r.finished=null;
+       globalThis.r=G.rivals[0];r.car="siren";r.dead=0;r.invuln=0;r.finished=null;
        r.lane=1;r.x=G.x;r.tilt=0;G.ult=1;startUlt("me");`);
   /* Nose of the alternate body to tail of a rectangle car: touching counts,
      a thousandth of a pixel clear does not. */
@@ -350,8 +350,138 @@ test('an invisible Verdant is collided exactly as a visible one is',()=>{
   eq('G.verdantHide',0);
   assert.equal(run('JSON.stringify(carHit())'),before);
 });
+/* ================================================================
+   RHOSYN  -  a measured hull with a hole in the front of it
+   ================================================================
+   The fifth sprite car, and the only hull in the game that is not a simple
+   convex blob: v_rhosyn.PNG has a forked nose, and the V between the two
+   prongs is empty space a car can pass through rather than body. These say the
+   measured polygon is what collides, that it is neither the shared rectangle
+   nor anybody else's, and that it keeps all of that through a rotation. */
+function rhosynSetup(tilt){
+  run(`G.local=false;G.car="rhosyn";G.rules=defaultRules();G.rules.bots=1;
+       G.mode="endless";startRace();clearTimers();G.state="running";
+       carW=${carW0};carH=${carH0};G.x=200;playerY=300;G.tilt=${tilt || 0};
+       G.dead=0;G.invuln=0;G.finished=null;clearAeroGlowState("me");
+       G.rivals.forEach(r=>{r.y=playerY+9000;r.dead=0;r.invuln=0;r.finished=null;});`);
+}
+/* A point in logical car units, put where the renderer would put it. */
+function atCar(px,py){
+  return `carHit().points && insideHitPolygon(carHit().points,` +
+         `G.x+(${px})*carDims("rhosyn").w*Math.cos(G.tilt)-(${py})*carDims("rhosyn").h*Math.sin(G.tilt),` +
+         `playerY+(${px})*carDims("rhosyn").w*Math.sin(G.tilt)+(${py})*carDims("rhosyn").h*Math.cos(G.tilt))`;
+}
+test('Rhosyn collides on its own measured hull, not on CAR_HIT_RECT',()=>{
+  rhosynSetup(0);
+  eq('racerModel("me").key','rhosyn');
+  eq('racerModel("me").style','sprite');
+  eq('JSON.stringify(racerModel("me").hitShape)===JSON.stringify(CARS.rhosyn.hitShape)',true);
+  eq('JSON.stringify(racerModel("me").hitShape)===JSON.stringify(CAR_HIT_RECT)',false);
+  /* Nobody else's either. */
+  for(const other of ['flann','neela','lolanthe','verdant']){
+    eq(`JSON.stringify(CARS.rhosyn.hitShape)===JSON.stringify(CARS.${other}.hitShape)`,false);
+  }
+  eq('carHit().points.length',run('CARS.rhosyn.hitShape.length'));
+  eq('carHit().points.length > 4',true);
+  /* Symmetrical, because the car is: every vertex has its mirror. */
+  eq(`CARS.rhosyn.hitShape.every(p =>
+        CARS.rhosyn.hitShape.some(q => Math.abs(q[0]+p[0])<1e-9 && Math.abs(q[1]-p[1])<1e-9))`,true);
+  /* Tapered rather than square: the nose is far narrower than the hips. */
+  eq(`Math.max.apply(null,CARS.rhosyn.hitShape.filter(p=>p[1]<-0.3).map(p=>Math.abs(p[0]))) <
+      Math.max.apply(null,CARS.rhosyn.hitShape.map(p=>Math.abs(p[0])))*0.6`,true);
+});
+test('the hull follows the artwork: body inside, padding and the nose V outside',()=>{
+  rhosynSetup(0);
+  /* On the body. */
+  eq(atCar(0,0),true);                        /* the middle of the car */
+  eq(atCar(0.15,-0.33),true);                 /* inside the right nose prong */
+  eq(atCar(-0.15,-0.33),true);                /* and the left one */
+  eq(atCar(0.09,-0.41),true);                 /* right up at a prong tip */
+  eq(atCar(0.48,0.23),true);                  /* just inside the widest point */
+  eq(atCar(0,0.38),true);                     /* just inside the tail */
+  /* The V between the two prongs is not body. This is the whole reason the
+     hull is traced rather than boxed: a car nosing into the front centre of a
+     Rhosyn meets nothing, because there is nothing there. */
+  eq(atCar(0,-0.30),false);
+  eq(atCar(0,-0.40),false);
+  eq(atCar(0.03,-0.35),false);
+  /* And neither is the transparent padding, the waist gap or the diffuser
+     blades trailing off the tail. */
+  eq(atCar(0.52,0.23),false);                 /* past the widest point */
+  eq(atCar(0.30,-0.33),false);                /* outboard of the nose prong */
+  eq(atCar(0,0.43),false);                    /* below the body, in the blades */
+  eq(atCar(0.45,-0.40),false);                /* an empty corner of the sheet */
+});
+test('Rhosyn race size and hull size stay locked together',()=>{
+  rhosynSetup(0);
+  /* Measured artwork that already fills the box across, so no race scale -
+     and the hull is multiplied by exactly the size the sprite is drawn at. */
+  eq('raceScale("rhosyn")',1);
+  near('carDims("rhosyn").w',run('carW'));
+  near('carDims("rhosyn").h',run('carH'));
+  const wide=run('Math.max.apply(null,CARS.rhosyn.hitShape.map(p=>Math.abs(p[0])))');
+  const tall=run('Math.max.apply(null,CARS.rhosyn.hitShape.map(p=>Math.abs(p[1])))');
+  near('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))',
+       wide*carW0);
+  near('carHit().points.map(p=>Math.abs(p.y-playerY)).reduce((a,b)=>Math.max(a,b))',
+       tall*carH0);
+  /* Inset: the hull never reaches past the body the sprite actually draws. */
+  eq('Math.max.apply(null,CARS.rhosyn.hitShape.map(p=>Math.abs(p[0]))) <= 0.5',true);
+  eq('Math.max.apply(null,CARS.rhosyn.hitShape.map(p=>Math.abs(p[1]))) <= 0.5',true);
+  /* Doubling the shared box doubles both, together. */
+  run(`carW=${carW0*2};carH=${carH0*2};`);
+  near('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))',
+       wide*carW0*2);
+  run(`carW=${carW0};carH=${carH0};`);
+});
+test('a rotated Rhosyn is collided on the rotated polygon',()=>{
+  rhosynSetup(0.6);
+  /* Every vertex is the measured shape put through the car's own rotation. */
+  const pts=JSON.parse(run('JSON.stringify(carHit().points)'));
+  const shape=JSON.parse(run('JSON.stringify(CARS.rhosyn.hitShape)'));
+  const dim=JSON.parse(run('JSON.stringify(carDims("rhosyn"))'));
+  const x0=run('G.x'), y0=run('playerY'), t=run('G.tilt');
+  const ca=Math.cos(t), sa=Math.sin(t);
+  assert.equal(pts.length,shape.length);
+  for(let i=0;i<shape.length;i++){
+    const px=shape[i][0]*dim.w, py=shape[i][1]*dim.h;
+    assert.ok(Math.abs(pts[i].x-(x0+px*ca-py*sa))<1e-9,'tilted x');
+    assert.ok(Math.abs(pts[i].y-(y0+px*sa+py*ca))<1e-9,'tilted y');
+  }
+  /* The body turns with the car, so the same car-space points answer the same
+     way at an angle that a bounding box would have got wrong. */
+  eq(atCar(0,0),true);
+  eq(atCar(0.48,0.23),true);
+  eq(atCar(0,-0.30),false);                   /* the V is still a hole */
+  /* And a point that is only inside the unrotated box is now outside. */
+  eq('insideHitPolygon(carHit().points,G.x+0.47*carDims("rhosyn").w,playerY+0.22*carDims("rhosyn").h)',false);
+});
+test('Rhosyn hit geometry exists before its image loads',()=>{
+  const fresh=fixture();fresh.boot();
+  fresh.run(`G.local=false;G.mode="endless";G.car="rhosyn";G.rules=defaultRules();
+             startRace();clearTimers();G.state="running";carW=100;carH=186;
+             G.x=200;playerY=300;G.tilt=0;`);
+  assert.equal(fresh.images.every(i=>!i.complete),true);
+  const before=fresh.run('JSON.stringify(carHit())');
+  assert.equal(fresh.run('carHit().points.length'),fresh.run('CARS.rhosyn.hitShape.length'));
+  fresh.images.forEach(i=>i.load());
+  assert.equal(fresh.run('JSON.stringify(carHit())'),before);
+});
+test('Aero-Glow moves no hull: the body is where it always was',()=>{
+  rhosynSetup(0);
+  const before=run('JSON.stringify(carHit())');
+  run('G.ult=1;startUlt("me");tickAeroGlow("me",1);');
+  eq('rhosynElsewhere("me")',true);
+  eq('G.aeroPhase','glow');
+  /* The geometry is untouched - what changed is that nothing may ask it. */
+  assert.equal(run('JSON.stringify(carHit())'),before,'leaving moved the hitbox');
+  eq('noContact("me")',true);
+  run('endUlt("me");tickAeroGlow("me",1);');
+  eq('G.aeroPhase','off');
+  assert.equal(run('JSON.stringify(carHit())'),before);
+});
 test('the notes change no collision geometry',()=>{
-  run(`G.local=false;G.car="rose";G.rules=defaultRules();G.mode="endless";
+  run(`G.local=false;G.car="siren";G.rules=defaultRules();G.mode="endless";
        startRace();clearTimers();G.state="running";carW=100;carH=186;
        G.tilt=0;G.x=200;playerY=300;G.dead=0;G.invuln=0;`);
   const before=run('JSON.stringify(carHit())');
