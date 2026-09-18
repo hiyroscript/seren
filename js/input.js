@@ -17,6 +17,9 @@ function humanSteer(who, dir){
   if(who === "me"){ move(dir); return; }
   const R = who;
   if(G.state !== "running" || R.dead > 0 || R.finished !== null) return;
+  /* Somebody else has the wheel. Asked here rather than in the pad loop so a
+     seat cannot be steered by any route that reaches this function. */
+  if(controlsLocked(R)) return;
   const d = R.slip > 0 ? -dir : dir;         /* no grip: the steering is reversed */
   const n = clamp(R.lane + d, 0, 2);
   if(n === R.lane) return;
@@ -26,8 +29,8 @@ function humanSteer(who, dir){
   R.changeT = 0;
 }
 function humanBoost(who, on){
-  if(who === "me"){ G.padBoost = !!on; setBoost(); return; }
-  who.wantBoost = !!on;
+  if(who === "me"){ G.padBoost = !!on && !controlsLocked("me"); setBoost(); return; }
+  who.wantBoost = !!on && !controlsLocked(who);
 }
 function humanUlt(who){
   if(who === "me"){ fireUlt(); return; }

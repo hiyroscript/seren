@@ -354,14 +354,15 @@ else {
   pass(`${carIds.length} cars: models, strings, buttons and ultimates all wired`);
 }
 
-/* One CONDITIONS table, five entries, and every renderer reading it. The
+/* One CONDITIONS table, six entries, and every renderer reading it. The
    order of the keys is the order badges stack in, so it is pinned here too. */
 const CONDITIONS = objectLiteral(sources.data || "", "CONDITIONS");
 const COND_PATHS = objectLiteral(sources.hud || "", "COND_PATHS");
 if (!CONDITIONS) fail("could not read CONDITIONS out of js/data.js");
 else {
   const ids = Object.keys(CONDITIONS);
-  const want = ["invulnerable", "boosted", "slowed", "obscured", "skidded"];
+  const want = ["invulnerable", "boosted", "slowed", "obscured", "skidded",
+                "mindControlled"];
   ids.join() === want.join()
     ? pass(`conditions are exactly ${want.join(", ")}, in priority order`)
     : fail(`conditions are ${ids.join(", ")}, expected ${want.join(", ")}`);
@@ -373,8 +374,8 @@ else {
   buffs.join() === "invulnerable,boosted"
     ? pass("Buff holds Invulnerable and Boosted")
     : fail(`Buff holds ${buffs.join(", ")}`);
-  debuffs.join() === "slowed,obscured,skidded"
-    ? pass("Debuff holds Slowed, Obscured and Skidded")
+  debuffs.join() === "slowed,obscured,skidded,mindControlled"
+    ? pass("Debuff holds Slowed, Obscured, Skidded and Mind Controlled")
     : fail(`Debuff holds ${debuffs.join(", ")}`);
   const cols = new Set();
   for (const [id, c] of Object.entries(CONDITIONS)) {
@@ -486,11 +487,11 @@ head("Mystery Bubble rewards");
     : fail("the rules.bubbles custom-race switch is gone from defaultRules()");
 }
 
-/* Two cars do something with their fifteen seconds beyond running fast, and
-   two carry a race size of their own. Both are deliberate and both are meant
-   to stay countable: this is what says a third has not crept in, that neither
-   is spelled out ad hoc instead of being asked for, and that the shared
-   lifecycle underneath them is still shared. */
+/* Four cars do something with their fifteen seconds beyond running fast, and
+   three carry a race size of their own. All of it is deliberate and all of it
+   is meant to stay countable: this is what says a fifth has not crept in, that
+   none of them is spelled out ad hoc instead of being asked for, and that the
+   shared lifecycle underneath them is still shared. */
 head("The car-specific ultimates and race sizes");
 {
   const mech = strip(sources.mechanics || "");
@@ -503,7 +504,13 @@ head("The car-specific ultimates and race sizes");
      a build that collapses them into one gives Neela either a privilege it has
      lost or a second swap it never had. */
   const predicates = ["flannCar", "flannUltActive", "neelaCar", "neelaUltActive",
-                      "neelaFormActive", "clearsSolidHazards", "neelaCanSwap"];
+                      "neelaFormActive", "clearsSolidHazards", "neelaCanSwap",
+                      /* Lolanthe's aura and the control lock it applies, and
+                         Verdant's invisibility, its directional defence and
+                         the one place a driver's eyes differ from a hitbox. */
+                      "lolantheCar", "lolantheUltActive", "verdantCar",
+                      "verdantUltActive", "controlsLocked", "racerDetectable",
+                      "specialContact"];
   const gone = predicates.filter((n) => !new RegExp(`^function ${n}\\(`, "m").test(mech));
   gone.length
     ? gone.forEach((n) => fail(`${n}() is not declared in js/mechanics.js`))
@@ -521,22 +528,28 @@ head("The car-specific ultimates and race sizes");
   const adhoc = [];
   for (const n of ORDER) {
     if (!sources[n]) continue;
-    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela)["']/g)) {
+    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant)["']/g)) {
       const before = sources[n].slice(0, m.index);
-      const inPredicate = /function (flannCar|neelaCar)\([^)]*\)\s*\{[^}]*$/.test(before);
+      const inPredicate =
+        /function (flannCar|neelaCar|lolantheCar|verdantCar)\([^)]*\)\s*\{[^}]*$/.test(before);
       if (!inPredicate) adhoc.push(`js/${n}.js`);
     }
   }
   adhoc.length
-    ? [...new Set(adhoc)].forEach((f) => fail(`${f} names a car itself instead of asking flannCar()/neelaCar()`))
-    : pass("flannCar() and neelaCar() are the only places a racer is named");
+    ? [...new Set(adhoc)].forEach((f) => fail(`${f} names a car itself instead of asking one of the identity predicates`))
+    : pass("flannCar(), neelaCar(), lolantheCar() and verdantCar() are the only places a racer is named");
   /* And they are genuinely read where the powers live: the contact rules and
      the player's hazards in mechanics, the rivals' hazards in race, the fire
      and the alternate body in render. A predicate nobody asks is a power
      nobody has. */
-  const asks = { mechanics: ["flannUltActive(", "neelaCanSwap(", "clearsSolidHazards("],
-                 race: ["clearsSolidHazards("],
-                 render: ["flannUltActive(", "racerModel("] };
+  const asks = { mechanics: ["flannUltActive(", "neelaCanSwap(", "clearsSolidHazards(",
+                             "verdantUltActive(", "lolantheUltActive(", "controlsLocked("],
+                 race: ["clearsSolidHazards(", "controlsLocked(", "lolantheAuras(", "tickMindControl("],
+                 render: ["flannUltActive(", "racerModel(", "racerViewAlpha(",
+                          "lolantheUltActive("],
+                 ai: ["racerDetectable(", "lolantheCar(", "verdantCar("],
+                 input: ["controlsLocked("],
+                 hud: ["racerDetectable("] };
   const absent = [];
   for (const [n, needles] of Object.entries(asks))
     for (const needle of needles)
@@ -558,6 +571,38 @@ head("The car-specific ultimates and race sizes");
       ? pass(`${k} is a named constant in js/data.js`)
       : fail(`${k} is not declared in js/data.js`);
   }
+  /* Lolanthe's and Verdant's own numbers, on the same terms: one named
+     constant each, in the shared tuning layer, rather than a figure written
+     into whichever file happened to need it. */
+  for (const k of ["MIND_CONTROL_TIME", "MIND_AURA_LENGTHS", "MIND_POP",
+                   "MIND_ORBIT", "MIND_NOTE_K", "MIND_ORBIT_X", "MIND_ORBIT_Y",
+                   "QUEEN_POP", "QUEEN_NOTE_K", "QUEEN_LIFT", "QUEEN_BOB",
+                   "QUEEN_BOB_RATE", "VERDANT_FADE", "VERDANT_OWN_ALPHA",
+                   "VERDANT_REVEAL", "QUEEN_NOTE_IMG", "MIND_NOTE_IMG"]) {
+    new RegExp(`const\\s+${k}\\s*=`).test(data)
+      ? pass(`${k} is a named constant in js/data.js`)
+      : fail(`${k} is not declared in js/data.js`);
+  }
+  /* Three seconds from the last application, and a fresh hold resets rather
+     than stacks. The only write to mindT outside the tick is the assignment in
+     applyMindControl(); an accumulating one would quietly turn a racer held in
+     the aura into a racer locked out for the rest of the race. */
+  for (const n of ORDER) {
+    if (!sources[n]) continue;
+    if (/\bmind[TP]\w*\s*\+=/.test(strip(sources[n])))
+      fail(`js/${n}.js adds to a mind-control timer instead of setting it`);
+  }
+  /o\.mindT = MIND_CONTROL_TIME;/.test(strip(sources.mechanics || ""))
+    ? pass("Mind Control is set to MIND_CONTROL_TIME, never added to")
+    : fail("applyMindControl() no longer sets mindT to MIND_CONTROL_TIME");
+  /* Verdant is hidden, never removed: nothing in the mechanic may reach for
+     the one flag that would take it out of contact altogether. */
+  /function verdantUltActive\([^)]*\)\s*\{[^}]*ultOn/.test(strip(sources.mechanics || ""))
+    ? pass("verdantUltActive() is the shared ultimate flag and nothing else")
+    : fail("verdantUltActive() no longer reads the shared ultimate flag");
+  /function racerDetectable\([^)]*\)\s*\{[^}]*verdantUltActive/.test(strip(sources.mechanics || ""))
+    ? pass("being invisible is a question about sight, kept apart from noContact()")
+    : fail("racerDetectable() no longer distinguishes sight from contact");
   /* The guard is one step's worth. Anything approaching a second of it would
      be hidden invulnerability rather than a duplicate-contact guard. */
   const guard = Number((data.match(/const\s+NEELA_SWAP_GUARD\s*=\s*([0-9.]+)/) || [])[1]);

@@ -44,22 +44,38 @@ function fires(){return calls.filter(c=>c.type==='fire');}
 /* Clear everything else on the road that draws a radial gradient of its own,
    so a `fire` recorded during a full render can only have come from a car. */
 const clearWorld=()=>run('G.traps=[];G.boxes=[];G.slicks=[];G.missiles=[];G.fx=[];');
-/* Three sheets between them - Flann's, Neela's car and Neela's alternate form -
-   each fetched once, each spelled exactly as the file on disk is, and none of
-   them drawn before it has arrived. The casing matters: the repository serves
-   these straight off a case-sensitive host. */
-test('three cached images, exact case, unloaded and failed assets safely skip drawing',()=>{
-  assert.equal(f.images.length,3);
-  assert.deepEqual(f.images.map(i=>i.src),['v_flann.PNG','v_neela.PNG','vtm_neela.PNG']);
-  assert.equal(new Set(f.images.map(i=>i.src)).size,3,'no sheet is fetched twice');
-  /* and the cache is keyed by that same exact name */
-  for(const src of ['v_flann.PNG','v_neela.PNG','vtm_neela.PNG'])
+/* Seven images between them: four car sheets, Neela's alternate form, and the
+   two note PNGs the world effects are drawn from. Each fetched exactly once,
+   each spelled exactly as the file on disk is, and none of them drawn before it
+   has arrived. The casing matters: the repository serves these straight off a
+   case-sensitive host.
+
+   The two notes are in a cache of their own rather than in CAR_SPRITES,
+   because they are not a body anybody drives - but they are loaded on the same
+   terms, and a renderer that built an Image per frame would show up here as a
+   count that climbs. */
+const CAR_SHEETS=['v_flann.PNG','v_neela.PNG','vtm_neela.PNG','v_lolanthe.PNG','v_verdant.PNG'];
+const FX_SHEETS=['queen_note.PNG','pion_note.PNG'];
+test('seven cached images, exact case, unloaded and failed assets safely skip drawing',()=>{
+  assert.equal(f.images.length,7);
+  assert.deepEqual(f.images.map(i=>i.src),CAR_SHEETS.concat(FX_SHEETS));
+  assert.equal(new Set(f.images.map(i=>i.src)).size,7,'no sheet is fetched twice');
+  /* and each cache is keyed by that same exact name */
+  for(const src of CAR_SHEETS)
     assert.equal(run(`!!CAR_SPRITES[${JSON.stringify(src)}]`),true,src+' is cached');
-  assert.equal(run('Object.keys(CAR_SPRITES).length'),3);
+  for(const src of FX_SHEETS)
+    assert.equal(run(`!!FX_SPRITES[${JSON.stringify(src)}]`),true,src+' is cached');
+  assert.equal(run('Object.keys(CAR_SPRITES).length'),5);
+  assert.equal(run('Object.keys(FX_SPRITES).length'),2);
+  /* The two names the game asks for are the two that were fetched. */
+  assert.equal(run('QUEEN_NOTE_IMG'),'queen_note.PNG');
+  assert.equal(run('MIND_NOTE_IMG'),'pion_note.PNG');
+  /* An image that has not arrived is simply not drawn - by either cache. */
+  assert.equal(run('fxImage(QUEEN_NOTE_IMG)'),null);
   draw();assert.equal(calls.length,0);f.images[0].complete=true;draw();assert.equal(calls.length,0);
 });
 test('every late load schedules a menu repaint through the common renderer',()=>{
-  for(const image of f.images){
+  for(const image of f.images.slice(0,CAR_SHEETS.length)){
     f.frames.length=0;image.load();assert.equal(f.frames.length,1,image.src+' repaints');
   }
   calls=[];f.frames.shift()();assert.ok(images().length>=2);assert.equal(plumes().length,0);
@@ -102,8 +118,11 @@ test('rendering never changes race state or allocates additional images',()=>{
        touch race state than Flann's fire is. */
     draw(true,0.12,60,111.6,false,'neela');
     draw(true,-0.12,60,111.6,false,'neela',0.5,true);
+    /* And the two new sprite cars through the same loop, for the same reason. */
+    draw(true,0.12,60,111.6,false,'lolanthe');
+    draw(true,-0.12,60,111.6,false,'verdant');
   }
-  assert.equal(run('JSON.stringify(G)'),before);assert.equal(f.images.length,3);
+  assert.equal(run('JSON.stringify(G)'),before);assert.equal(f.images.length,7);
 });
 
 /* ---- the ultimate body fire -------------------------------------
@@ -125,7 +144,7 @@ test('the ultimate sets the body alight and ordinary boost never does',()=>{
   assert.ok(fires().every(c=>calls.indexOf(c)>calls.indexOf(d)));
 });
 test('only Flann catches fire, and never in a menu preview',()=>{
-  for(const car of ['neela','bolt','timestamp','rose','siren']){
+  for(const car of ['neela','lolanthe','verdant','rose','siren']){
     draw(true,0,60,111.6,true,car);
     assert.equal(fires().length,0,car+' must not catch fire');
   }
@@ -166,7 +185,7 @@ test('ordinary boost, ultimate, player blink and rival sprite use existing visua
      put in procedural cars: a second sprite car on the road would add its own
      image and its own plume to every count below without saying anything about
      the flags being checked. The rival case has its own sprite further down. */
-  run('G.rivals.forEach(r=>{r.car="bolt";r.dead=0;r.invuln=0;});');
+  run('G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;});');
   run('G.invuln=0;G.boosting=true;');calls=[];run('render();');
   assert.equal(images().length,1);assert.equal(plumes().length,2);
   assert.equal(fires().length,0,'a boosting Flann is not on fire');
@@ -177,27 +196,28 @@ test('ordinary boost, ultimate, player blink and rival sprite use existing visua
   assert.equal(fires().length,0,'a blinked-out car draws nothing at all');
   /* Ending it puts the fire out on the very next frame. */
   run('G.invuln=0;endUlt("me");');calls=[];run('render();');assert.equal(fires().length,0);
-  run('G.car="bolt";G.rivals[0].car="flann";G.rivals[0].y=playerY-150;G.rivals[0].invuln=0;G.rivals[0].boosting=true;');
+  run('G.car="rose";G.rivals[0].car="flann";G.rivals[0].y=playerY-150;G.rivals[0].invuln=0;G.rivals[0].boosting=true;');
   calls=[];run('render();');assert.equal(images().length,1);assert.equal(plumes().length,2);
   assert.equal(fires().length,0);
   /* A rival Flann gets the identical treatment - the effect is per racer, not
      a property of being the person holding the controller. */
   run('G.rivals[0].ult=1;startUlt(G.rivals[0]);');calls=[];run('render();');
   assert.ok(fires().length>=6);
-  run('endUlt(G.rivals[0]);G.car="flann";G.rivals[0].car="bolt";');
+  run('endUlt(G.rivals[0]);G.car="flann";G.rivals[0].car="rose";');
 });
 
 /* Sizes as the road actually asks for them, straight off the shared entry
    point every racer, bot and menu preview is drawn through. */
 function sizedDraws(code){
   run(`globalThis.sizes=[];globalThis.realDrawCar=drawCar;
-       drawCar=function(x,y,w,h,p,tilt,isPlayer,boosting,ulting){
-         sizes.push({car:p.key,w:w,h:h,boost:!!boosting,ult:!!ulting});
-         return realDrawCar(x,y,w,h,p,tilt,isPlayer,boosting,ulting);};`);
+       drawCar=function(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white,alpha){
+         sizes.push({car:p.key,w:w,h:h,boost:!!boosting,ult:!!ulting,
+                     alpha:alpha===undefined?1:alpha});
+         return realDrawCar(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white,alpha);};`);
   try { run(code); return run('JSON.stringify(sizes)'); }
   finally { run('drawCar=realDrawCar;'); }
 }
-test('the two sprite cars are drawn larger on the road; the other four keep their size',()=>{
+test('three sprite cars are drawn larger on the road; the other three keep their size',()=>{
   clearWorld();
   run(`G.local=false;G.car="flann";G.rules=defaultRules();startRace();clearTimers();
        G.state="running";G.invuln=0;G.dead=0;
@@ -205,15 +225,22 @@ test('the two sprite cars are drawn larger on the road; the other four keep thei
   const drawn=JSON.parse(sizedDraws('render();'));
   const [base,tall]=[run('carW'),run('carH')];
   assert.equal(drawn.length,6);
-  const SCALES={flann:1.12,neela:1.18};
+  const SCALES={flann:1.12,neela:1.18,verdant:1.10};
   for(const d of drawn){
     const k=SCALES[d.car]||1;
     near(d.w,base*k);near(d.h,tall*k);
     near(d.h/d.w,tall/base);                          /* aspect ratio preserved */
   }
-  for(const car of ['flann','neela']){
+  for(const car of ['flann','neela','verdant']){
     const sprite=drawn.find(d=>d.car===car);
     assert.ok(sprite.w>base && sprite.h>tall,car+' is larger than the shared car box');
+  }
+  /* Lolanthe is a sprite car with no race scale at all - its artwork already
+     fills the box across - so it must sit on the shared numbers exactly as the
+     two procedural cars do. */
+  for(const car of ['lolanthe','rose','siren']){
+    const d=drawn.find(x=>x.car===car);
+    near(d.w,base);near(d.h,tall);
   }
   /* The garage and select-screen previews are sized by their own canvas and
      are deliberately untouched by the race scale. */
@@ -247,7 +274,7 @@ test('every local viewport carries the fire for whichever seats are ulting',()=>
 test('two, three and four local columns render the same Flann image and exhaust',()=>{
   for(const seats of [2,3,4]){
     run(`G.local=true;G.players=${seats};G.picks=CAR_IDS.slice(0,${seats});G.car=G.picks[0];G.rules=defaultRules();startRace();clearTimers();G.state="running";G.invuln=0;G.boosting=true;
-         G.rivals.forEach(r=>{r.car="bolt";r.dead=0;r.invuln=0;r.boosting=false;});`);
+         G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;r.boosting=false;});`);
     calls=[];run('render();');
     /* Seat one is Flann in every arrangement: its sheet and its two plumes are
        drawn once per column and the count is by sheet, so another sprite car on
@@ -379,7 +406,7 @@ test('the transformation flash is on the body, deterministic and motion-safe',()
   assert.equal(plumes().length,0);assert.equal(fires().length,0);
   /* It works on a car that has no sprite at all, because the victim of a
      teleport can be any of the six. */
-  for(const car of ['bolt','timestamp','rose','siren']){
+  for(const car of ['rose','siren']){
     draw(false,0,60,111.6,false,car,0);
     const off = lines().length;
     draw(false,0,60,111.6,false,car,0.8);
@@ -407,7 +434,7 @@ f.boot();
 test('the road shows the car until the ultimate, the craft during it, and back after',()=>{
   run(`G.local=false;G.car="neela";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach(r=>{r.car="bolt";r.dead=0;r.invuln=0;r.trail=[];});`);
+       G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;r.trail=[];});`);
   clearWorld();
   /* Ordinary driving, and ordinary boost, never transform anything. */
   run('G.boosting=true;');calls=[];run('render();');
@@ -429,7 +456,7 @@ test('the road shows the car until the ultimate, the craft during it, and back a
   assert.equal(sheet('v_neela.PNG').length,1);
   assert.equal(sheet('vtm_neela.PNG').length,0);
   /* A rival Neela gets the identical treatment. */
-  run(`G.car="bolt";G.rivals[0].car="neela";G.rivals[0].y=playerY-150;
+  run(`G.car="rose";G.rivals[0].car="neela";G.rivals[0].y=playerY-150;
        G.rivals[0].invuln=0;G.rivals[0].dead=0;`);
   calls=[];run('render();');
   assert.equal(sheet('v_neela.PNG').length,1);
@@ -441,7 +468,7 @@ test('the road shows the car until the ultimate, the craft during it, and back a
 test('a full render of a transforming Neela changes no race state',()=>{
   run(`G.local=false;G.car="neela";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach(r=>{r.car="bolt";r.dead=0;r.invuln=0;});
+       G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;});
        G.rivals[0].car="neela";G.rivals[0].invuln=0;G.rivals[0].y=playerY-160;
        G.ult=1;startUlt("me");G.rivals[0].ult=1;startUlt(G.rivals[0]);
        G.speed=BASE_SPEED;G.rivals[0].abs=BASE_SPEED;
@@ -455,7 +482,7 @@ test('a full render of a transforming Neela changes no race state',()=>{
   const before=run('JSON.stringify(G)');
   for(let i=0;i<60;i++){f.setNow(30000+i*16);run('render();');}
   assert.equal(run('JSON.stringify(G)'),before);
-  assert.equal(f.images.length,3,'still three sheets and no more');
+  assert.equal(f.images.length,7,'still seven images and no more');
   run('endUlt("me");endUlt(G.rivals[0]);');
 });
 test('every local column carries its own Neela body and nobody else is white',()=>{
@@ -463,7 +490,7 @@ test('every local column carries its own Neela body and nobody else is white',()
     run(`G.local=true;G.players=${seats};G.rules=defaultRules();
          G.picks=["neela"].concat(CAR_IDS.filter(c=>c!=="neela")).slice(0,${seats});
          G.car=G.picks[0];startRace();clearTimers();G.state="running";G.invuln=0;
-         G.rivals.forEach(r=>{r.dead=0;r.invuln=0;if(r.car!=="flann")r.car="bolt";});`);
+         G.rivals.forEach(r=>{r.dead=0;r.invuln=0;if(r.car!=="flann")r.car="rose";});`);
     clearWorld();
     calls=[];run('render();');
     assert.equal(sheet('v_neela.PNG').length,seats,`${seats} columns each draw the car`);
@@ -481,6 +508,290 @@ test('every local column carries its own Neela body and nobody else is white',()
       assert.equal(run(`whiteoutActive(G.humans[${i}])`),false,'seat '+(i+1)+' is untouched');
     run('endUlt("me");G.whiteT=0;');
   }
+});
+
+/* ================================================================
+   LOLANTHE AND VERDANT  -  two more sheets, three more emitters
+   ================================================================
+   The measured numbers, restated here so the check fails if either the data or
+   the placement moves without the other. v_lolanthe's body is (90,12)-(933,1477)
+   of a 1024x1536 sheet and its two oval outlets are centred at (455,1354) and
+   (568,1354). v_verdant's body is (167,36)-(856,1508) and its one side-exit
+   pipe has its bore centred at (738,1314) - the slatted box under its tail is a
+   diffuser with no bore, so nothing is drawn out of it. */
+const L_BOUNDS = {x:90, y:12, w:844, h:1466};
+const L_PIPES = [[455,1354],[568,1354]];
+const V_BOUNDS = {x:167, y:36, w:690, h:1473};
+const V_PIPES = [[738,1314]];
+test('both new sheets are centred from their own measured bounds',()=>{
+  for(const [car,B] of [['lolanthe',L_BOUNDS],['verdant',V_BOUNDS]]){
+    for(const size of [22,60,130]){
+      draw(false,0,size,size*1.86,false,car);
+      const d=images()[0];
+      assert.equal(images().length,1,car+' draws one body');
+      near(d.w/d.h,1024/1536);                       /* the whole sheet, never cropped */
+      /* the measured body's own centre lands on the car's centre */
+      near(d.x+d.w*((B.x+B.w/2)/1024),0);
+      near(d.y+d.h*((B.y+B.h/2)/1536),0);
+      assert.ok(d.x<0 && d.y<0,'padding is kept, not trimmed');
+      /* and the body fits the box: whichever of the two runs out first */
+      const vw=d.w*B.w/1024, vh=d.h*B.h/1536;
+      assert.ok(vw<=size+1e-6 && vh<=size*1.86+1e-6,car+' body overflows its box');
+      assert.ok(Math.abs(vw-size)<1e-6 || Math.abs(vh-size*1.86)<1e-6,
+                car+' body does not fill its box in either direction');
+    }
+    /* Neither borrowed the other's geometry, nor Flann's, nor Neela's. */
+    for(const other of ['flann','neela'])
+      assert.notEqual(run(`JSON.stringify(CARS.${car}.spriteBounds)`),
+                      run(`JSON.stringify(CARS.${other}.spriteBounds)`));
+  }
+  assert.notEqual(run('JSON.stringify(CARS.lolanthe.spriteBounds)'),
+                  run('JSON.stringify(CARS.verdant.spriteBounds)'));
+});
+test('every plume root is the measured tailpipe, at every size and tilt',()=>{
+  for(const [car,pipes] of [['lolanthe',L_PIPES],['verdant',V_PIPES]]){
+    /* The data says what the artwork says: as many anchors as the sheet has
+       outlets, and at the measured places. */
+    assert.equal(run(`CARS.${car}.exhaust.length`),pipes.length);
+    for(const size of [22,60,130])for(const tilt of [-0.19,0,0.19]){
+      draw(true,tilt,size,size*1.86,false,car);
+      const d=images()[0],p=plumes();
+      assert.equal(p.length,pipes.length,car+' lights every outlet and no more');
+      /* Under the body, so the car sits in front of its own fire. */
+      assert.ok(p.every(q=>calls.indexOf(q)<calls.indexOf(d)));
+      for(const [i,[px,py]] of pipes.entries()){
+        const [ax,ay]=anchorOn(d,px,py);
+        near(p[i].root[0],ax);near(p[i].root[1],ay);
+        assert.ok(p[i].tip[1]>p[i].root[1],'the plume runs out behind the car');
+      }
+      if(tilt) assert.ok(Math.abs(p[0].root[0]-140)>1e-9,'the root leans with the car');
+    }
+    /* Ordinary fire out of the pipes, not Neela's energy, and never a body fire. */
+    assert.equal(run(`CARS.${car}.exhaustStyle===undefined`),true);
+    assert.equal(fires().length,0);
+    draw(false,0,60,111.6,false,car);
+    assert.equal(plumes().length,0,'no boost, no plume');
+  }
+});
+
+/* ---- Verdant's per-view opacity --------------------------------- */
+f.boot();
+/* Read out of the game's own tuning layer rather than written down twice. */
+const OWN_A=run('VERDANT_OWN_ALPHA'), FADE=run('VERDANT_FADE');
+/* Every drawCar the real render path makes, with the opacity each view asked
+   for. This is the one number invisibility comes down to, so it is read off
+   the shared entry point rather than inferred from anything drawn. */
+function alphaDraws(code){
+  run(`globalThis.shown=[];globalThis.realDrawCar=drawCar;
+       drawCar=function(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white,alpha){
+         shown.push({car:p.key,alpha:alpha===undefined?1:alpha});
+         return realDrawCar(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white,alpha);};`);
+  try { run(code); return JSON.parse(run('JSON.stringify(shown)')); }
+  finally { run('drawCar=realDrawCar;'); }
+}
+test('an ulting Verdant is half in its own view and nothing in anybody else’s',()=>{
+  run(`G.local=false;G.car="verdant";G.mode="endless";G.rules=defaultRules();
+       startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
+       G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;});`);
+  clearWorld();
+  /* Before the ultimate every car is drawn solid. */
+  let drawn=alphaDraws('render();');
+  assert.ok(drawn.every(d=>d.alpha===1),'nothing is faded before the ultimate');
+  /* The fade is a ramp, not a snap: a quarter of a second to get there. */
+  run('G.ult=1;startUlt("me");tickVerdant("me",VERDANT_FADE/2);');
+  drawn=alphaDraws('render();');
+  const mid=drawn.find(d=>d.car==='verdant');
+  assert.ok(mid.alpha>OWN_A && mid.alpha<1,'the owner fades through');
+  run('tickVerdant("me",VERDANT_FADE);');
+  assert.equal(run('G.verdantHide'),1);
+  drawn=alphaDraws('render();');
+  near(drawn.find(d=>d.car==='verdant').alpha,OWN_A);
+  assert.ok(drawn.filter(d=>d.car!=='verdant').every(d=>d.alpha===1),'only Verdant fades');
+  /* A rival Verdant, seen from player one's view, is gone entirely. */
+  run(`endUlt("me");G.verdantHide=0;G.car="rose";G.rivals[0].car="verdant";
+       G.rivals[0].dead=0;G.rivals[0].invuln=0;G.rivals[0].y=playerY-150;
+       G.rivals[0].ult=1;startUlt(G.rivals[0]);tickVerdant(G.rivals[0],VERDANT_FADE*2);`);
+  drawn=alphaDraws('render();');
+  assert.equal(drawn.some(d=>d.car==='verdant'),false,'an invisible car is not drawn at all');
+  /* And nothing pinned to it is drawn either: no plume, no badge stack. */
+  clearWorld();run('G.rivals[0].boosting=true;');
+  calls=[];run('render();');
+  assert.equal(sheet('v_verdant.PNG').length,0,'the body is gone');
+  assert.equal(plumes().length,0,'and so is the exhaust that would outline it');
+  /* Ending it brings the car back. */
+  run('G.rivals[0].boosting=false;endUlt(G.rivals[0]);tickVerdant(G.rivals[0],VERDANT_FADE*2);');
+  drawn=alphaDraws('render();');
+  near(drawn.find(d=>d.car==='verdant').alpha,1);
+});
+test('each local column answers for its own seat, in two, three and four',()=>{
+  for(const seats of [2,3,4]){
+    run(`G.local=true;G.players=${seats};G.rules=defaultRules();
+         G.picks=["verdant"].concat(CAR_IDS.filter(c=>c!=="verdant")).slice(0,${seats});
+         G.car=G.picks[0];startRace();clearTimers();G.state="running";G.invuln=0;
+         G.rivals.forEach(r=>{r.dead=0;r.invuln=0;});
+         G.ult=1;startUlt("me");tickVerdant("me",VERDANT_FADE*2);`);
+    clearWorld();
+    const drawn=alphaDraws('render();').filter(d=>d.car==='verdant');
+    /* Seat one is the only Verdant, drawn once in its own column at half and
+       not at all in any of the others. */
+    assert.equal(drawn.length,1,`${seats} columns draw the hidden Verdant once`);
+    near(drawn[0].alpha,OWN_A);
+    /* A hit reveals it to everybody for a split second, then it goes again. */
+    run('verdantReveal("me");');
+    const seen=alphaDraws('render();').filter(d=>d.car==='verdant');
+    assert.equal(seen.length,seats,'every column sees the reveal');
+    assert.ok(seen.every(d=>d.alpha===1));
+    assert.equal(run('G.ultOn'),true,'and the reveal did not cut the ultimate short');
+    run('G.verdantRevealT=0;tickVerdant("me",VERDANT_FADE*2);');
+    assert.equal(alphaDraws('render();').filter(d=>d.car==='verdant').length,1);
+    run('endUlt("me");G.verdantHide=0;G.verdantRevealT=0;');
+  }
+});
+
+/* ---- the notes -------------------------------------------------- */
+f.boot();
+/* The note images are square and drawn through the same drawImage every body
+   is, so they are told apart by which sheet they came from. */
+function notes(src){return images().filter(c=>c.image && c.image.src===src);}
+test('the queen note floats over an ulting Lolanthe, pops in, bobs and pops out',()=>{
+  f.images.forEach(i=>i.load(1254,1254));
+  run(`G.local=false;G.car="lolanthe";G.mode="endless";G.rules=defaultRules();
+       startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
+       G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;r.y=playerY+9000;});
+       motionPref="full";`);
+  clearWorld();
+  /* The notes are drawn in the world at absolute coordinates, so the camera
+     shake a burst leaves behind would move them; it is settled here rather
+     than allowed to jitter every comparison below. */
+  const still=()=>{run('G.shake=0;');calls=[];run('render();');};
+  still();
+  assert.equal(notes('queen_note.PNG').length,0,'no note before the ultimate');
+  run('G.ult=1;startUlt("me");');
+  assert.equal(run('G.queenPop'),run('QUEEN_POP'),'the pop-in is armed by the ultimate');
+  /* The very first instant of the pop is nothing at all, which is what a fade
+     in means; half way through it is on screen and not yet at its size. */
+  f.setNow(1000);still();
+  assert.equal(notes('queen_note.PNG').length,0,'it starts from nothing');
+  run('G.queenPop=QUEEN_POP*0.5;');
+  f.setNow(1000);still();
+  const small=notes('queen_note.PNG');
+  assert.equal(small.length,1,'exactly one note, over the car');
+  assert.ok(small[0].y+small[0].h/2 < run('playerY'),'and above the car');
+  assert.ok(Math.abs(small[0].x+small[0].w/2-run('G.x'))<1e-6,'centred on it');
+  /* Popping in: it arrives small and settles on its size. */
+  run('G.queenPop=0;');still();
+  const full=notes('queen_note.PNG')[0];
+  assert.ok(full.w>small[0].w,'the note pops up to size rather than appearing at it');
+  near(full.w,run('racerDims("me").h')*run('QUEEN_NOTE_K'));
+  /* Bobbing: the same frame twice is the same note; a later frame is not. */
+  f.setNow(1000);still();const a=notes('queen_note.PNG')[0].y;
+  f.setNow(1000);still();near(notes('queen_note.PNG')[0].y,a);
+  f.setNow(1000+run('QUEEN_BOB_RATE')*1000/4);still();
+  assert.ok(Math.abs(notes('queen_note.PNG')[0].y-a)>1e-9,'it rises and falls');
+  /* Reduced motion keeps the note and takes the movement out of it. */
+  run('motionPref="reduced";');
+  f.setNow(2000);still();const r=notes('queen_note.PNG')[0].y;
+  f.setNow(7400);still();
+  assert.equal(notes('queen_note.PNG').length,1,'the note stays');
+  near(notes('queen_note.PNG')[0].y,r);
+  run('motionPref="full";');
+  /* The ultimate ending pops it out rather than deleting it. */
+  run('tickUlt("me",ULT_TIME);');
+  assert.equal(run('G.ultOn'),false);
+  assert.equal(run('G.queenOut'),run('QUEEN_POP'));
+  still();
+  assert.equal(notes('queen_note.PNG').length,1,'it is still on its way out');
+  run('G.queenOut=0;');still();
+  assert.equal(notes('queen_note.PNG').length,0,'and then it is gone');
+});
+test('exactly three notes orbit a controlled racer, with no bob and no restart',()=>{
+  run(`G.local=false;G.car="rose";G.mode="endless";G.rules=defaultRules();
+       startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
+       G.rivals.forEach(r=>{r.car="siren";r.dead=0;r.invuln=0;r.y=playerY+9000;});
+       motionPref="full";`);
+  clearWorld();
+  const still=()=>{run('G.shake=0;');calls=[];run('render();');};
+  still();
+  assert.equal(notes('pion_note.PNG').length,0);
+  run('applyMindControl("me");G.mindPop=0;');
+  f.setNow(1000);still();
+  const three=notes('pion_note.PNG');
+  assert.equal(three.length,3,'exactly three, never two and never four');
+  /* A third of a turn apart on a ring taken from the racer’s own box. */
+  const cx=run('G.x'), cy=run('playerY');
+  const rx=run('racerDims("me").w')*run('MIND_ORBIT_X');
+  const ry=run('racerDims("me").h')*run('MIND_ORBIT_Y');
+  const angles=three.map(n=>Math.atan2((n.y+n.h/2-cy)/ry,(n.x+n.w/2-cx)/rx));
+  for(let i=1;i<3;i++){
+    let d=Math.abs(angles[i]-angles[0])%(Math.PI*2);
+    d=Math.min(d,Math.PI*2-d);
+    assert.ok(Math.abs(d-Math.PI*2/3)<1e-6,'the three are 120 degrees apart');
+  }
+  near(three[0].w,run('racerDims("me").h')*run('MIND_NOTE_K'));
+  /* They turn, and they do not rise and fall: the ring's centre holds still. */
+  const mid=n=>[n.x+n.w/2,n.y+n.h/2];
+  const centre=ns=>[ns.reduce((a,n)=>a+mid(n)[0],0)/3, ns.reduce((a,n)=>a+mid(n)[1],0)/3];
+  const c0=centre(three);
+  f.setNow(1000+500);still();
+  const later=notes('pion_note.PNG');
+  assert.ok(Math.abs(mid(later[0])[0]-mid(three[0])[0])>1e-9,'they orbit');
+  const c1=centre(later);
+  assert.ok(Math.abs(c1[0]-c0[0])<1e-6 && Math.abs(c1[1]-c0[1])<1e-6,
+            'the ring does not bob - that belongs to the queen note');
+  /* Reduced motion keeps all three and stops the orbit. */
+  run('motionPref="reduced";');
+  f.setNow(3000);still();const s0=notes('pion_note.PNG').map(mid);
+  f.setNow(9000);still();const s1=notes('pion_note.PNG').map(mid);
+  assert.equal(s1.length,3);
+  for(let i=0;i<3;i++){near(s1[i][0],s0[i][0]);near(s1[i][1],s0[i][1]);}
+  run('motionPref="full";');
+  /* Re-applying while already controlled resets the timer and must not replay
+     the entrance. */
+  run('G.mindT=0.4;applyMindControl("me");');
+  assert.equal(run('G.mindT'),run('MIND_CONTROL_TIME'));
+  assert.equal(run('G.mindPop'),0,'the pop-in did not restart');
+  /* And the exit pops out rather than vanishing. */
+  run('tickMindControl("me",MIND_CONTROL_TIME);');
+  assert.equal(run('G.mindT'),0);
+  assert.equal(run('G.mindOut'),run('MIND_POP'));
+  still();
+  assert.equal(notes('pion_note.PNG').length,3,'still on their way out');
+  run('G.mindOut=0;');still();
+  assert.equal(notes('pion_note.PNG').length,0);
+});
+test('the notes are proportional to whichever car is wearing them',()=>{
+  run(`G.local=false;G.car="rose";G.mode="endless";G.rules=defaultRules();
+       startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
+       G.rivals.forEach(r=>{r.dead=0;r.invuln=0;r.y=playerY+9000;});`);
+  clearWorld();
+  const sizes={};
+  for(const car of JSON.parse(run('JSON.stringify(CAR_IDS)'))){
+    run(`G.car=${JSON.stringify(car)};G.mindT=MIND_CONTROL_TIME;G.mindPop=0;G.mindOut=0;G.shake=0;`);
+    f.setNow(4000);calls=[];run('render();');
+    const ns=notes('pion_note.PNG');
+    assert.equal(ns.length,3,car+' wears three notes');
+    sizes[car]=ns[0].w;
+    near(ns[0].w,run('racerDims("me").h')*run('MIND_NOTE_K'));
+  }
+  /* Tuned to the racer rather than to one model: the cars with a race size of
+     their own carry proportionally larger notes. */
+  assert.ok(sizes.flann>sizes.rose && sizes.neela>sizes.rose && sizes.verdant>sizes.rose);
+  near(sizes.lolanthe,sizes.rose);
+  run('G.mindT=0;G.mindOut=0;G.car="flann";');
+});
+test('a full render of both new ultimates changes no race state',()=>{
+  run(`G.local=false;G.car="lolanthe";G.mode="endless";G.rules=defaultRules();
+       startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
+       G.rivals.forEach(r=>{r.car="rose";r.dead=0;r.invuln=0;});
+       G.rivals[0].car="verdant";G.rivals[0].ult=1;startUlt(G.rivals[0]);
+       G.rivals[0].verdantHide=0.5;G.rivals[1].mindT=MIND_CONTROL_TIME;
+       G.ult=1;startUlt("me");`);
+  clearWorld();
+  const before=run('JSON.stringify(G)');
+  for(let i=0;i<60;i++){f.setNow(40000+i*16);run('render();');}
+  assert.equal(run('JSON.stringify(G)'),before);
+  assert.equal(f.images.length,7,'still seven images and no more');
+  run('endUlt("me");endUlt(G.rivals[0]);');
 });
 
 console.log(`\n${checks} sprite checks passed (Canvas/Image doubles; browser visuals separate).`);

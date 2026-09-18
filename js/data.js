@@ -106,15 +106,77 @@ const CARS = {
       flame:["#2E9BFF","#EAFBFF"]
     }
   },
-  bolt: {
-    key:"bolt", style:"buggy", accent:"#FFD21E",
-    body:"#F5C400", dark:"#141414", glass:"#4A4636", trim:"#141414",
-    flame:["#FFE44D","#FFFBDA"]
+  /* ---- Lolanthe ---------------------------------------------------
+     The third sprite car, and the third ultimate that does more than run
+     fast. Its geometry is measured off v_lolanthe.PNG and off nothing else.
+
+     v_lolanthe.PNG is 1024x1536 with the body inside (90,12)-(933,1477), so
+     the visible artwork is 844 x 1466: a broad, heavy-shouldered car, wider
+     against its own length than any other on the road. Sized into the shared
+     car box it is the width that runs out first rather than the height - the
+     body fills the box across and 93% of it down - so it already reads as a
+     full car in its lane and carries no race scale at all. Flann's is 1.12
+     and Neela's 1.18 because their artwork is narrow; this one's is not.
+
+     The two exhaust anchors are the centres of the measured oval outlets in
+     the rear valance, (422,1343)-(488,1366) and (535,1343)-(602,1366). The
+     hull traces the crown of the front wing, the front fenders, the waist
+     between the wheels and the rear arches, and stops short of the gold
+     spikes trailing off the rear corners. */
+  lolanthe: {
+    key:"lolanthe", style:"sprite", sprite:"v_lolanthe.PNG", accent:"#B36BFF",
+    /* Normalized source pixels: visible body bounds (90,12)-(933,1477).
+       Keep the full PNG when drawing; bounds only control its scale and
+       centre. */
+    spriteBounds:[90/1024, 12/1536, 844/1024, 1466/1536],
+    /* The measured centre of each rear outlet, inside the rim. */
+    exhaust:[[455/1024, 1354/1536], [568/1024, 1354/1536]],
+    /* Inset body in logical car units, traced off the measured silhouette.
+       Excludes the transparent corners, the nose ornament above the crown and
+       the gold spikes trailing off the rear corners. */
+    hitShape:[[0,-0.406],[0.220,-0.379],[0.374,-0.320],[0.396,-0.264],
+              [0.335,-0.169],[0.263,-0.108],[0.338,0.010],[0.358,0.086],
+              [0.456,0.183],[0.493,0.275],[0.436,0.366],[0.209,0.389],
+              [0,0.399],[-0.209,0.389],[-0.436,0.366],[-0.493,0.275],
+              [-0.456,0.183],[-0.358,0.086],[-0.338,0.010],[-0.263,-0.108],
+              [-0.335,-0.169],[-0.396,-0.264],[-0.374,-0.320],[-0.220,-0.379]],
+    flame:["#B36BFF","#F2E2FF"]
   },
-  timestamp: {
-    key:"timestamp", style:"wedge", accent:"#3FD98A",
-    body:"#1F7A4C", dark:"#0E0E10", glass:"#7FE8B6", trim:"#3FD98A",
-    flame:["#3FD98A","#D6FFE9"]
+  /* ---- Verdant ----------------------------------------------------
+     The fourth sprite car. v_verdant.PNG is 1024x1536 with the body inside
+     (167,36)-(856,1508), so the visible artwork is 690 x 1473: long and
+     narrow, closer to Neela's proportions than to Lolanthe's.
+
+     Measured: at 1:1 the body is 0.871 of the shared car box across, against
+     Flann's 1.056 and Lolanthe's 1.000 once their own scales are counted, so
+     it reads a little thin in the lane it is sitting in. A tenth brings it to
+     0.958 - still the second narrowest car on the road, which is what the
+     artwork is. Uniform, so the aspect ratio, the measured bounds, the anchor
+     and the hull all scale together.
+
+     One exhaust anchor, because the artwork has one outlet: the side-exit
+     pipe on the right, whose bore is measured at (723,1307)-(754,1321). The
+     slatted box under the tail is a diffuser and has no bore, so nothing is
+     drawn out of it. The hull traces the nose, the front fenders, the waist
+     at the wheel gap and the rear arches, and stops at the root of the swept
+     rear blades - they and the pipe are trailing edges, not body. */
+  verdant: {
+    key:"verdant", style:"sprite", sprite:"v_verdant.PNG", accent:"#6BC46B",
+    raceScale:1.10,
+    /* Normalized source pixels: visible body bounds (167,36)-(856,1508).
+       Keep the full PNG when drawing; bounds only control its scale and
+       centre. */
+    spriteBounds:[167/1024, 36/1536, 690/1024, 1473/1536],
+    /* The measured centre of the pipe's bore. */
+    exhaust:[[738/1024, 1314/1536]],
+    /* Inset body in logical car units, traced off the measured silhouette. */
+    hitShape:[[0,-0.481],[0.063,-0.457],[0.139,-0.410],[0.280,-0.313],
+              [0.361,-0.215],[0.345,-0.019],[0.304,0.013],[0.356,0.070],
+              [0.431,0.222],[0.415,0.290],[0.318,0.324],[0.205,0.378],
+              [0,0.397],[-0.205,0.378],[-0.318,0.324],[-0.415,0.290],
+              [-0.431,0.222],[-0.356,0.070],[-0.304,0.013],[-0.345,-0.019],
+              [-0.361,-0.215],[-0.280,-0.313],[-0.139,-0.410],[-0.063,-0.457]],
+    flame:["#6BC46B","#E4FFD9"]
   },
   rose: {
     key:"rose", style:"coupe", accent:"#FF7ACF",
@@ -128,7 +190,7 @@ const CARS = {
   }
 };
 const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
-const CAR_IDS = ["flann","neela","bolt","timestamp","rose","siren"];
+const CAR_IDS = ["flann","neela","lolanthe","verdant","rose","siren"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -179,13 +241,13 @@ const DIFF_IDS = ["easy","medium","hard","brutal"];
    Difficulty says how well a driver thinks. Temperament says what it thinks
    about first, and it is what stops five bots on the same setting from being
    the same bot five times. Each car has a leaning that suits it - Flann is a
-   brawler, Timestamp sits on its ultimate waiting for the moment - and every
+   brawler, Verdant sits on its ultimate waiting for the moment - and every
    race jitters it, so the Flann you raced last time is not quite this one.
 
-   Neela keeps the leaning the car in this slot always had. Its ultimate does
-   something new, but what the driver wants out of a race - room, and not much
-   appetite for hurting anybody to get it - has not changed, and trading places
-   with somebody is not a way of hurting them.
+   Neela, Lolanthe and Verdant each keep the leaning the car in their slot
+   always had. Their ultimates do something new, but what those drivers want
+   out of a race has not changed, and taking somebody's lane off them or
+   disappearing for fifteen seconds is not a new appetite for hurting people.
 
    - nerve     what it will risk: tight gaps, hazards, a lane somebody else wants
    - spite     how much it would rather hurt somebody than simply drive faster
@@ -194,8 +256,8 @@ const DIFF_IDS = ["easy","medium","hard","brutal"];
 const TEMPERS = {
   flann:      { nerve:0.74, spite:0.86, patience:0.22, guard:0.42 },
   neela:     { nerve:0.88, spite:0.46, patience:0.44, guard:0.30 },
-  bolt:      { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
-  timestamp: { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
+  lolanthe:  { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
+  verdant:   { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
   rose:      { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
   siren:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
 };
@@ -232,7 +294,14 @@ const CONDITIONS = {
   obscured:     { key:"condObscured",     col:"#B07A4A", type:"debuff",
                   icon:"eye",      ink:"#1B0F05" },
   skidded:      { key:"condSkidded",      col:"#0B0B0C", type:"debuff",
-                  icon:"skid",     ink:"#FFFFFF" }
+                  icon:"skid",     ink:"#FFFFFF" },
+  /* Lolanthe's. Royal violet because that is whose it is, and a musical note
+     because that is what is being done to you: the badge and the three notes
+     orbiting the car are the same idea at two sizes. The note is drawn out of
+     COND_PATHS like every other icon - the PNG artwork is the world effect and
+     is deliberately not in here. */
+  mindControlled:{ key:"condMindControlled", col:"#8A4FE0", type:"debuff",
+                  icon:"note",     ink:"#FFFFFF" }
 };
 /* The priority order, read straight off the table so the two cannot drift. */
 const CONDITION_IDS = Object.keys(CONDITIONS);
@@ -266,6 +335,62 @@ const NEELA_SWAP_GUARD = 0.05;            /* seconds: one step, not a shield */
 const NEELA_TRAIL_LIFE = 1.8;             /* seconds a node takes to fade out */
 const NEELA_TRAIL_GAP = 9;                /* px of travel between nodes */
 const NEELA_TRAIL_MAX = 170;              /* nodes kept per racer, hard cap */
+/* ---- Lolanthe's ultimate ----------------------------------------
+   The shared lifecycle above is untouched - same charge, same fifteen
+   seconds, same double pace. These are the numbers for what Lolanthe does
+   inside it, and they live here rather than being spelled out wherever they
+   happen to be needed.
+
+   Mind Control is a three second debuff that is set, never added to: a racer
+   held in the aura has its timer put back to three seconds every frame, so it
+   stays controlled for as long as it is exposed and for three seconds after
+   the last application, and never for six, nine or twelve.
+
+   The aura's reach is in car lengths rather than pixels, because a car length
+   is the one unit that means the same thing on a phone, on a desktop and in
+   one column of a four-way split. Four of them is about the stretch of road a
+   racer can close in a second at ordinary pace. */
+const MIND_CONTROL_TIME = 3;              /* seconds without controls, from the last application */
+const MIND_AURA_LENGTHS = 4;              /* how far the aura reaches, in car lengths */
+/* The three notes' entrance and exit. Cosmetic, and short: a pop, not a
+   second lifecycle. A timer that is merely being reset must not replay it. */
+const MIND_POP = 0.26;                    /* seconds of scale/opacity pop, in and out */
+const MIND_ORBIT = 0.42;                  /* turns a second the three notes make */
+const MIND_NOTE_K = 0.30;                 /* one note's size, in car heights */
+/* The ring they turn on. Two radii rather than one, and both in the racer's
+   own dimensions, so the three notes sit around a Lolanthe, a Neela, a Flann,
+   a Verdant, a Rose and a Siren alike instead of around whichever of them the
+   number was tuned against. */
+const MIND_ORBIT_X = 0.72;                /* orbit half width, in car widths */
+const MIND_ORBIT_Y = 0.42;                /* orbit half height, in car heights */
+/* Lolanthe's own note, the one above the car rather than around it. */
+const QUEEN_POP = 0.3;                    /* seconds of scale/opacity pop, in and out */
+const QUEEN_NOTE_K = 0.52;                /* its size, in car heights */
+const QUEEN_LIFT = 0.74;                  /* how far above the car it floats, in car heights */
+const QUEEN_BOB = 0.055;                  /* how far it rises and falls, in car heights */
+const QUEEN_BOB_RATE = 1.6;               /* seconds for one rise and fall */
+/* ---- Verdant's ultimate -----------------------------------------
+   Again the shared lifecycle and nothing else: fifteen seconds, double pace.
+   What changes is who can see it.
+
+   The fade is cosmetic state only - it never touches the hitbox, the contact
+   rules or the race - and it is a quarter of a second so the car does not
+   snap out of existence. The owner's own view keeps half of it, so the person
+   driving can still find their car; every other view loses it entirely.
+
+   The reveal is the other half of the bargain: run into an invisible car and
+   it shows itself for a fifth of a second. Long enough to read, far too short
+   to aim at, and it buys the racer that hit it nothing - Verdant's immunity
+   to Mind Control holds right through it. */
+const VERDANT_FADE = 0.25;                /* seconds to fade into and out of hiding */
+const VERDANT_OWN_ALPHA = 0.5;            /* what its own driver still sees */
+const VERDANT_REVEAL = 0.18;              /* seconds of full visibility after a hit */
+/* The two pieces of world artwork the notes are drawn from. Named here beside
+   everything else the game is defined by, and loaded exactly once - see
+   FX_SPRITES in render.js. The small HUD badge is not one of these: it is a
+   vector path in COND_PATHS like every other Condition icon. */
+const QUEEN_NOTE_IMG = "queen_note.PNG";  /* floats above an ulting Lolanthe */
+const MIND_NOTE_IMG = "pion_note.PNG";    /* three of them orbit a controlled racer */
 /* gold, silver, bronze, then plain white for the rest of the field */
 const PLACE_COLS = ["#FFD24A", "#D9DEE6", "#D08A4A", "#FFFFFF"];
 /* ---------------- mystery bubbles ---------------- */
@@ -331,8 +456,8 @@ const BUBBLE_R = 21;
 
    So the clock is really a question about being stopped: how long should a row
    wait for a driver who cannot reach it yet? Longer than the longest thing that
-   can hold you still - a Bolt pin, an ordering, a wreck and a respawn back to
-   back - and thirty seconds clears all of them with time in hand. */
+   can hold you still - an ordering, a wreck and a respawn back to back - and
+   thirty seconds clears all of them with time in hand. */
 const BUBBLE_LIFE = 30, BUBBLE_BLINK = 1.6;
 /* Swapping one item for another can be completely silent - roll a can while
    holding a can and the box is pixel-identical before and after - so a trade

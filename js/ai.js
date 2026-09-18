@@ -40,8 +40,10 @@ function laneRisk(R, far, at){
   const all = racers();
   for(let i=0;i<all.length;i++){
     const a = all[i];
+    const who = a.me ? "me" : a.obj;
     if(a.out || a.obj === R) continue;
-    if(noContact(a.me ? "me" : a.obj)) continue;      /* nothing to run into */
+    if(noContact(who)) continue;                      /* nothing to run into */
+    if(!racerDetectable(who)) continue;               /* and nothing a driver could see */
     const ahead = R.y - a.y;
     if(ahead > 0 && ahead < 300) risk[a.lane] = 1;    /* held up behind them */
   }
@@ -79,6 +81,12 @@ function fieldView(self){
       out:me ? (G.dead > 0 || finishedMe()) : (obj.dead > 0 || finishedCar(obj)),
       safe:me ? playerUntouchable() : safeCar(obj),
       touch:!(me ? noContact("me") : noContact(obj)),
+      /* Physically touchable and visually detectable are different questions,
+         and an ulting Verdant is the one racer they disagree about. `touch` is
+         still the truth about contact, so a bot can still run into what it
+         cannot see; `seen` is what every deliberate decision below reads, so
+         nothing is aimed at a car a person would not know was there. */
+      seen:racerDetectable(me ? "me" : obj),
       ultOn:!!o.ultOn, ult:o.ultOn ? 1 : (o.ult || 0),
       slow:me ? G.slowT : obj.slow,
       slip:me ? G.slipT : obj.slip,
@@ -97,7 +105,7 @@ function fieldView(self){
    bothers - hitting a car that can hit back is worth much less than
    finishing one that cannot. */
 function softness(a){
-  if(!a || a.out || a.safe || !a.touch) return 0;
+  if(!a || a.out || a.safe || !a.touch || !a.seen) return 0;
   let v = 0;
   if(a.slip > 0)    v += 0.50;                 /* its steering is backwards */
   if(a.slow > 0)    v += 0.40;
@@ -112,6 +120,11 @@ function softness(a){
    whoever that is. */
 function threatOf(R, a, mine){
   if(!a || a.out) return 0;
+  /* A car nobody can see is a car nobody is worried about. It is still there
+     to be run into - `touch` says so, and the contact rules read that - but
+     being frightened of something invisible is exactly the supernatural
+     knowledge a person driving would not have. */
+  if(!a.seen) return 0;
   const gap = Math.abs(a.m - mine);
   if(gap > 240) return 0;
   let v = 1 - gap/240;
@@ -157,7 +170,11 @@ function botSense(R){
     if(a.m > mine) s.place++;
     const gy = R.y - a.y;                       /* + this car is up the road */
     if(Math.abs(a.m - mine) < 90) close++;
-    if(a.lane === R.lane && a.touch){
+    /* The car in front and the car behind are what a driver can see in front
+       and behind. An ulting Verdant is in neither, which is how a bot comes to
+       drive into one - it is physically there and the contact rules will say
+       so, but nothing here knew to leave room for it. */
+    if(a.lane === R.lane && a.touch && a.seen){
       if(gy > 0 && gy < s.frontGap){ s.frontGap = gy; s.front = a; }
       if(gy < 0 && -gy < s.backGap){ s.backGap = -gy; s.back = a; }
     }
@@ -173,10 +190,10 @@ function botSense(R){
   const opts = [R.lane-1, R.lane+1].filter(function(l){ return l >= 0 && l <= 2; });
   s.opts = opts;
   s.clean = opts.filter(function(l){
-    if(s.now[l] || carAt(l, R.y, R)) return false;
+    if(s.now[l] || carSeenAt(l, R.y, R)) return false;
     return true;
   });
-  s.taken = opts.filter(function(l){ return !s.now[l] && carAt(l, R.y, R); });
+  s.taken = opts.filter(function(l){ return !s.now[l] && carSeenAt(l, R.y, R); });
   s.boxed = s.clean.length === 0;
   s.target = botTarget(R, s);
   return s;
@@ -192,7 +209,7 @@ function botTarget(R, s){
   let best = null, bestV = 0;
   for(let i=0;i<s.all.length;i++){
     const a = s.all[i];
-    if(a.out || a.safe || !a.touch) continue;
+    if(a.out || a.safe || !a.touch || !a.seen) continue;
     if(Math.abs(a.lane - R.lane) > 1) continue;      /* one lane at a time, same as you */
     const gap = a.m - s.mine;                        /* + up the road */
     const near = Math.abs(gap);
@@ -216,11 +233,11 @@ function laneScore(R, l, s){
   let v = 0;
   if(s.now[l]) v -= 120;
   if(s.soon[l]) v -= 16 + D.skill*30;               /* only good drivers read that far */
-  if(carAt(l, R.y, R)) v -= 44;
+  if(carSeenAt(l, R.y, R)) v -= 44;
   let clear = 900;
   for(let i=0;i<s.all.length;i++){
     const a = s.all[i];
-    if(a.out || !a.touch || a.lane !== l) continue;
+    if(a.out || !a.touch || !a.seen || a.lane !== l) continue;
     const gy = R.y - a.y;
     if(gy > 0 && gy < clear) clear = gy;
   }
@@ -246,11 +263,14 @@ function laneScore(R, l, s){
 }
 
 /* Value the opportunity to gain distance with the shared speed boost. */
-/* What the fifteen seconds are worth beyond the pace, for the two cars that
+/* What the fifteen seconds are worth beyond the pace, for the four cars that
    get something beyond the pace. Everything above is the shared read of the
    road and applies to all six; this is an adjustment on top of it, and it is
-   nothing for the four cars that have no power to value. Neither branch
-   assumes the other does not exist. */
+   nothing for the two cars that have no power to value. No branch assumes the
+   others do not exist, and each of them values its own power rather than a
+   copy of somebody else's - a ram wants traffic in front, an exchange wants
+   somewhere far behind to send it, an aura wants a crowd, and invisibility
+   wants people close enough to be a problem. */
 function botUltExtra(R, s){
   const M = s.M, D = s.D;
   if(flannCar(R)){
@@ -269,6 +289,41 @@ function botUltExtra(R, s){
     let v = s.front ? 0.30 + (0.30 - Math.min(0.30, s.frontGap/(carH*16))) : 0;
     if(s.place > 1) v += 0.15;
     return v*(0.5 + M.spite*0.6 + D.hunt*0.4);
+  }
+  if(lolantheCar(R)){
+    /* The aura is worth exactly as many racers as it can reach, so this counts
+       them - anybody inside the reach it will actually have, and a second
+       helping for anybody standing in its own lane, because those are the ones
+       that get pushed into somebody else. Out on an empty piece of road with
+       nobody within four car lengths it is worth nothing but the pace, which
+       is a different judgement from the ram's and from the exchange's. */
+    const reach = mindRange();
+    let near = 0, sameLane = 0;
+    for(let i=0;i<s.all.length;i++){
+      const a = s.all[i];
+      if(a.out || !a.touch || !a.seen) continue;
+      if(Math.abs(a.y - R.y) > reach) continue;
+      near++;
+      if(a.lane === R.lane) sameLane++;
+    }
+    if(!near) return 0;
+    let v = 0.14 + Math.min(0.36, near*0.12) + Math.min(0.24, sameLane*0.16);
+    if(s.tight) v += 0.10;
+    return v*(0.5 + M.spite*0.5 + D.hunt*0.5);
+  }
+  if(verdantCar(R)){
+    /* Disappearing is worth what there is to disappear from: traffic close
+       enough to be barging, blocking or lining you up. It is a defence, so it
+       reads the threats rather than the targets - and out in front of an empty
+       road, with nobody near enough to matter, it is worth nothing extra. */
+    let v = 0;
+    if(s.threat) v += 0.18 + 0.30*Math.min(1, threatOf(R, s.threat, s.mine));
+    if(s.threatClose) v += 0.14;
+    if(s.tight) v += 0.16;
+    if(s.back && s.backGap < carH*3) v += 0.16;
+    if(s.seeker) v += 0.10;
+    if(!v) return 0;
+    return v*(0.6 + M.guard*0.7 + D.guard*0.3);
   }
   return 0;
 }
@@ -333,7 +388,7 @@ function botItemWorth(R, s){
     if(s.back && s.backGap < carH*6) v += 0.75 - s.backGap/(carH*12);
     for(let i=0;i<s.all.length;i++){
       const a = s.all[i];
-      if(a.out || !a.touch) continue;
+      if(a.out || !a.touch || !a.seen) continue;
       const gy = a.y - R.y;
       if(gy > 0 && gy < carH*7 && Math.abs(a.lane - R.lane) <= 1) v += 0.22;
     }
@@ -386,7 +441,7 @@ function rivalThink(R, dt){
     plan = R.plan;
     if(plan.kind === "barge"){
       const v = plan.at;
-      if(!v || v.out || v.safe || !v.touch || Math.abs(v.lane - R.lane) > 1 ||
+      if(!v || v.out || v.safe || !v.touch || !v.seen || Math.abs(v.lane - R.lane) > 1 ||
          Math.abs(v.m - s.mine) > 200) plan = null;
     }
     if(plan && s.now[plan.lane]) plan = null;        /* the road changed its mind for us */
@@ -461,7 +516,7 @@ function rivalThink(R, dt){
     let cover = null, worst = 0;
     for(let i=0;i<s.all.length;i++){
       const a = s.all[i];
-      if(a.out || !a.touch) continue;
+      if(a.out || !a.touch || !a.seen) continue;
       const behind = a.y - R.y;
       if(behind < carH*0.9 || behind > carH*3.6) continue;
       if(a.m >= s.mine) continue;
@@ -485,7 +540,7 @@ function rivalThink(R, dt){
 
   /* nothing better on offer: lean on whoever is in the way, now and then */
   if(s.taken.length && !s.soon[s.taken[0]]){
-    const v = carAt(s.taken[0], R.y, R);
+    const v = carSeenAt(s.taken[0], R.y, R);
     const shove = (0.03 + D.aggro*0.22)*(0.5 + M.spite);
     if(v && Math.random() < shove) rivalSteer(R, s.taken[0]);
   }

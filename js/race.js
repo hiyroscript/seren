@@ -125,6 +125,10 @@ function spawnRivals(){
          ask which kind of object it is holding. See G in runtime.js. */
       neelaForm:false, neelaOrigin:null, neelaSwapped:false,
       whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
+      /* Lolanthe's and Verdant's, carried by every racer for the same
+         reason. See G in runtime.js. */
+      mindT:0, mindPop:0, mindOut:0, mindSide:0,
+      queenPop:0, queenOut:0, verdantHide:0, verdantRevealT:0,
       item:null, itemRow:-1, canT:0, useT:rand(0.6, 2.4), item:null, canT:0, useT:0,
       inDanger:false, willReact:true, reactT:0, swapT:0,
       ult:0, ultOn:false, ultT:0, ultMax:ULT_TIME,
@@ -186,6 +190,8 @@ function startRace(){
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
   clearNeelaState("me"); G.trail = [];     /* nothing of the last race's ultimate */
+  clearLolantheState("me"); clearVerdantState("me");
+  G.mindT = 0; G.mindPop = 0; G.mindOut = 0; G.mindSide = 0;
   G.shuntT = 0; G.bumpCD = 0;
   G.slipT = 0;
   G.item = null; G.swapT = 0; G.boxes = []; G.slicks = []; G.missiles = []; G.canT = 0;
@@ -329,7 +335,9 @@ function checkFinish(){
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
       clearNeelaState(R);                        /* out of play: no alternate form */
+      clearVerdantState(R);                      /* nor a fade half-finished */
       if(R.ultOn) endUlt(R);
+      clearLolantheState(R);                     /* nor a note over a parked car */
       R.boosting = false;
       clearDebuffs(R);                           /* out of play, and clean */
     }
@@ -339,7 +347,9 @@ function checkFinish(){
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
     clearNeelaState("me");                      /* out of play: no alternate form */
+    clearVerdantState("me");                    /* nor a fade half-finished */
     if(G.ultOn) endUlt("me");
+    clearLolantheState("me");                   /* nor a note over a parked car */
     G.boosting = false;
     G.keyBoost = G.ptrBoost = G.ultKey = G.padBoost = false;
     clearDebuffs("me");                         /* out of play, and clean */
@@ -603,6 +613,13 @@ function update(dt){
   if(G.whiteT > 0) G.whiteT = Math.max(0, G.whiteT - dt);
   if(G.morphT > 0) G.morphT = Math.max(0, G.morphT - dt);
   if(G.swapGuard > 0) G.swapGuard = Math.max(0, G.swapGuard - dt);
+  /* And Lolanthe's and Verdant's. The Mind Control clock is the Condition and
+     the control lock together, so it is advanced with the rest of the hit
+     states; the note and fade timers beside it are cosmetic. */
+  tickMindControl("me", dt);
+  if(G.queenPop > 0) G.queenPop = Math.max(0, G.queenPop - dt);
+  if(G.queenOut > 0) G.queenOut = Math.max(0, G.queenOut - dt);
+  tickVerdant("me", dt);
   updateTrail("me", dt, d);
   G.tapClock += dt;
   if(G.bumpCD > 0) G.bumpCD = Math.max(0, G.bumpCD - dt);
@@ -622,6 +639,11 @@ function update(dt){
     if(inFront && inFront.y < playerY) rearEnd("me", inFront);
   }
   updateRivals(dt, st);
+  /* Every Lolanthe's aura, once, after the whole field has moved and before
+     the flag is tested - so it reads one settled picture of the road rather
+     than a half-updated one, and the answer does not depend on where a racer
+     happens to sit in the rivals list. */
+  if(st === "running") lolantheAuras();
   checkFinish();
   updateFx(dt, d);
   if(G.seam !== null){
@@ -652,6 +674,13 @@ function updateRival(R, dt, st){
   if(R.whiteT > 0) R.whiteT = Math.max(0, R.whiteT - dt);
   if(R.morphT > 0) R.morphT = Math.max(0, R.morphT - dt);
   if(R.swapGuard > 0) R.swapGuard = Math.max(0, R.swapGuard - dt);
+  /* Ahead of the wrecked and finished branches below, exactly as the other
+     hit states are: a car that has just been wrecked still has to finish
+     taking its notes and its fade off the screen. */
+  tickMindControl(R, dt);
+  if(R.queenPop > 0) R.queenPop = Math.max(0, R.queenPop - dt);
+  if(R.queenOut > 0) R.queenOut = Math.max(0, R.queenOut - dt);
+  tickVerdant(R, dt);
   updateTrail(R, dt, G.speed*dt);
   if(R.bumpCD > 0) R.bumpCD = Math.max(0, R.bumpCD - dt);
   if(R.changeT > 0) R.changeT -= dt;
@@ -695,7 +724,7 @@ function updateRival(R, dt, st){
   botLook(R, dt);
   const s = R.sense;
 
-  if(!R.human){
+  if(!R.human && !controlsLocked(R)){
     /* Whatever is in its hand. When to spend it is judgement; what it does when
        spent is useItem, the same door your own item box opens. */
     if(R.item && botItemNow(R, s, dt)) useItem(R);
@@ -710,7 +739,7 @@ function updateRival(R, dt, st){
        is a straight advantage the moment a person does. */
     if(R.dead <= 0 && ruleOn("ults")) R.ult = Math.min(1, R.ult + dt/ULT_CHARGE);
     if(R.ult < 1) R.ultHeld = 0;
-    else if(!R.human && botUltNow(R, s, dt)){ R.ultHeld = 0; startUlt(R); }
+    else if(!R.human && !controlsLocked(R) && botUltNow(R, s, dt)){ R.ultHeld = 0; startUlt(R); }
   }
 
   /* boost: chase with it, sit on it when comfortably clear, and never burn it
@@ -721,7 +750,7 @@ function updateRival(R, dt, st){
        same lock-out at nothing and the same refusal to run once the controls
        have been taken away - settled first and spent second, which is the
        order the player's own frame runs in. */
-    R.boosting = ruleOn("boost") &&
+    R.boosting = ruleOn("boost") && !controlsLocked(R) &&
                  !!R.wantBoost && !R.boostLock && R.charge > 0 &&
                  G.state === "running" && R.dead <= 0 && R.finished === null;
     if(R.boosting){
@@ -735,7 +764,13 @@ function updateRival(R, dt, st){
     R.charge = clamp(R.charge - dt*0.4, 0, 1);
     if(R.charge <= 0.001){ R.charge = 0; R.boostLock = true; R.boosting = false; }
     else if(R.charge < D.keep) R.boosting = false;     /* good drivers never run it dry */
+    if(controlsLocked(R)) R.boosting = false;          /* and none of them keep it under control */
     if(!clearAhead && Math.random() < D.boost) R.boosting = false;
+  } else if(controlsLocked(R)){
+    /* The charge still refills - that is the car, not the driver - but nothing
+       here decides to spend it. */
+    R.charge = clamp(R.charge + dt*0.14, 0, 1);
+    if(R.charge >= 1) R.boostLock = false;
   } else {
     R.charge = clamp(R.charge + dt*0.14, 0, 1);
     if(R.charge >= 1) R.boostLock = false;
@@ -772,7 +807,7 @@ function updateRival(R, dt, st){
     R.reactT = rand(D.react[0], D.react[1]);
   } else if(!inLane) R.inDanger = false;
 
-  if(!R.human && R.changeT <= 0 && R.blind <= 0){
+  if(!R.human && !controlsLocked(R) && R.changeT <= 0 && R.blind <= 0){
     R.changeT = rand(D.tick[0], D.tick[1]);
     botLook(R, dt, true);                       /* look again, then decide */
     rivalThink(R, dt);

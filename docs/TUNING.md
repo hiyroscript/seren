@@ -90,6 +90,11 @@ All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
 
+Four of the six cars add something on top of that shared lifecycle, for exactly
+as long as it runs and never a frame longer. Rose and Siren add nothing, which
+is what makes either of them the right car for a test that needs an ordinary
+ultimate.
+
 ### Flann's ram
 
 Flann, and only Flann, adds a collision and hazard power on top of that shared
@@ -168,6 +173,83 @@ directions: a racer `noContact()` refuses cannot be exchanged with, and cannot
 exchange. When the meter reaches zero every one of these privileges goes at
 once, and `endUlt()` leaves no alternate-form state behind.
 
+### Lolanthe's mind control
+
+Lolanthe adds an aura and a forced lane change on top of the shared lifecycle,
+for exactly as long as it runs. `lolantheUltActive(who)` is the one predicate
+that says so. The shared `ULT_CHARGE`, `ULT_TIME` and `ULT_SPEED` are untouched.
+
+| Constant | Value | Means |
+| --- | --- | --- |
+| `MIND_CONTROL_TIME` | `3` | seconds without controls, from the **last** application |
+| `MIND_AURA_LENGTHS` | `4` | how far the aura reaches, in car lengths of road |
+| `MIND_POP` | `0.26` | seconds of scale/opacity pop, in and out |
+| `MIND_ORBIT` | `0.42` | turns a second the three notes make |
+| `MIND_NOTE_K` | `0.30` | one note's size, in car heights |
+| `MIND_ORBIT_X` | `0.72` | orbit half width, in car widths |
+| `MIND_ORBIT_Y` | `0.42` | orbit half height, in car heights |
+| `QUEEN_POP` | `0.3` | seconds of scale/opacity pop for Lolanthe's own note |
+| `QUEEN_NOTE_K` | `0.52` | its size, in car heights |
+| `QUEEN_LIFT` | `0.74` | how far above the car it floats, in car heights |
+| `QUEEN_BOB` | `0.055` | how far it rises and falls, in car heights |
+| `QUEEN_BOB_RATE` | `1.6` | seconds for one rise and fall |
+| `QUEEN_NOTE_IMG` | `queen_note.PNG` | the note above an ulting Lolanthe |
+| `MIND_NOTE_IMG` | `pion_note.PNG` | the three that orbit a controlled racer |
+
+The reach is in car lengths rather than pixels because a car length is the one
+unit that means the same stretch of road on a phone, on a desktop and in one
+column of a four-way split. It is measured in the master frame, so which view
+happens to be rendering cannot change the answer.
+
+`MIND_CONTROL_TIME` is **set**, never added to. A racer held inside the aura has
+its timer put back every frame and so stays controlled for as long as it is
+exposed and for three seconds after the last application — never for six, nine
+or twelve. `tools/check.mjs` fails any `+=` on a mind timer anywhere in the
+source. The pop-in belongs to the inactive-to-active transition alone, so a
+reset does not replay it.
+
+The lock is `controlsLocked(who)` and covers steering, boost, items and the
+ultimate button for the player, a local seat and a bot alike. It is not a
+freeze: physics, ordinary forward movement, timed effects, collision handling,
+an ultimate already running, hazards and the wreck lifecycle all carry on.
+
+The forced lane change ignores both the control lock and a Skidded car's
+reversed steering, because neither is a fact about the car. The destination does
+not have to be empty — the occupant is met through `bumpTarget` with the victim
+named as the racer that arrived — so it can shunt, wreck, ram or be swapped
+away, and Lolanthe is credited with none of it.
+
+### Verdant's invisibility
+
+Verdant adds visibility rules and a directional contact rule, again for exactly
+as long as the shared lifecycle runs. All of its own constants are cosmetic:
+none of them touches the hitbox, the contact rules or the race.
+
+| Constant | Value | Means |
+| --- | --- | --- |
+| `VERDANT_FADE` | `0.25` | seconds to fade into and out of hiding |
+| `VERDANT_OWN_ALPHA` | `0.5` | what its own driver still sees |
+| `VERDANT_REVEAL` | `0.18` | seconds of full visibility after a hit |
+
+The owner's half is what makes the car drivable; every other view gets nothing.
+It is worked out per view off the existing split-screen viewer identity, so one
+to four columns each answer for their own seat. The reveal is long enough to
+read and far too short to aim at, and it buys the racer that caused it nothing —
+Verdant's immunity to Mind Control holds right through it.
+
+A wreck clears the fade outright rather than letting it ramp, so there is no
+ghost dissolving through somebody else's wreck animation.
+
+| While it runs | What happens |
+| --- | --- |
+| Racer arrives into it | That racer is destroyed; Verdant reveals and keeps its ultimate |
+| It arrives into a racer | Ordinary shunt or barge. The defence works one way only |
+| Ulting Flann, either way | Both destroyed, both meters left at exactly `0` |
+| Transformed Neela, either way | Neela destroyed, meter `0`, no exchange, no teleport; Verdant reveals |
+| Lolanthe's aura | Refused for the whole ultimate, reveal included |
+| Tumbleweed, meteor | Smashed apart, exactly as Neela's are |
+| Puddle, oil, seekers | Unchanged |
+
 ## Hazards
 
 | Constant | Value | Means |
@@ -240,7 +322,7 @@ reached from a bubble.
 
 ## Conditions
 
-`CONDITIONS` in `data.js` is the whole model: five entries, and the key order is
+`CONDITIONS` in `data.js` is the whole model: six entries, and the key order is
 the priority order a stack of badges is drawn in.
 
 | Condition | Colour | Type | Icon | Comes from |
@@ -250,6 +332,7 @@ the priority order a stack of badges is drawn in.
 | `slowed` | `#8A9099` | debuff | arrow onto a floor | `G.slowT` / `R.slow` |
 | `obscured` | `#B07A4A` | debuff | crossed-out eye | `blind` |
 | `skidded` | `#0B0B0C` | debuff | paired skid marks | `G.slipT` / `R.slip` |
+| `mindControlled` | `#8A4FE0` | debuff | musical note | `mindT`, set by an ulting Lolanthe's aura |
 
 `activeConditions(who)` in `mechanics.js` is the only derivation, so nothing has
 a second copy to fall out of step with those timers. A finished racer returns
@@ -339,11 +422,20 @@ width; reduced motion disables that pulse but keeps the plume.
 | `v_flann.PNG` | (173, 72)–(851, 1409) | (355, 1377), (669, 1377) |
 | `v_neela.PNG` | (220, 25)–(803, 1422) | (352, 1355), (671, 1355) |
 | `vtm_neela.PNG` | (228, 22)–(795, 1506) | (512, 1306) |
+| `v_lolanthe.PNG` | (90, 12)–(933, 1477) | (455, 1354), (568, 1354) |
+| `v_verdant.PNG` | (167, 36)–(856, 1508) | (738, 1314) |
+
+Verdant has one anchor because its artwork has one outlet — the side-exit pipe,
+whose bore is measured at (723, 1307)–(754, 1321). The slatted box under its
+tail is a diffuser with no bore, so nothing is drawn out of it. Lolanthe's two
+are the centres of the oval outlets in its rear valance, (422, 1343)–(488, 1366)
+and (535, 1343)–(602, 1366).
 
 | Constant | Value | Means |
 | --- | --- | --- |
 | `CARS.flann.raceScale` | `1.12` | how large Flann is on the road, against the shared car box |
 | `CARS.neela.raceScale` | `1.18` | the same for Neela |
+| `CARS.verdant.raceScale` | `1.10` | and for Verdant |
 | `CARS.neela.altForm.scale` | `1.09` | the alternate body, against Neela's own racer box |
 
 These are the only per-car dimensions in the game, and they are race-only. Flann
@@ -351,7 +443,11 @@ read undersized against its lane, so it gets a little over a tenth back and the
 body occupies about 71% of a lane instead of 64%. Neela's artwork is narrower
 and longer — at 1:1 its body covers barely half a lane — so it gets a shade
 under a fifth, which brings it to just under the shared car box while keeping
-the hull a car's. The alternate form's 1.09 is measured rather than chosen: it
+the hull a car's. Verdant's is narrow too, at 0.871 of the box across at 1:1, so
+a tenth brings it to 0.958. **Lolanthe deliberately has none**, and that is a
+measurement rather than an omission: its body is wider against its own length
+than any other on the road and already fills the car box across at 1:1, so an
+adjustment would make it a different class of vehicle. The alternate form's 1.09 is measured rather than chosen: it
 is what makes the craft's fuselage and fin span come out the size of the car it
 replaced, so transforming changes the shape on the road and not how much road it
 takes up. Every scale is uniform, so aspect ratios, the measured `spriteBounds`
@@ -373,20 +469,32 @@ car's own width and height, plus a phase offset. It is enabled by `drawCar`'s
 separate `ulting` flag, never by `boosting`, so an ordinary boost and a boost
 can leave the paint alone.
 
-What comes out of a sprite car's pipes is `exhaustStyle`: `drawSpriteFlame` for
-Flann and `drawSpriteEnergy` for Neela's blue energy. Both are the ordinary
-`boosting` flag, so a boost, a boost can and an ultimate's own speed all light
-them and none of them transforms anything. The transformation flash is
-`drawMorphFlash`, drawn from whichever model's own hull, which is why it works
-on any of the six without per-car code.
+What comes out of a sprite car's pipes is `exhaustStyle`: `drawSpriteEnergy` for
+Neela's blue energy, and `drawSpriteFlame` — the default — for Flann, Lolanthe
+and Verdant. All of them are the ordinary `boosting` flag, so a boost, a boost
+can and an ultimate's own speed all light them and none of them transforms
+anything. The transformation flash is `drawMorphFlash`, drawn from whichever
+model's own hull, which is why it works on any of the six without per-car code.
+
+Two world effects sit outside the model entirely: `queen_note.PNG` above an
+ulting Lolanthe, drawn upright so it does not lean with the steering, and three
+`pion_note.PNG` around every Mind Controlled racer, on a ring measured off that
+racer's own box so it is proportional to whichever of the six is wearing it.
+Both are cached once in `FX_SPRITES`, both read timers the update code advances,
+and neither touches collision geometry. Reduced motion keeps both and takes the
+movement out of them: the queen note stops rising and falling and the three stop
+turning.
 
 ### Body hitboxes
 
 `CAR_HIT_RECT` retains the default body half-width 0.40 and half-height 0.42
-in logical car units, and the four procedural cars use it. A sprite car's
-`hitShape` traces its own artwork to exclude empty corners and trailing
-decoration: `CARS.flann.hitShape` is eight points, `CARS.neela.hitShape`
-eighteen, and `CARS.neela.altForm.hitShape` twenty. `carHit()` reads whichever
+in logical car units, and Rose and Siren use it. A sprite car's `hitShape`
+traces its own artwork to exclude empty corners and trailing decoration:
+`CARS.flann.hitShape` is eight points, `CARS.neela.hitShape` eighteen,
+`CARS.neela.altForm.hitShape` twenty, and Lolanthe's and Verdant's twenty-four
+each — Lolanthe's stopping short of the gold spikes trailing off its rear
+corners and the ornament above its crown, Verdant's at the root of its swept
+rear blades and clear of the side pipe. `carHit()` reads whichever
 belongs to the model `racerModel()` says the racer is wearing, rotates it with
 the vehicle and multiplies it up by that model's size out of `racerDims()` — so
 a hull always carries its own race scale, and Neela's swaps to the alternate

@@ -87,6 +87,26 @@ const G = {
      worth of "this contact has already been dealt with". */
   neelaForm:false, neelaOrigin:null, neelaSwapped:false,
   whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
+  /* ---- Lolanthe's and Verdant's ultimates, on the racer holding one ----
+     Carried by every racer for the same reason Neela's are: the mechanic
+     never has to ask which kind of object it is looking at.
+
+     `mindT` is the Mind Controlled Condition and the control lock together -
+     conditionOn() derives the badge from it and controlsLocked() derives the
+     lock from it, so there is no second copy to fall out of step. It is set to
+     MIND_CONTROL_TIME and never added to. `mindPop` and `mindOut` are the
+     three notes' entrance and exit, and only the inactive-to-active transition
+     starts the entrance - a timer merely being reset does not. `mindSide` is
+     the one-time coin toss that says which way a racer caught in the middle
+     lane gets pushed, so the push does not flicker between frames.
+
+     `queenPop` and `queenOut` are the same pair for the note above an ulting
+     Lolanthe. `verdantHide` is how far into hiding Verdant is, 0 to 1, and is
+     cosmetic throughout: the hitbox, the contact rules and the race never read
+     it. `verdantRevealT` is the split second of full visibility a racer buys
+     by running into it. */
+  mindT:0, mindPop:0, mindOut:0, mindSide:0,
+  queenPop:0, queenOut:0, verdantHide:0, verdantRevealT:0,
   boostLock:false, rivals:[], stepFlash:0, parkWait:0, parkRot:0,
   cdT:0, cdStep:-1, wasCounting:false,
   mode:"endless", diff:"medium",
@@ -152,13 +172,14 @@ function layout(){
 function laneCX(i){ return roadX + laneW*(i+0.5); }
 
 /* ---- how big one racer is on the road ---------------------------
-   carW/carH above are the road's car: the size the lane, the grid and five of
+   carW/carH above are the road's car: the size the lane, the grid and most of
    the six racers are built around, and nothing here makes them bigger. What a
-   car may have is a race scale of its own - CARS.<id>.raceScale - and the two
-   sprite cars do, each measured off its own artwork: Flann is drawn and
-   collided a little over a tenth larger and Neela a shade under a fifth, so
-   both read properly against the asphalt. The four procedural cars are built
-   around the shared box and have none.
+   car may have is a race scale of its own - CARS.<id>.raceScale - and three of
+   the four sprite cars do, each measured off its own artwork: Flann is drawn
+   and collided a little over a tenth larger, Neela a shade under a fifth and
+   Verdant a tenth, so all of them read properly against the asphalt. Lolanthe
+   already fills the box across at 1:1 and needs none, and the two procedural
+   cars are built around the shared box and have none.
 
    These two are the only readers of that number, and everything that genuinely
    needs a racer's physical body - the sprite, the hull in carHit(), the gap a
