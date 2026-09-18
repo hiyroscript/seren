@@ -1,1130 +1,1276 @@
-You are modifying the Seren repository:
+You are modifying the current main branch of the GitHub repository:
 
-* Repository: hiyroscript/seren
-* Branch: main
-* The current project is a dependency-free browser Canvas game. There is no build system, package manager, multiplayer server, or backend.
-* Preserve the existing architecture and coding style.
-* Do not introduce a framework, bundler, server, physics engine, or unnecessary abstraction.
-* Work directly within the existing CARS, shared race simulation, mechanics, renderer, HUD, i18n, tests, and documentation.
+hiyroscript/seren
 
-The goal is to completely replace the existing Rose racer with Rhosyn, use the already-present root asset v_rhosyn.PNG, and give Rhosyn a carefully integrated ultimate called Aero-Glow.
+You must also inspect and use the visual track implementation from:
 
-This is not merely a visual rename. Rose’s old generic coupe model must be replaced by a properly measured sprite-backed Rhosyn model with accurate collision geometry and accurately anchored exhaust. Rhosyn must also receive a unique ultimate that temporarily renders the owner inside a completely separate black-and-pink void world while the canonical race simulation continues normally underneath.
+hiyroscript/ponu
 
-Non-negotiable design rule
+Do not implement these requirements from assumptions. Read the current Seren code, understand how each relevant system already works, and extend the existing architecture rather than creating disconnected one-off systems.
 
-Aero-Glow must never create a second race simulation.
+The required work has four major parts:
 
-Do not teleport the canonical racer away from the race. Do not freeze its canonical position. Do not create a shadow race position and later estimate where the racer should return. Do not temporarily replace G.biome. Do not advance an independent distance counter.
+1. Completely replace Siren with Saffron, including a new sprite car and a dragon-form ultimate.
+2. Improve Flann’s ultimate fire visuals and change Flann’s ram collision rule from symmetric to directional.
+3. Rebuild Rhosyn’s Aero-Glow world using Ponu’s track visuals, while removing race-position HUD information inside Aero-Glow.
+4. Re-measure and fix the newly changed Rhosyn sprite, including its size, hitbox, and exhaust placement.
 
-There must always be exactly one authoritative/canonical Rhosyn race state.
-
-While Aero-Glow is active:
-
-* Rhosyn’s canonical race position continues to advance normally in the existing shared simulation.
-* Its lane, lateral x, tilt, forward distance, speed, ultimate speed multiplier, race ranking, finish progress, biome progression, seams, track transitions, etc. continue to update normally.
-* The owner simply receives an entirely different rendered world.
-* Other racers’ normal views omit Rhosyn from the road.
-* Rhosyn cannot physically interact with the normal race while it is inside Aero-Glow.
-* Nothing in the normal race can reach Rhosyn.
-* When Aero-Glow ends, the owner returns to the shared-world renderer at the exact canonical state that already exists at that frame.
-
-Therefore, if the race changes from City to Desert, Rainbow Space, or another biome while Rhosyn is inside Aero-Glow, Rhosyn must emerge into the biome that the canonical race has actually reached. There must be no saved-entry-biome restoration and no approximation.
-
-Think of Aero-Glow as:
-
-one simulation, two possible views of that simulation.
-
-The normal race keeps existing and advancing. Aero-Glow is a private presentation layer around the canonical Rhosyn racer.
+All existing local multiplayer, bot, player, rendering, ultimate, collision, hazard, HUD, pause, finish, respawn, and reduced-motion behavior must remain correct.
 
 ⸻
 
-1. Completely rename Rose to Rhosyn
+1. Understand the existing architecture before changing anything
 
-Perform a repository-wide rename of the racer identity.
+The current Seren implementation already has systems that should be reused.
 
-The canonical internal car ID must become:
+Important existing files include at minimum:
 
-rhosyn
-
-Do not leave the actual racer internally named rose.
-
-Update at minimum:
-
-js/data.js
-
-Replace the existing:
-
-rose: { ... key:"rose", style:"coupe", ... }
-
-with a real sprite-backed Rhosyn entry.
-
-Update:
-
-CAR_IDS
-
-from:
-
-["flann","neela","lolanthe","verdant","rose","siren"]
-
-to:
-
-["flann","neela","lolanthe","verdant","rhosyn","siren"]
-
-Rename TEMPERS.rose to TEMPERS.rhosyn, preserving its current temperament values unless there is a concrete gameplay reason not to.
-
-Update comments referring to Rose.
-
-js/i18n.js
-
-Replace the Rose keys with canonical Rhosyn keys:
-
-* rhosyn
-* rhosynUlt
-
-The displayed English name is:
-
-Rhosyn
-
-Update the French localization too. Do not leave user-facing “Rose” references.
-
-Write an ultimate description that accurately explains Aero-Glow rather than the current generic “Fifteen seconds at double pace.”
-
-The description should make clear that for 15 seconds Rhosyn drives through Aero-Glow at the normal ultimate 2× pace, cannot be reached by the race, and reappears at the position it would naturally have reached, followed by 2 seconds of Invulnerable protection.
-
-Keep the wording readable rather than explaining implementation internals.
-
-index.html
-
-Rename:
-
-* carRose → carRhosyn
-* data-car="rose" → data-car="rhosyn"
-* data-i18n="rose" → data-i18n="rhosyn"
-* visible Rose → Rhosyn
-
-js/main.js
-
-Replace the existing Rose button listener/pick:
-
-pickCar("rose")
-
-with Rhosyn.
-
-Documentation and tests
-
-Search the entire repository, not only production JS.
-
-Current Rose references exist in areas including:
-
-* README.md
-* docs/ARCHITECTURE.md
-* docs/LOLANTHE-VERDANT-QA.md
-* docs/TUNING.md
-* docs/ULTIMATE-QA.md
-* tools/hitbox-check.mjs
+* js/data.js
+* js/runtime.js
+* js/mechanics.js
+* js/race.js
+* js/render.js
+* js/hud.js
+* js/ai.js
+* js/ui.js
+* js/main.js
+* js/i18n.js
+* index.html
+* css/app.css
+* tools/check.mjs
 * tools/menu-check.mjs
-* tools/sprite-check.mjs
 * tools/ultimate-check.mjs
+* tools/sprite-check.mjs
+* tools/hitbox-check.mjs
+* relevant files under docs/
 
-Replace semantic Rose references with Rhosyn and update old assertions whose meaning changes because Rhosyn is no longer a generic rectangle/generic ultimate.
+Important current systems to preserve and extend:
 
-At completion, a case-insensitive source search for rose should find no active Rose racer identity.
+* CARS contains sprite bounds, exhaust anchors, hit shapes, race scaling, alternate forms, etc.
+* raceScale(), carDims(), racerModel(), modelScale(), and racerDims() provide the authoritative model/size path.
+* carHit() reads the active model and active model dimensions. Do not create a second unrelated collision geometry system.
+* Neela already has an alternate form using CARS.neela.altForm.
+* Neela already has the exact transformation presentation required here:
+    * startWhiteout()
+    * startMorph()
+    * WHITEOUT_TIME
+    * MORPH_TIME
+* racerModel() ensures the rendered model and hit shape switch together.
+* drawSpriteCar() / drawSpriteExhaust() already support any number of exhaust anchors.
+* spriteFrame() and spriteAnchor() already keep exhaust locations attached to measured image-space locations through scaling and rotation.
+* Rhosyn already uses explicit Aero-Glow phases and deliberately keeps canonical race simulation running in the shared world.
+* Flann currently uses flannUltActive() and a symmetric ramWinner() system. This is one of the things that must change.
+* Verdant collision priority already lives in specialContact(). Preserve this ordering.
+* Lolanthe Mind Control uses mindT, controlsLocked(), mindTakes(), mindShove(), and the aura system.
+* The ultimate lifecycle is intentionally shared:
+    * ULT_CHARGE = 75
+    * ULT_TIME = 15
+    * ULT_SPEED = 2.0
 
-If persistent saved user data can contain the literal old car ID "rose", add a narrow backwards-compatibility migration at the persistence/load boundary:
-
-"rose" → "rhosyn"
-
-That legacy conversion is the only acceptable place for the old ID to remain. Do not carry a duplicate CARS.rose, alias racer, duplicated translation, or permanent runtime compatibility branch.
+Do not change those shared numbers for Saffron.
 
 ⸻
 
-2. Replace Rose’s procedural coupe with v_rhosyn.PNG
+2. Fully rename Siren to Saffron
 
-The asset already exists at the repository root:
+Siren must cease to exist as a playable car and as an internal car identifier.
 
-v_rhosyn.PNG
+The new canonical identifier is:
 
-Rhosyn must use the exact existing sprite pipeline already used by Flann, Neela, Lolanthe and Verdant:
+saffron
 
-style:"sprite"
+The displayed name is:
 
-Do not manually draw Rhosyn using drawCoupe().
+Saffron
 
-Do not approximate it with the old Rose geometry.
+Replace Siren everywhere, including code, markup, translations, comments, docs, tests, fixtures, car lists, temperament data, and UI IDs.
 
-Do not stretch the PNG independently of the existing spriteFrame() system.
+Examples that must change include, but are not limited to:
 
-A proper Rhosyn entry in CARS must contain measured values for at least:
+* CARS.siren → CARS.saffron
+* "siren" → "saffron"
+* CAR_IDS
+* TEMPERS
+* siren / sirenUlt i18n keys
+* #carSiren → #carSaffron
+* data-car="siren" → data-car="saffron"
+* main.js click wiring
+* tests that currently use Siren as the ordinary control car
+* README tables/descriptions
+* architecture comments
+* stale comments describing Siren as the sixth or only procedural car
+* the currently present sirenOwner runtime field: either rename it appropriately if it genuinely has a purpose or remove it if it is dead state
 
-* key:"rhosyn"
+Do not leave a hidden compatibility alias named siren unless the current game actually has persisted data requiring a migration. If there is no persisted Siren selection, remove the old identifier completely.
+
+At completion, a repository-wide case-insensitive search for siren should return no stale game references.
+
+⸻
+
+3. Saffron base vehicle — v_saffron.PNG
+
+Saffron is no longer a procedurally drawn style:"cruiser" car.
+
+Use:
+
+v_saffron.PNG
+
+This asset already exists at the repository root.
+
+Saffron must use the exact same sprite-data architecture as Flann, Neela, Lolanthe, Verdant, and Rhosyn.
+
+In CARS.saffron, define accurate data measured from the actual current PNG:
+
+* key:"saffron"
 * style:"sprite"
-* sprite:"v_rhosyn.PNG"
-* accent
-* optional raceScale, only if visual measurement shows it is necessary
+* sprite:"v_saffron.PNG"
+* an appropriate accent
 * spriteBounds
-* exhaust
+* exactly 2 exhaust anchors
 * hitShape
-* flame
+* appropriate flame/boost colors
+* raceScale only if the measured artwork requires it
 
-Use the same design philosophy as Flann’s current data:
+Do not guess the current PNG bounds from another vehicle.
 
-flann: {
-  key:"flann",
-  style:"sprite",
-  sprite:"v_flann.PNG",
-  raceScale:1.12,
-  spriteBounds:[...],
-  exhaust:[...],
-  hitShape:[...],
-  flame:[...]
-}
+Inspect the alpha-visible artwork in v_saffron.PNG and measure:
 
-Do not copy Flann’s measurements. Rhosyn must be measured independently from v_rhosyn.PNG.
+* the true visible vehicle body bounds
+* transparent margins
+* the actual two exhaust/tailpipe openings
+* the real physical body outline
 
-⸻
+The hitShape must describe Saffron’s visible collision body rather than a generic rectangle. Exclude transparent corners, shadows, decorative exhaust flames, isolated trim, or other pixels that should not physically collide.
 
-3. Measure v_rhosyn.PNG; do not guess the geometry
+Preserve the PNG’s aspect ratio. Do not stretch the car independently on X/Y just to make it fit.
 
-Inspect/decode the actual PNG and record the source dimensions.
+Size the base car so it visually belongs beside Flann and Neela and does not look like a tiny icon or an oversized boss vehicle.
 
-Then measure the actual Rhosyn artwork.
+The base Saffron must have exactly two boost plumes, and each plume root must remain inside the correct tailpipe through:
 
-Do not invent coordinates because they “look close.”
+* race scaling
+* different viewport sizes
+* local split-screen
+* lane-change tilt
+* reduced motion
+* player and rival rendering
 
-spriteBounds
+Use the existing image-space exhaust anchoring system. Do not manually place flames using arbitrary world-space offsets.
 
-Determine the tight visible car-art bounds in source pixels.
-
-Convert those source coordinates to normalized image coordinates exactly as the existing sprite cars do.
-
-The full PNG should still be drawn. spriteBounds controls its fitting and centering through the existing spriteFrame() function; it is not a crop.
-
-Precise hitShape
-
-Trace a sensible polygon around Rhosyn’s actual contact body.
-
-The existing collision pipeline is already correct:
-
-* racerModel(who)
-* racerDims(who)
-* carHit()
-* model.hitShape
-
-Use it.
-
-The Rhosyn hitShape must be expressed in normalized logical car coordinates like Flann’s polygon.
-
-Follow the project’s existing convention: collide the meaningful body rather than transparent PNG padding, exhaust fire, decorative glow or obviously non-body visual space.
-
-The polygon should be symmetrical where the actual vehicle is symmetrical and should follow meaningful tapering of the nose/rear instead of defaulting to CAR_HIT_RECT.
-
-Do not alter carHit() specifically for Rhosyn. Put the geometry in the model data so rendering dimensions and collision dimensions continue to use the same model.
-
-Test rotated collision too; carHit() rotates the polygon with the car and that behavior must remain intact.
-
-Race scale
-
-Only assign a raceScale after comparing Rhosyn’s measured visible body to the other cars in a lane.
-
-The objective is visual consistency, not forcing every sprite to the same raw PNG dimensions.
-
-Do not alter the garage/menu sprite sizing just to make the race sprite fit.
+Delete the old procedural Siren cruiser rendering if it becomes unused after this conversion.
 
 ⸻
 
-4. Anchor Rhosyn’s boost fire precisely to its tailpipe
+4. Saffron ultimate — futuristic metal dragon
 
-This is important.
+Saffron’s ultimate transforms the vehicle into:
 
-Use the same sprite-space exhaust mechanism used by Flann.
+vtm_saffron.PNG
 
-Current Seren behavior:
+This is a large futuristic metallic dragon.
 
-* spriteFrame() determines exactly how the full PNG is transformed.
-* spriteAnchor() converts normalized source-image coordinates into the rendered car’s local coordinate system.
-* drawSpriteExhaust() uses each model’s exhaust anchors.
-* Because the exhaust root uses the same sprite transform, it stays attached through scaling, rotation, lane changes and split-screen rendering.
+The dragon is an alternate form of the same racer. It is not a second racer and must never create a second race position.
 
-Rhosyn must use this exact system.
+Use the existing alternate-model architecture rather than making rendering and collision independently ask whether Saffron is ulting.
 
-Inspect v_rhosyn.PNG.
+Add a Saffron alternate model containing measurements from the actual vtm_saffron.PNG:
 
-Find the exact center of every real rear tailpipe/exhaust outlet.
+* key:"saffronAlt" or an equivalently clear internal name
+* style:"sprite"
+* sprite:"vtm_saffron.PNG"
+* measured spriteBounds
+* measured dragon hitShape
+* exactly 6 exhaust/tailpipe anchors
+* appropriate flame/boost colors
+* any model sizing metadata needed to achieve the required two-lane scale
 
-For each outlet, record its center in source-image pixels, then normalize it:
+The six exhaust positions must be measured from the actual six tailpipes in the dragon image.
 
-x / sourceWidth
+Do not approximate six effects around the back of the sprite. Each effect must originate from a real tailpipe.
 
-y / sourceHeight
+Dragon size
 
-Store those coordinates under:
+The dragon must visually occupy approximately two full Seren lanes in width.
 
-CARS.rhosyn.exhaust
+There are three lanes, and the dragon should clearly span the visual width of two of them.
 
-If Rhosyn has one true outlet, use one anchor.
+Do this from measured sprite bounds and lane geometry, not from a hardcoded desktop-pixel width.
 
-If it has two true outlets, use two anchors.
+The scaling must remain correct on:
 
-Do not add fake symmetric exhausts where the art does not have them.
+* mobile
+* desktop
+* 2-player local
+* 3-player local
+* 4-player local
 
-The flame must visibly originate from inside the actual tailpipe opening, not from:
+Preserve the dragon image’s natural aspect ratio.
 
-* the rear bumper center,
-* the bottom of the PNG,
-* the old Rose car’s generic flame position,
-* a hard-coded world-space offset.
-
-Verify the effect at normal scale, ultimate speed, boost, rotated lane changes, every supported viewport, and local split-screen.
-
-⸻
-
-5. Rhosyn’s ultimate: Aero-Glow
-
-Rhosyn retains Seren’s shared ultimate fundamentals:
-
-* charge time: ULT_CHARGE = 75
-* active duration: ULT_TIME = 15
-* speed: ULT_SPEED = 2.0
-
-Do not create a second ultimate timer.
-
-Continue using the existing shared startUlt(), tickUlt(), endUlt() lifecycle.
-
-Add Rhosyn-specific behavior around that lifecycle in the same style as Neela, Lolanthe and Verdant.
-
-Add centralized predicates such as:
-
-* rhosynCar(who)
-* rhosynUltActive(who)
-* rhosynElsewhere(who) or another appropriately named single source of truth
-
-Do not scatter direct checks like:
-
-o.car === "rhosyn"
-
-through ten unrelated systems.
-
-The existing mechanics deliberately centralize car-specific predicates. Preserve that pattern.
+The two-lane width is primarily the visible airborne dragon footprint. Do not distort the sprite simply to hit an arbitrary number.
 
 ⸻
 
-6. Aero-Glow transition state
+5. Saffron transformation must reuse Neela’s transition
 
-The activation should not simply make Rhosyn disappear on the same frame.
+When Saffron activates the ultimate, use the same transformation transition presentation Neela already uses.
 
-The requested sequence is:
+That means reusing the shared:
 
-Entering Aero-Glow
+* startWhiteout()
+* startMorph()
+* WHITEOUT_TIME
+* MORPH_TIME
 
-1. The ultimate activates.
-2. Rhosyn’s physical car visibly flashes toward bright white.
-3. The owner/player’s entire view flashes white.
-4. While the screen is covered by white, the owner’s renderer changes from the shared race world to Aero-Glow.
-5. For every other racer/view, Rhosyn finishes its white vehicle flash and disappears from the normal road.
-6. The owner’s white screen fades away, revealing Rhosyn driving inside Aero-Glow.
+Do not create a second white-flash implementation with different timing.
 
-During Aero-Glow
+The owner’s screen should white-flash just as Neela’s transformation does, and the vehicle itself should use the same morph/body flash system.
 
-* Rhosyn remains visible to its own owner.
-* Rhosyn is not visible in any other normal-race view.
-* No condition badge, seat marker, exhaust plume, shadow or other attached visual may reveal Rhosyn’s hidden canonical location to another racer.
-* Rhosyn continues driving at the shared ultimate’s 2× pace.
-* The canonical race simulation continues normally.
-* Aero-Glow contains no other racers and no normal hazards.
+This must remain per-view in local multiplayer. Transforming Saffron in one split-screen column must not white out the other players’ columns.
 
-Leaving Aero-Glow
+The shared ultimate continues to be:
 
-When the 15-second ultimate ends:
-
-1. The owner’s Aero-Glow view flashes white again.
-2. While covered by white, switch that owner’s renderer back to the normal shared race.
-3. Rhosyn reappears at its already-current canonical race position, not a calculated teleport destination.
-4. Other racers should perceive the reappearance as the corresponding white vehicle flash rather than a raw one-frame pop.
-5. The owner’s white transition fades, revealing the actual current shared biome and actual current race state.
-6. At the moment Rhosyn truly rejoins the shared road, grant 2 full seconds of the existing Invulnerable condition.
-
-Use a small explicit transition state rather than overloading ultOn to mean all of these phases.
-
-For example, a per-racer state conceptually equivalent to:
-
-* inactive
-* entering
-* aeroGlow
-* exiting
-
-plus the minimum timer needed for the transition.
-
-The exact representation is up to the implementation, but it must be deterministic and carried by every racer object just as Neela/Lolanthe/Verdant state is.
-
-Do not use arbitrary asynchronous setTimeout() calls to control gameplay state.
-
-Advance transitions from the normal update loop so pausing the race pauses them correctly.
+* 15 seconds
+* 2× pace
+* normal shared ultimate meter
+* normal shared ultimate lifecycle
 
 ⸻
 
-7. Reuse/generalize Seren’s existing white transition system
+6. Flying state — do not change canonical race position
 
-Neela already provides useful infrastructure:
+As Saffron transforms into the dragon, it begins lifting away from the track.
 
-* whiteT
-* morphT
-* startWhiteout(who)
-* whiteoutActive(who)
-* startMorph(who)
-* morphFlash(who)
-* drawMorphFlash()
-* drawWhiteout()
+Implement explicit Saffron flight state carried by every racer, similar in spirit to the existing per-racer Neela/Rhosyn state.
 
-Current timings are:
+A clean phase model would be conceptually equivalent to:
 
-* whiteout: 0.42s
-* body flash: 0.6s
+* off
+* rise
+* air
+* drop
 
-Rhosyn should use the same visual language unless there is a concrete rendering issue.
+Naming can differ if the implementation is clearer, but the state must be explicit.
 
-Do not duplicate a second almost-identical white-screen renderer.
+Also maintain a purely visual altitude/lift factor, for example a normalized 0→1 value.
 
-Because these helpers are no longer conceptually Neela-only once Rhosyn uses them, clean up naming/comments where appropriate. For example, it is reasonable to generalize transition constants/helpers while keeping behavior identical for Neela.
+Critical invariant:
 
-Be careful not to regress Neela.
-
-The white flash must remain per-view, which the current renderer already supports:
-
-* normal play draws the owner’s whiteout after renderView()
-* local play clips each player’s column, sets VOWN, renders that player’s view, then applies drawWhiteout(who) only to that column
-
-Preserve that behavior.
-
-A Rhosyn in player 2’s local column must not flash players 1, 3, or 4’s screens white.
-
-⸻
-
-8. Aero-Glow is view-specific, not a TRACKS biome
-
-Do not put Aero-Glow into normal biome progression.
-
-Do not set:
-
-G.biome = "aeroglow"
-
-Do not overwrite:
-
-* G.biome
-* G.next
-* G.seam
-* G.trackT
-* canonical scenery arrays
-* normal track state
-
-Doing so would break the exact re-entry requirement.
-
-Instead, use the existing VOWN view-owner mechanism.
-
-Inside renderView(), determine whether the current viewer owns a Rhosyn that is presently inside Aero-Glow.
-
-Conceptually:
-
-aeroGlowViewActive(VOWN)
-
-If false:
-
-render the existing shared world exactly as before.
-
-If true:
-
-render a dedicated drawAeroGlowWorld(...) path instead of the shared biome/world contents.
-
-This must work equally for:
-
-* single-player player-one Rhosyn
-* a local multiplayer human Rhosyn in any split-screen column
-
-A bot Rhosyn has no private screen, so it simply disappears from human shared views while its canonical bot simulation continues.
-
-⸻
-
-9. Aero-Glow visual design
-
-The world is named:
-
-Aero-Glow
-
-It should be unmistakably separate from every normal track.
-
-The intended visual identity is:
-
-* void-like
-* near-total black
-* luminous pink/magenta
-* surreal
-* isolated
-* no ordinary scenery
-* no other racers
-* no hazards
-
-Build it procedurally with the existing Canvas renderer.
-
-Do not require another image asset unless truly necessary.
-
-Possible visual vocabulary:
-
-* near-black background/void
-* deep black road-space
-* hot-pink/magenta glowing perspective traces
-* subtle pink horizon haze
-* sparse luminous particles/streaks
-* abstract lane/ribbon guidance so the player can still understand steering
-* distant pink lines/shapes moving relative to G.scroll
-* restrained glow around the route
-* optional subtle vignette
-
-It should still be readable as forward motion at 2× speed.
-
-Use canonical scrolling/speed information so Aero-Glow motion visually agrees with how quickly Rhosyn is really advancing.
-
-Do not render any of these normal shared-world elements in the owner Aero-Glow view:
-
-* other racers
-* their exhaust
-* their Conditions
-* their notes
-* shared track scenery
-* tumbleweeds
-* meteors
-* puddles
-* item bubbles
-* oil slicks
-* seeker missiles
-* shared collision FX
-* normal biome props
-* finish-world clutter that would imply another racer is present
-
-Only the owning Rhosyn and Aero-Glow-specific presentation belong in that world.
-
-The existing normal HUD may remain available. The ultimate meter should continue visibly counting down.
-
-Display the name Aero-Glow somewhere tasteful within that private view if useful, but do not mutate the global #trackName in a way that makes another local player’s HUD claim their track is Aero-Glow.
-
-In split-screen, world-name presentation must be per-view.
-
-⸻
-
-10. Rhosyn must remain at its canonical race position
-
-This is the most important correctness requirement.
-
-Do not call a teleport function when Rhosyn enters Aero-Glow.
-
-Do not call teleportRacerToPose().
-
-Do not save an entry pose for later restoration.
-
-Do not restore:
-
-* entry m
-* entry lane
-* entry x
-* entry biome
-
-Rhosyn should simply keep using the exact normal update path.
-
-For player one, the existing G.speed, G.scroll, and G.meters continue to advance.
-
-For rival/local-human Rhosyn racers, their existing canonical R.y, lane, x, speed-relative movement, and metersOf(R) continue to advance normally.
-
-Lane inputs must continue controlling canonical lane/x while inside Aero-Glow.
-
-The player is “driving freely” because the private world contains nobody who can interfere with them, not because a second free-roam coordinate system replaces Seren’s race controls.
-
-Normal personal speed mechanics may continue:
-
-* ultimate’s 2× speed
-* boost
-* boost can where already active
-* normal lane steering
-
-Do not let the Aero-Glow presentation itself change canonical movement rules.
-
-When the render switches back, the car is already exactly where it belongs.
-
-There should be no correction, lerp, teleport or snap on re-entry.
-
-⸻
-
-11. Rhosyn is unreachable while in Aero-Glow
-
-Seren already has a centralized contact gate:
-
-noContact(who)
-
-It currently represents racers that are unreachable because they are:
-
-* finished
-* wrecked
-* temporarily Invulnerable
-
-Extend this architecture carefully so a Rhosyn that has actually left for Aero-Glow is also unreachable.
-
-Prefer one centralized predicate over dozens of scattered guards.
-
-During the departure/Aero-Glow state, Rhosyn must be excluded from every normal-world interaction, including:
-
-* racer-to-racer rear contact
-* lane barging
-* Flann ram interactions
-* Neela swap interactions
-* Verdant contact mechanics
-* Lolanthe Mind Control
-* tumbleweed contact
-* meteor damage
-* puddles
-* oil slicks
-* seekers
-* offensive targeting
-* AI target selection
-* collision queries such as carAt()
-* item bubbles/pickups on the shared road
-* any future debuff path that respects the project’s centralized contact rules
-
-Audit every interaction path rather than assuming noContact() already guards all of them.
-
-For example, some pickup/update loops historically test dead/finished directly rather than noContact(). These need to be reviewed.
-
-The desired semantic rule is:
-
-If Rhosyn is in Aero-Glow, the shared road must behave as if there is no interactable body at Rhosyn’s canonical position.
-
-But the racer still exists for:
-
-* race distance
-* ranking
-* finish progression
-* ultimate countdown
-* canonical movement
-* AI movement if bot-controlled
-* biome/world progression
-
-Do not remove Rhosyn from standings/race order.
-
-Do not mark it dead or finished.
-
-Do not use the existing Invulnerable timer for the entire 15-second Aero-Glow duration; Aero-Glow isolation is its own ultimate state. Invulnerability is only the requested 2-second post-return protection.
-
-⸻
-
-12. Make isolation effectively symmetric
-
-Aero-Glow should not become a loophole allowing a racer that has left the road to attack the shared field from another dimension.
-
-While actually inside Aero-Glow:
-
-* Rhosyn cannot collide with anyone.
-* Nobody can collide with Rhosyn.
-* Shared hazards cannot affect Rhosyn.
-* Rhosyn should not collect shared-road bubbles that it cannot see.
-* Rhosyn should not drop shared oil into a world it is not rendering.
-* Rhosyn should not fire a seeker into the shared race from Aero-Glow.
-* Other racers should not target it.
-
-Preserve any held item rather than silently consuming it if its use is refused during Aero-Glow.
-
-Boost is personal movement and may continue functioning.
-
-If an effect was already active before entry, handle it consistently and deterministically rather than duplicating it into Aero-Glow.
-
-⸻
-
-13. Viewer-specific disappearance
-
-Seren already has viewer-specific opacity through:
-
-racerViewAlpha(who, viewer)
-
-used for Verdant.
-
-Extend this concept rather than creating an unrelated visibility system.
-
-For Rhosyn:
-
-* before departure reaches its disappearance point, observers see the white body-transition flash
-* while fully inside Aero-Glow, every non-owner shared-world view sees alpha 0 / no attached rendering
-* the owner sees Rhosyn normally inside the Aero-Glow renderer
-* during re-entry, observers see the car return through the white flash sequence
-
-Everything attached to a hidden Rhosyn must follow the same visibility decision:
-
-* shadow
-* PNG body
-* boost/ultimate exhaust
-* seat marker
-* Conditions
-* Lolanthe/other attached notes if applicable
-* any other car-pinned effect
-
-Do not leave a floating badge or exhaust plume on the shared road after hiding the car.
-
-Do not make Aero-Glow behave like Verdant mechanically. Verdant is invisible but physically present. Rhosyn is actually removed from shared-world interaction while the ultimate world is active.
-
-Keep those concepts separate.
-
-⸻
-
-14. Exact 2-second protection after Aero-Glow
-
-The project already defines:
-
-INVULNERABLE_TIME = 2
-
-and the existing Invulnerable Condition already means:
-
-nothing can reach the racer, debuffs are cleared/refused, and collision/targeting paths use the shared protection mechanism.
-
-Use it.
-
-At the precise re-entry moment:
-
-For player one, conceptually:
-
-G.invuln = Math.max(G.invuln, INVULNERABLE_TIME)
-
-For another racer:
-
-R.invuln = Math.max(R.invuln, INVULNERABLE_TIME)
-
-Use whichever shared helper/style best fits the codebase.
+Altitude must not become a second race coordinate.
 
 Do not create:
 
-* rhosynImmune
-* a second shield timer
-* special hazard-by-hazard exceptions
+* a second race distance
+* a second lane
+* a second world
+* an alternate meters
+* an alternate biome
+* a teleport-out/teleport-back position
 
-The existing condition should be the source of truth.
+While flying, Saffron’s canonical:
 
-The full two seconds must begin when Rhosyn is actually back in the shared road, not while the owner is still hidden in Aero-Glow’s exit transition.
+* lane
+* lateral X
+* tilt
+* speed
+* metres
+* race order
+* finish progress
+* biome progression
 
-This should automatically produce the existing Invulnerable condition badge and existing blink/protection behavior.
+must keep updating through the ordinary shared simulation.
 
-⸻
+This is similar to the good invariant already used by Rhosyn: presentation/state must not fork the race simulation.
 
-15. Finish-line and lifecycle edge cases
-
-Handle lifecycle cases deliberately.
-
-Rhosyn reaches the finish while Aero-Glow is active
-
-The canonical race must still be allowed to detect the finish because Rhosyn’s canonical race distance continues to advance.
-
-Do not make Aero-Glow prevent a legitimate finish.
-
-Once Rhosyn has finished, clean up Aero-Glow state so the renderer cannot remain trapped in the void after the race has actually ended.
-
-Use the existing finish lifecycle rather than manufacturing a second finish.
-
-Pause
-
-All Aero-Glow transition timing and ultimate timing must pause with the normal frame/update loop.
-
-Race restart / leave / new race
-
-Reset all Rhosyn-specific phase/timer fields.
-
-No Aero-Glow state can leak into the next race.
-
-Wreck
-
-Rhosyn should not normally be wreckable while fully inside Aero-Glow because it is unreachable.
-
-Nevertheless, cleanup routines must be robust if a forced/debug lifecycle path wrecks or removes the racer.
-
-Invulnerability
-
-If another source has already granted longer remaining Invulnerable protection at re-entry, do not shorten it to exactly 2. Use max(existing, 2) semantics.
+The visual dragon may be elevated on screen and rendered above the road, but the racer’s canonical road position remains authoritative.
 
 ⸻
 
-16. Do not accidentally freeze the normal world
+7. Make the dragon genuinely appear above the track
 
-While a human Rhosyn sees Aero-Glow, the shared race must continue processing:
+The dragon must clearly read as flying high above:
 
-* other racers
+* the road
+* racers
 * hazards
-* items
-* track seams
-* biome transitions
-* finish logic
-* standings
-* race timer
-* speed tier changes
-* AI
 
-Aero-Glow only changes what that Rhosyn view renders and whether the Rhosyn body is eligible for shared interaction.
+Do not simply swap the PNG while leaving it looking glued to the tarmac.
 
-Other human players in local split-screen must continue seeing and playing the normal race at the same time.
+Use a visual altitude presentation that does not corrupt the canonical Y/distance.
 
-This is an important local-play acceptance test:
+For example:
 
-Player 1 can be in Aero-Glow while Player 2’s column continues rendering the real race normally.
+* maintain a road-position shadow or grounding cue at the canonical position
+* raise the dragon visually away from that footprint
+* optionally vary shadow softness/opacity/offset with altitude
+* ensure the airborne dragon draws above road-level cars and hazards in render order
+* do not make its visual altitude change metersOf(), race ordering, hazard world positions, or collision world coordinates
 
-⸻
+The rise should begin at the same time as the transformation.
 
-17. Update model/comments that currently assume only four special ultimates
+By the end of the morph/rise transition, the dragon should clearly be high above the track.
 
-js/mechanics.js currently describes “the four car-specific ultimates” and only has special predicates for Flann, Neela, Lolanthe and Verdant.
-
-Update this documentation and related comments to account for Rhosyn.
-
-Do not misleadingly continue documenting Rose/Rhosyn as a generic ultimate.
-
-Similarly update documentation that currently says Rose and Siren are the remaining ordinary ultimate cars.
-
-After this change, Siren is the generic/simple ultimate case; Rhosyn is not.
+The owner must still be able to understand their lane position and steer accurately despite the large sprite.
 
 ⸻
 
-18. Remove or clean up obsolete Rose-only renderer code
+8. Physical interaction while Saffron is airborne
 
-js/render.js currently contains a Rose-specific procedural coupe section/comment.
+Once the dragon form is active, ordinary road-level things cannot reach Saffron.
 
-Once Rhosyn is a sprite:
+While airborne:
 
-* remove Rose-specific drawing assumptions
-* remove dead Rose-only code if drawCoupe() is no longer used anywhere
-* if another legitimate path still relies on a generic coupe helper, keep the generic helper but remove Rose-specific semantics/comments
+* racer-to-racer rear contact must not hit it
+* lane barges must not hit it
+* tumbleweeds must not hit it
+* puddles must not hit it
+* oil slicks must not hit it
+* road pickups/mystery bubbles must not be collected by merely flying over them
+* road-level seekers/projectiles must not physically strike it if they are intended to travel on the road
+* ordinary hazard explosions on the ground must not destroy it
+* ordinary racers cannot destroy it by collision
+* the dragon must not destroy racers simply by passing above them
+* the dragon must not clear or smash ordinary hazards by passing above them
 
-Do not delete helpers blindly. Confirm usage first.
+Do not add Saffron to clearsSolidHazards().
 
-⸻
+That existing predicate means the racer physically hits and destroys solid road hazards. Saffron’s behavior is different: it is above them.
 
-19. AI behavior
+The dragon must fly over tumbleweeds rather than smash them.
 
-A bot Rhosyn should be capable of firing its ultimate through the same AI ultimate decision mechanism as every other bot.
+It must fly over puddles rather than clear them.
 
-Once it enters Aero-Glow:
-
-* it is omitted from human normal-race views
-* it remains canonically simulated
-* its AI may continue choosing lanes/speed using the canonical simulation
-* it cannot physically interact with the shared race while phased out
-* other bots should not detect/target it as an interactable racer
-
-When it returns, grant the same 2-second Invulnerable condition as a human Rhosyn.
-
-Do not create separate human-only ultimate mechanics.
+This distinction should be reflected in tests.
 
 ⸻
 
-20. HUD and Conditions
+9. Saffron must still be vulnerable to Mind Control
 
-Keep the existing ultimate meter lifecycle.
+There is one deliberate exception to the airborne isolation:
 
-While Aero-Glow is active:
+Saffron can still be Mind Controlled while flying.
 
-* the meter counts down using the same ultT / ultMax
-* boosted status continues to reflect the active ultimate as existing Seren logic does
-* the private owner can still understand how much Aero-Glow time remains
+Lolanthe’s Mind Control must continue to affect an airborne Saffron if Saffron is inside the aura’s normal canonical road-distance range.
 
-On exit:
+This means:
 
-* ultimate reaches 0 normally
-* Rhosyn gains Invulnerable for 2 seconds
-* existing condition rendering displays Invulnerable
-* do not add a redundant “Aero-Glow Shield” condition
+* mindT can be applied
+* the Mind Controlled Condition appears
+* controls are locked
+* held boost/input is cancelled exactly as for other racers
+* an already-running Saffron ultimate continues ticking
+* Saffron continues physically moving through the simulation because Mind Control is not a freeze
+* the forced lane change from Lolanthe should still be able to change Saffron’s canonical lane when the existing aura rule calls for it
 
-If the HUD has text/reference descriptions of Rose, replace them with Rhosyn/Aero-Glow.
+Be careful with the current architecture here.
+
+At present, refusesDebuffs() is derived from noContact(). If airborne Saffron is simply added to noContact() without another change, Mind Control would incorrectly become impossible.
+
+Separate the concepts cleanly.
+
+Rhosyn being in Aero-Glow should still reject Mind Control because Rhosyn is literally absent from the shared road/world.
+
+Saffron is different: it is vertically above the shared track but still mentally reachable by Lolanthe.
+
+Do not weaken Verdant’s existing Mind Control immunity.
 
 ⸻
 
-21. Tests are required, not optional
+10. Meteor exception
 
-Extend the existing dependency-free test suite rather than creating an unrelated harness.
+Saffron cannot smash road hazards like the other hazard-clearing ultimates.
 
-The repo already provides:
+However, a falling meteor is different because it comes from above.
 
-node tools/check.mjs
-node tools/menu-check.mjs
-node tools/ultimate-check.mjs
-node tools/sprite-check.mjs
-node tools/hitbox-check.mjs
+If a falling meteor physically comes down onto the airborne dragon:
 
-All five must pass after the change.
+the meteor must be destroyed.
 
-Update old Rose assertions rather than deleting coverage.
+Saffron takes no damage.
 
-Add specific Rhosyn regression tests.
+The meteor must be removed before it reaches the road and must not proceed into its normal ground detonation.
 
-Rename tests
+Play appropriate destruction particles/audio.
 
-Verify:
+This is a special airborne meteor interception rule, not membership in clearsSolidHazards().
 
-* CAR_IDS includes rhosyn
-* CAR_IDS no longer includes rose
-* Rhosyn car button exists
-* correct data-car
-* correct i18n keys
-* Rhosyn selection works
-* old Rose selector is gone
-* sprite v_rhosyn.PNG is registered through CAR_SPRITES
+It must work for:
 
-Sprite tests
+* player-controlled Saffron
+* bot Saffron
+* local multiplayer Saffron
 
-Verify:
+The existing meteor logic currently has a player-side falling-rock/roof path and a later blast path. Generalize this carefully enough that a Saffron dragon belonging to any racer can intercept a descending meteor when the falling rock overlaps the dragon.
 
-* Rhosyn is style sprite
-* sprite file is exactly v_rhosyn.PNG
-* valid measured spriteBounds
-* valid hitShape
-* valid exhaust anchor count
-* drawSpriteExhaust() is used
-* boost flame root resolves to the measured tailpipe coordinate
-* scaling and rotation do not detach the exhaust from the outlet
-* menu preview and race rendering both use Rhosyn’s model
+A meteor that lands/explodes on the ground underneath an airborne Saffron should not kill Saffron.
 
-Hitbox tests
+Do not accidentally make Saffron destroy tumbleweeds because of the meteor rule.
 
-Test Rhosyn independently.
+⸻
 
-Verify:
+11. End of Saffron ultimate — transform back, then drop
 
-* collision uses CARS.rhosyn.hitShape
-* it does not fall back to CAR_HIT_RECT
-* test points just inside representative body edges collide
-* test points just outside representative visible body edges do not
-* rotated Rhosyn uses the rotated polygon correctly
-* race scale and hitbox scale stay synchronized
+When the 15-second ultimate ends, Saffron must transform back into the normal v_saffron.PNG car using the same Neela-style white/morph transition.
 
-Do not simply replace "rose" with "rhosyn" in old rectangle-car tests; several old assertions are no longer conceptually valid because Rhosyn is no longer a generic rectangle model.
+The return sequence is:
 
-Use Siren where a generic rectangular control car is still required by a test.
+1. Begin the white/morph transition.
+2. Switch back from dragon model to Saffron’s normal car model under the transition.
+3. The normal car is still visually high above the road.
+4. Instead of smoothly landing, it drops rapidly onto its canonical road position.
+5. On touchdown, resolve the special landing impact.
+6. Then restore ordinary road collision/hazard behavior.
 
-Ultimate lifecycle tests
+Do not teleport Saffron in race distance during this sequence.
 
-Verify:
+The canonical simulation already knows exactly where the racer belongs.
 
-* Rhosyn charges for the shared 75-second duration
-* activates through startUlt()
-* runs for exactly 15 seconds
-* receives the shared 2× pace multiplier
-* enters the transition
-* reaches Aero-Glow state
-* exits when the same ultT reaches zero
-* resets the ultimate meter normally
+⸻
 
-Canonical-position continuity test
+12. Saffron touchdown kill
 
-This is essential.
+If Saffron lands directly on another racer at the end of the drop, that racer is destroyed.
 
-Set up a Rhosyn, record its canonical state, activate Aero-Glow, simulate several seconds, including ordinary movement and ideally a biome seam transition.
+The landing check should use actual measured collision geometry rather than “same lane means hit.”
 
-Verify while Aero-Glow is running that:
+At the touchdown frame:
 
-* G.meters / metersOf(R) continues changing normally
-* canonical lane/x continues responding to input/AI
-* canonical biome progression continues
-* no alternate “Aero-Glow metres” becomes authoritative
+* use Saffron’s normal-car touchdown hull, because the dragon has already transformed back
+* compare it against the actual hulls of reachable racers
+* destroy any racer genuinely overlapped by the touchdown body
+* use the existing wreck lifecycle and credit Saffron as the attacker where appropriate
+* skip racers that are already finished, wrecked, invulnerable, or absent in Aero-Glow
+* do not create a new destruction implementation
 
-Then end the ultimate.
+This landing kill is a unique top-down impact, not an ordinary rear-end or side barge.
 
-Verify the returned shared-world position is exactly the canonical position already present on that frame.
+Do not route it through Flann’s ram helper.
 
-There should be no teleport delta.
+If more than one reachable racer is directly overlapped at touchdown, resolve all genuine overlaps rather than arbitrarily choosing the first array entry.
 
-Biome-transition test
+After resolving the impact, add a tiny one-step landing/contact guard if necessary so the exact same overlap cannot immediately be processed again as an ordinary rear-end in the same simulation step.
 
-Begin Aero-Glow before a track seam.
+If Saffron crosses the finish line while still flying, normal finish cleanup must remove the form/flight state without causing a phantom landing attack after the race.
 
-Advance the canonical simulation until the biome changes.
+⸻
 
-End Aero-Glow afterward.
+13. Saffron exhaust/boost visuals
 
-Verify Rhosyn renders back into the new/current biome, not the biome it entered from.
+Normal Saffron:
 
-Isolation tests
+* exactly 2 tailpipes
+* exactly 2 correctly anchored boost plumes
 
-While Rhosyn is fully inside Aero-Glow, verify all of these fail to affect it:
+Dragon Saffron:
 
-* rear contact
-* lane barge
-* Flann ultimate ram
-* Neela swap
-* Verdant contact
-* Lolanthe aura/Mind Control
-* tumbleweed
-* meteor
-* puddle
-* oil
-* seeker
-* ordinary targeting
-* shared bubble pickup
+* exactly 6 tailpipes
+* exactly 6 correctly anchored boost plumes
 
-Also verify Rhosyn cannot affect those systems from Aero-Glow.
+Use the existing drawSpriteExhaust() loop and sprite-space anchoring.
 
-Visibility tests
+Do not add six hardcoded render calls.
 
-For a fully active Aero-Glow Rhosyn:
+Make the data carry the six anchors.
 
-* owner’s Aero-Glow view includes Rhosyn
-* normal view belonging to another racer does not draw Rhosyn
-* it also does not draw Rhosyn’s shadow
+The exhaust roots must remain accurate after:
+
+* dragon two-lane scaling
+* lane-change tilt
+* split-screen scaling
+* viewport resizing
+
+The active model must determine the active exhaust anchors automatically through racerModel().
+
+The existing renderer currently treats an active ultimate as a boosted-speed visual as well. Keep that behavior consistent unless the surrounding code clearly requires otherwise: Saffron’s dragon should visibly emit through all six outlets while traveling at ultimate pace.
+
+⸻
+
+14. Flann collision behavior — make the ram directional
+
+Flann’s current ram logic is symmetric.
+
+Current code effectively allows an ulting Flann to destroy the other racer regardless of which racer initiated contact.
+
+That must change.
+
+New rule:
+
+An ulting Flann destroys a racer only when Flann is the racer that collides into them.
+
+If another ordinary racer collides into an ulting Flann, the other racer must not automatically be destroyed.
+
+The collision should fall back to the ordinary applicable collision response.
+
+This applies to both contact entry paths:
+
+* rear-end contact
+* lane-barge contact
+
+Direction matters.
+
+Examples:
+
+* Ulting Flann rear-ends Saffron → Saffron is destroyed.
+* Saffron rear-ends an ulting Flann → Saffron is NOT destroyed merely because Flann is ulting; ordinary rear-end behavior happens.
+* Ulting Flann barges into another racer’s lane → the other racer is destroyed.
+* Another racer barges into an ulting Flann → do not automatically kill the barger; resolve the ordinary barge rules.
+* Two ulting Flanns meeting should continue to cancel the special ram and use ordinary collision behavior rather than arbitrarily letting array order decide a winner.
+
+Do not keep using a symmetric ramWinner(a,b) abstraction if it obscures who initiated the collision.
+
+The call sites already know the initiator:
+
+* rearEnd(who, victim) → who initiated the rear-end
+* bumpTarget(victim, dir, by) → by initiated the lane collision
+
+Use that information.
+
+⸻
+
+15. Preserve the special Flann vs ulting Verdant interaction
+
+The directional Flann change must not alter the existing special interaction between an ulting Flann and an ulting Verdant.
+
+The current Verdant priority is handled before ordinary Flann ram resolution in specialContact().
+
+Preserve this special case:
+
+ulting Flann + ulting Verdant collision = mutual destruction
+
+This remains true regardless of which of those two racers initiated the contact.
+
+Do not accidentally let the new directional Flann rule bypass or weaken this.
+
+Also preserve all other Verdant collision behavior unless explicitly changed by this task.
+
+⸻
+
+16. Improve Flann’s ultimate fire dramatically
+
+The current Flann ultimate fire is built from an outer halo plus flame tongues around the sides/rear/shoulders.
+
+Improve it substantially.
+
+The important visual requirement is:
+
+the fire must look like it is actually burning in and through the car, not like detached flames placed around the outside of the sprite.
+
+Keep it as a renderer-only cosmetic effect.
+
+Do not write race state from the fire renderer.
+
+Recommended approach:
+
+* use Flann’s measured hull/body geometry as the spatial guide
+* put hot flame cores inside the visible body/silhouette
+* place animated fire pockets over engine/body regions
+* root outer tongues inside the car before they extend outward
+* use white/yellow-hot internal cores, orange/red outer flame, softer heat glow
+* optionally clip an interior fire layer to Flann’s physical/visible hull
+* allow selected tongues to escape from the body edges
+* keep enough of v_flann.PNG visible that the car remains identifiable
+* use additive/lighten compositing carefully instead of washing the entire sprite into a featureless blob
+* ensure the effect follows car tilt and race scaling because it is rendered in car-local coordinates
+
+The effect should clearly look more intense and more integrated than the existing ten detached tongues.
+
+Reduced-motion mode must still show that Flann is on fire, but without animated flicker.
+
+Ordinary boost must still show only the normal tailpipe boost effect.
+
+A boost can must not ignite the body.
+
+Only an active Flann ultimate gets the body fire.
+
+⸻
+
+17. Update Flann text to match the new collision rule
+
+The current English ultimate description says Flann “wrecks any racer it touches,” which will become inaccurate.
+
+Update English and French descriptions so they communicate the directional behavior correctly.
+
+The description should convey that Flann destroys racers it rams/crashes into, rather than implying that touching an ulting Flann is always fatal.
+
+Keep the meteor/tumbleweed/puddle details accurate.
+
+⸻
+
+18. Rebuild Rhosyn’s Aero-Glow using Ponu’s track visuals
+
+Inspect hiyroscript/ponu, especially:
+
+js/14-rendering.js
+
+The relevant Ponu track renderer contains:
+
+* RUNG_M = 3.4
+* DASH_M = 2.2
+* eachRung()
+* drawTrack()
+* drawHorizon()
+* drawEdges()
+
+Also inspect:
+
+js/08-vfx.js
+
+for:
+
+* ambient track motes
+* speed lines
+* lane-change/dash visual language
+* track/world-scrolling behavior
+
+Ponu’s track visual language includes:
+
+* a softly highlighted current/player column
+* three clear columns/lanes
+* short transverse “rungs” inside each lane
+* every fourth rung stronger/brighter
+* faint continuous lane divider lines
+* stronger scrolling dash/dot marks laid on top of those divider lines
+* world-motion-driven spacing rather than screen-fixed decoration
+* subtle ambient specks
+* speed-dependent streaks
+* horizon/entry fade
+* side-edge gradients that strengthen as speed increases
+* minimal clean geometric framing
+
+The divider dash/dot rhythm is particularly important. The user specifically wants the same dots/dashes that separate the lanes in Ponu.
+
+⸻
+
+19. Aero-Glow should become a real-looking three-lane world
+
+The existing Aero-Glow renderer is a black/magenta perspective void with a horizon and glowing route ribbons.
+
+Replace/expand that presentation so Aero-Glow feels like a complete stylized race world based on Ponu’s three-column track.
+
+It should still unmistakably be Rhosyn’s private black-and-pink realm.
+
+Use pink variants of Ponu’s visual elements.
+
+A suitable palette direction is:
+
+* near-black void/background
+* extremely dark pink-black track
+* hot magenta primary accents
+* pale pink highlights
+* dim rose divider lines
+* brighter pink divider dots/dashes
+* pink-tinted rungs
+* pink ambient motes
+* pale-pink/high-magenta speed lines
+* pink horizon and edge fades
+
+Do not simply copy Ponu’s white paper/black ink colors.
+
+Translate its visual hierarchy into Aero-Glow’s existing black/pink identity.
+
+⸻
+
+20. Preserve Rhosyn’s canonical simulation invariant
+
+Do not break the strongest part of the current Rhosyn implementation.
+
+Aero-Glow remains a view plus interaction isolation, not a second track simulation.
+
+While Rhosyn is in Aero-Glow:
+
+* canonical metres continue advancing
+* canonical lane/X continue updating
+* ultimate 2× pace continues
+* steering continues
+* race order continues updating
+* track/biome transitions continue underneath
+* finish progress continues
+* Rhosyn can legitimately finish the race
+* G.biome, G.next, G.seam, etc. remain the real shared-world state
+
+Do not implement a separate Aero-Glow distance.
+
+Drive all scrolling Ponu-style track motifs from the owner’s canonical travel/distance so they move at exactly the speed Rhosyn is actually covering ground.
+
+Rendering Aero-Glow twice with unchanged state must not mutate the game or advance its visuals independently.
+
+Reduced-motion mode should stop cosmetic flicker/random animation without removing the world structure.
+
+⸻
+
+21. What to borrow from Ponu and what NOT to borrow
+
+Bring over/adapt the track/environment visual language.
+
+Do include equivalents of:
+
+* lane highlight
+* lane divider lines
+* lane divider dots/dashes
+* rungs
+* stronger periodic rungs
+* ambient track specks
+* speed streaks
+* edge shading
+* horizon/top fade
+* clean track framing
+* motion tied to world travel
+
+Do not import Ponu gameplay.
+
+Do not add:
+
+* Ponu hazards
+* Ponu barriers
+* Ponu falling squares
+* Ponu boost pads
+* Ponu mystery pickups
+* Ponu marble racers
+* Ponu item slot
+* Ponu course generation
+* Ponu finish-line logic
+* Ponu HUD/race ladder
+
+Aero-Glow remains Seren gameplay underneath.
+
+It only adopts Ponu’s track visual design.
+
+There must still be:
+
+* no other racers visible
+* no Seren hazards visible
+* no pickups visible
+* no oil visible
+* no seekers visible
+* no shared-world scenery visible
+
+Only Rhosyn and the Aero-Glow world belong there.
+
+⸻
+
+22. Aero-Glow HUD changes
+
+While a Rhosyn owner is inside Aero-Glow, remove all race-position/distance information from that owner’s view.
+
+The user specifically does not want:
+
+* the normal player distance meter/readout
+* place rows
+* distance rows
+* the right-side race tracker/ladder
+* racer distance indicators associated with that tracker
+
+The normal page HUD currently contains:
+
+* #trackName
+* .readout
+* #hudDist
+* the #posRow* position/distance rows
+
+The canvas HUD/local-player equivalent is generated through:
+
+* hudReadout()
+* drawLadder()
+* drawSeatHud()
+
+Modify these systems conditionally for the Aero-Glow owner.
+
+Single-screen behavior
+
+While player one is viewing Aero-Glow:
+
+* #trackName must show Aero-Glow
+* hide the normal .readout block
+* hide/remove the right-hand race ladder/tracker
+* do not show distance/place indicators
+
+Keep gameplay-critical controls/meters that were not requested to disappear, especially the ultimate meter, so the owner can see how much Aero-Glow time remains.
+
+When Rhosyn returns:
+
+* restore the actual current shared-world track name immediately
+* restore the readout
+* restore the race tracker
+* use the current biome/track at that moment, not the track Rhosyn originally left
+
+Do not set curTrackKey to Aero-Glow. Aero-Glow still is not the actual race track.
+
+Local multiplayer behavior
+
+Only the Rhosyn owner’s split-screen column should lose its distance/place HUD and tracker.
+
+Other local players must retain their normal readout and tracker.
+
+Do not use a global DOM/class state that accidentally removes race information from every local player.
+
+The Aero-Glow owner’s column should identify the world as Aero-Glow in an appropriate local-view location.
+
+⸻
+
+23. Rhosyn sprite has changed — remeasure everything
+
+The current v_rhosyn.PNG has changed.
+
+Do not trust the currently hardcoded Rhosyn measurements merely because tests currently pass.
+
+The existing data currently assumes particular bounds, exhaust locations, hit shape, and raceScale: 1 behavior.
+
+Re-measure the current v_rhosyn.PNG from scratch.
+
+Update:
+
+* spriteBounds
+* exhaust anchors
+* hitShape
+* raceScale
+
+The new hit shape must follow the current artwork.
+
+If the new sprite still contains internal empty/transparent geometry, do not fill those spaces simply to make a convex blob.
+
+The hitbox should be as precise as practical using the same polygon system the other sprite cars already use.
+
+It must continue to rotate with the vehicle correctly.
+
+Hit geometry must exist without relying on the image having loaded.
+
+⸻
+
+24. Resize Rhosyn so it visually belongs in Seren
+
+The current Rhosyn model should be resized so it feels consistent with cars such as Flann and Neela.
+
+Use raceScale, measured bounds, and the existing sizing system.
+
+Do not manually draw the image at a random percentage just in render.js, because then collision geometry and rendering would disagree.
+
+A reasonable visual goal is that Rhosyn’s visible body occupies a comparable amount of its lane to the established sprite cars rather than dominating the lane or looking undersized.
+
+Flann’s current tuning intentionally lands around roughly 70% of a lane visually.
+
+Use the current artwork’s proportions to find a natural scale near that visual family.
+
+Preserve aspect ratio.
+
+Update every existing test that assumes Rhosyn has no race scaling.
+
+⸻
+
+25. Fix Rhosyn’s exhaust after the model change
+
+The boost effect must originate from the real exhaust/tailpipe locations in the new v_rhosyn.PNG.
+
+Re-measure the tailpipes in source pixels and update CARS.rhosyn.exhaust.
+
+Do not preserve old normalized coordinates merely because the sprite filename stayed the same.
+
+Verify both plumes remain in the exhaust openings at:
+
+* multiple race sizes
+* several tilt angles
+* the new race scale
+* menu preview
+* race rendering
+* local multiplayer columns
+
+If the new artwork has a different number of visible tailpipes than the old artwork, use the actual new artwork rather than forcing old assumptions. Otherwise maintain the intended two-plume presentation.
+
+⸻
+
+26. Rhosyn Aero-Glow rendering and boost
+
+The resized/re-measured Rhosyn must use exactly the same active model inside Aero-Glow as on the shared road.
+
+Do not maintain a separate Aero-Glow size.
+
+Its exhaust must still work inside Aero-Glow.
+
+The existing private-world renderer should continue to draw only Rhosyn and its own exhaust/morph state.
+
+The vehicle should remain at its canonical lane/X/tilt.
+
+⸻
+
+27. Model selection architecture
+
+Extend racerModel() cleanly so both transformed vehicles remain authoritative.
+
+Conceptually:
+
+* Neela alternate form while neelaFormActive()
+* Saffron dragon while Saffron’s dragon-form state is active
+* otherwise base CARS[o.car]
+
+Do not spread direct checks for o.car === "saffron" throughout rendering, collision, exhaust, and size calculations.
+
+Car-specific lifecycle predicates belong in mechanics.
+
+The renderer and carHit() should get the correct answer from the common model abstraction.
+
+The model being rendered and the model whose geometry is being measured must always be the same model on the same frame.
+
+⸻
+
+28. Update initialization/reset/finish/wreck paths
+
+Every per-racer Saffron state field must exist for:
+
+* player one
+* bots
+* local human rivals
+
+Initialize it in both the global state and rival creation.
+
+Add a clearSaffronState(who) or equivalent single cleanup path.
+
+Use it during:
+
+* new race initialization
+* wreck cleanup where applicable
+* finish cleanup
+* race teardown/reset
+* any forced state reset
+
+Do not leave a dragon sprite, altitude value, drop timer, or landing flag alive after a racer has finished or a new race starts.
+
+Pausing the race must pause Saffron’s rise/drop clocks along with everything else.
+
+⸻
+
+29. AI behavior
+
+Do not give bots a separate version of Saffron’s ultimate.
+
+Bot Saffron uses the exact same:
+
+* transform
+* flight
+* altitude
+* collision isolation
+* meteor interception
+* Mind Control vulnerability
+* drop
+* landing kill
 * exhaust
-* seat marker
-* attached Conditions
-* notes/effects that would reveal its shared-road location
 
-During entry and exit, verify the white-car transition is visible at the intended stage.
+as player Saffron.
 
-Split-screen tests
+Existing bot ultimate decision logic may decide when to activate it.
 
-Set one local human to Rhosyn and another to another car.
+Only add Saffron-specific AI valuation if necessary to prevent obviously invalid behavior; do not create a second gameplay implementation.
 
-Activate Rhosyn’s ultimate.
+AI drivers must understand that an airborne Saffron is not physically occupying a road collision slot even though it still has a canonical lane for steering/race simulation.
 
-Verify:
+Do not make bots try to block, ram, or avoid its airborne body as though it were road-level.
 
-* only Rhosyn’s view gets the full-screen white transition
-* only Rhosyn’s view switches to Aero-Glow
-* the other player’s view remains the ordinary race
-* the other view cannot see Rhosyn once departure is complete
-* normal world simulation continues
-* exit switches only Rhosyn’s column back
-* both columns remain aligned with the same canonical race state
-
-Post-return immunity
-
-At the actual re-entry frame:
-
-* invuln becomes at least INVULNERABLE_TIME
-* INVULNERABLE_TIME remains 2 seconds
-* immediate contact/hazard/attack is rejected
-* after two simulated seconds, normal contact resumes
-* existing Invulnerable condition reporting/badge works
-* no separate Rhosyn shield timer exists
-
-Finish test
-
-Allow canonical Rhosyn distance to reach the finish while Aero-Glow is active.
-
-Verify:
-
-* finish is registered correctly
-* race result is correct
-* Aero-Glow state is cleaned up
-* renderer does not remain trapped in Aero-Glow
+Mind Control targeting remains allowed.
 
 ⸻
 
-22. Documentation
+30. Documentation and translations
 
-Update the relevant docs to describe the actual behavior.
+Update the game documentation to describe the actual new behavior.
 
-At minimum audit:
+At minimum inspect/update:
 
 * README.md
 * docs/ARCHITECTURE.md
-* docs/TUNING.md
 * docs/ULTIMATE-QA.md
-* other QA docs whose expected car roster contains Rose
+* docs/FLANN-QA.md
+* docs/RHOSYN-QA.md
+* docs/TUNING.md where relevant
 
-Document Aero-Glow’s core invariant clearly:
+Add a dedicated docs/SAFFRON-QA.md if that fits the existing documentation pattern.
 
-Rhosyn never has a second race position. Aero-Glow is a view/isolation state over the same canonical racer simulation.
+Update English and French i18n.
 
-Also document why it must not be implemented by changing G.biome or teleporting/restoring the racer.
+Saffron’s ultimate description should accurately describe:
 
-Document the measured Rhosyn sprite bounds, exhaust anchor source pixels, normalized exhaust coordinates, race scale if any, and hitbox methodology in the same style as the existing Flann/Neela/Lolanthe/Verdant notes.
+* 15 seconds at double pace
+* transformation into the metal dragon
+* flight over road-level racers/hazards
+* inability of ordinary things to reach it
+* Mind Control still working
+* falling meteor interception
+* transformation back and drop
+* destroying a racer directly underneath at touchdown
 
-⸻
+Keep the copy readable; the UI description does not need to expose implementation details such as phase names.
 
-23. Code-quality constraints
-
-Preserve Seren’s existing patterns:
-
-* shared player/bot mechanics
-* deterministic frame-loop state
-* model data rather than car-name branches where data is sufficient
-* centralized car-specific predicates where branches really are necessary
-* renderer reads state rather than mutating gameplay state
-* no per-frame Image construction
-* no duplicated player-vs-bot ultimate implementation
-* no magic pixel offsets when sprite-space anchors exist
-* no duplicated immunity logic
-* no fake teleport to simulate Aero-Glow
-
-Keep drawing functions pure with respect to gameplay wherever possible.
-
-drawAeroGlowWorld() must render. It must not secretly mutate canonical race state.
+Update Rhosyn’s text if it currently describes Aero-Glow only as a mostly empty void and that no longer accurately represents the upgraded pink track world.
 
 ⸻
 
-24. Final acceptance behavior
+31. Tests — do not merely update implementation
 
-The finished experience should read like this:
+Extend the existing validators rather than relying on manual playtesting.
 
-Rhosyn charges its ultimate normally.
-
-The player activates it.
-
-Rhosyn’s car floods white. The driver’s screen flashes completely white. To the other racers, the glowing white Rhosyn vanishes from the road.
-
-The white clears for Rhosyn’s driver into Aero-Glow: an isolated black void streaked with luminous pink energy. There are no rivals, hazards, missiles, bubbles or ordinary scenery. Rhosyn’s correctly measured v_rhosyn.PNG sprite is the only racer there, with boost fire rooted precisely in its real tailpipe.
-
-The player continues driving.
-
-Underneath that presentation, Seren’s single canonical race continues normally. Rhosyn continues gaining distance at the same shared ultimate 2× pace, responds to steering, crosses track seams, changes biomes and changes race position exactly as it would have done without a custom rendered world. It simply cannot touch or be touched by the shared race while away.
-
-Fifteen seconds after activation, the Aero-Glow view flashes white.
-
-During the white transition the renderer switches back to the real race.
-
-Rhosyn appears through the matching white-car flash at the exact canonical position it has already reached. If the race moved into another biome during Aero-Glow, that is the biome visible immediately on return.
-
-There is no teleport correction because there is nothing to correct.
-
-At that re-entry moment, Rhosyn receives the existing Invulnerable condition for exactly 2 seconds, protecting it from racers, traps, hazards, seekers and debuffs through Seren’s normal centralized protection system.
-
-After those 2 seconds expire, Rhosyn becomes an ordinary interactable racer again.
-
-⸻
-
-25. Before declaring the task complete
-
-Perform a final repository-wide search for:
-
-* rose
-* Rose
-* carRose
-* roseUlt
-* "rose"
-
-Resolve every occurrence appropriately, except an intentionally documented legacy save migration if one is actually necessary.
-
-Then run:
+Run all existing checks:
 
 node tools/check.mjs
+
 node tools/menu-check.mjs
+
 node tools/ultimate-check.mjs
+
 node tools/sprite-check.mjs
+
 node tools/hitbox-check.mjs
 
-Do not report completion unless every check passes.
+All must pass.
 
-Finally, manually verify at minimum:
+Add regression coverage for the following.
 
-1. Rhosyn sprite in car select.
-2. Rhosyn sprite in the race.
-3. Accurate physical hitbox.
-4. Flame precisely rooted at the actual tailpipe.
-5. Aero-Glow entry flash.
-6. Observer disappearance.
-7. Completely isolated black/pink owner world.
-8. No shared racers/hazards/items rendered in Aero-Glow.
-9. Canonical distance keeps progressing.
-10. Biome can change underneath Aero-Glow.
-11. Exact, snap-free canonical re-entry.
-12. Observer reappearance flash.
-13. Two full seconds of existing Invulnerable protection.
-14. Correct single-player behavior.
-15. Correct bot behavior.
-16. Correct split-screen/per-view behavior.
-17. Neela, Lolanthe, Verdant and Flann still behave exactly as before.
+Saffron identity and sprites
+
+Verify:
+
+* CAR_IDS contains saffron
+* no siren
+* base model uses v_saffron.PNG
+* dragon uses vtm_saffron.PNG
+* menu/garage previews show base Saffron only
+* normal race shows base sprite
+* ultimate switches to dragon
+* end of ultimate switches back
+* base has exactly 2 exhaust anchors
+* dragon has exactly 6 exhaust anchors
+* no fallback procedural cruiser rendering is used
+
+Saffron geometry
+
+Verify:
+
+* base hitbox is measured and not generic CAR_HIT_RECT
+* dragon hitbox is distinct and measured
+* rotated hitboxes rotate correctly
+* geometry exists before image loading
+* base rendering size and hitbox size stay locked together
+* dragon visual width is approximately two lanes at neutral scale
+* scaling remains proportional
+
+Saffron transformation
+
+Verify:
+
+* owner receives the shared Neela-style whiteout
+* body receives the shared morph flash
+* other local views are not whited out
+* rise starts with transformation
+* canonical metres do not jump
+* canonical lane does not get replaced by a second flight lane
+
+Saffron airborne isolation
+
+Verify an airborne Saffron:
+
+* does not rear-end racers
+* cannot be rear-ended
+* cannot lane-barge racers
+* cannot be lane-barged
+* does not hit tumbleweeds
+* does not smash tumbleweeds
+* does not hit puddles
+* does not collect road bubbles
+* does not hit oil
+* is not killed by a ground meteor blast
+* remains in the shared race ordering/progress simulation
+
+Saffron Mind Control
+
+Verify:
+
+* Lolanthe can Mind Control airborne Saffron
+* mindT is applied
+* controls lock
+* active ultimate keeps ticking
+* Mind Control can force the canonical lane change where the aura normally would
+* Verdant’s separate immunity is unchanged
+* Rhosyn in Aero-Glow remains unreachable
+
+Saffron meteor interception
+
+For player, bot, and local-human Saffron:
+
+* place a falling meteor directly onto the dragon
+* verify meteor is removed
+* verify it does not detonate on the ground
+* verify Saffron remains alive
+* verify destruction FX occur
+* verify Saffron has not gained ordinary clearsSolidHazards() behavior
+
+Saffron drop
+
+Verify:
+
+* ultimate expiration begins return morph
+* model switches back to normal car
+* canonical race distance does not teleport
+* car drops from full visual altitude to road
+* directly overlapping racer is wrecked at touchdown
+* non-overlapping racer survives
+* invulnerable/finished/absent racers are not illegally wrecked
+* no duplicate collision occurs on the same frame
+* subsequent frames use ordinary road collision rules again
+
+Saffron exhaust
+
+At multiple scales and tilts:
+
+* base renders exactly two boost plumes
+* all roots coincide with measured base tailpipes
+* dragon renders exactly six
+* all six roots remain on measured dragon tailpipes
+* no extra fallback plume appears
+
+Flann directional ram
+
+Replace the old assertions that explicitly expected “wrecks whatever it rear-ends, and whatever rear-ends it.”
+
+Test:
+
+* Flann → racer rear-end = racer wrecked
+* racer → Flann rear-end = ordinary rear-end, racer not automatically wrecked
+* Flann → racer barge = racer wrecked
+* racer → Flann barge = ordinary barge, racer not automatically wrecked
+* two ulting Flanns = no special winner
+* ulting Flann vs ulting Verdant = mutual destruction in both directions
+* player, bot, and local-human Flann all use identical rules
+
+Flann fire
+
+Verify:
+
+* body fire appears only for active Flann ultimate
+* ordinary boost does not trigger body fire
+* boost-can speed does not trigger body fire
+* other cars never get Flann fire
+* reduced motion leaves a static but visible fire
+* fire roots/interior effect are positioned on/inside Flann’s measured body rather than being an unrelated screen-space halo
+
+Rhosyn sprite regression
+
+Update the old assumptions.
+
+Verify:
+
+* current v_rhosyn.PNG measurements are used
+* updated raceScale is honored
+* updated hull matches renderer dimensions
+* exhaust anchors use the new model
+* rotated geometry remains correct
+* menu and race use the same base model
+
+Aero-Glow/Ponu visuals
+
+Add renderer-level assertions that Aero-Glow includes the adapted concepts corresponding to:
+
+* lane highlight
+* three lanes
+* rungs
+* stronger periodic rungs
+* continuous dividers
+* moving divider dashes/dots
+* pink ambient motes
+* pink speed lines
+* edge shading
+* top/horizon fade
+
+The render must still exclude:
+
+* rivals
+* hazards
+* bubbles
+* oil
+* missiles
+* normal scenery
+
+Aero-Glow HUD
+
+Single-player:
+
+* track label becomes Aero-Glow
+* normal distance/place readout is hidden
+* right-side ladder/tracker is hidden
+* ultimate meter remains available
+* on return, actual current track label and HUD return
+
+Local multiplayer:
+
+* only Aero-Glow owner loses distance/place/tracker
+* other columns retain theirs
+* only owner’s view becomes Aero-Glow
+
+⸻
+
+32. Do not regress these existing mechanics
+
+Preserve:
+
+* Neela’s transformation, swap, trail, and hazard rules
+* Lolanthe’s aura and Mind Control duration
+* Verdant invisibility and directional defensive collision
+* Rhosyn’s exact canonical re-entry behavior
+* Rhosyn’s post-return Invulnerable behavior unless another current requirement has intentionally changed it
+* finish handling
+* local split-screen ownership
+* reduced-motion support
+* current pause semantics
+* shared ultimate meter behavior
+* current collision geometry infrastructure
+* existing sprite anchoring
+* ordinary boost behavior
+* all existing Conditions
+
+Do not “simplify” these systems while working on Saffron.
+
+⸻
+
+33. Implementation-quality requirements
+
+Do not solve this with scattered checks like:
+
+if (car === "saffron") ...
+
+in ten unrelated render/collision paths.
+
+Add clear predicates and shared state helpers.
+
+Examples of useful conceptual responsibilities include:
+
+* saffronCar(who)
+* saffronUltActive(who)
+* saffronDragonActive(who)
+* saffronAirborne(who)
+* beginSaffronFlight(who)
+* beginSaffronDrop(who)
+* tickSaffron(who, dt)
+* saffronTouchdown(who)
+* clearSaffronState(who)
+
+Exact names are flexible.
+
+Keep authoritative questions centralized.
+
+Likewise, physical unreachability and debuff immunity must not be treated as synonymous, because airborne Saffron is the explicit counterexample.
+
+⸻
+
+34. Final verification
+
+Before considering the work finished:
+
+1. Search the repository case-insensitively for siren. Remove all stale references.
+2. Confirm both Saffron assets are used by the correct models.
+3. Confirm dragon has six measured exhaust emitters.
+4. Confirm base Saffron has two.
+5. Confirm Rhosyn has been re-measured from the current PNG, rather than retaining stale coordinates.
+6. Confirm Rhosyn’s Ponu-inspired Aero-Glow visuals are driven from canonical race travel.
+7. Confirm Aero-Glow shows no race-position information to its owner.
+8. Confirm Flann only kills through offensive Flann-initiated collision, except the preserved mutual Verdant interaction.
+9. Confirm Saffron remains Mind Controllable in the air.
+10. Confirm ordinary road hazards cannot interact with flying Saffron.
+11. Confirm a falling meteor striking the dragon is destroyed.
+12. Confirm touchdown can destroy a racer directly underneath.
+13. Run every validator listed above and fix all regressions rather than weakening tests.
+
+The finished result should feel like these mechanics were designed as part of Seren’s existing architecture from the beginning, not patched onto it afterward.
