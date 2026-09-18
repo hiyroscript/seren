@@ -86,9 +86,11 @@ function conditionOn(who, id){
      both timers rather than from a flag somebody has to remember to set. */
   if(id === "obscured") return (o.blind || 0) > 0 || (o.whiteT || 0) > 0;
   if(id === "skidded") return (me ? G.slipT : o.slip || 0) > 0;
-  /* Derived from the timer itself and from nothing else, so the badge cannot
-     outlive the lock or the lock the badge. */
-  if(id === "mindControlled") return (o.mindT || 0) > 0;
+  /* The badge and the lock are the same question asked twice, so they are
+     answered in one place: a Condition that has lapsed cannot leave a driver
+     without controls, and a driver without controls cannot be missing a
+     badge. */
+  if(id === "mindControlled") return controlsLocked(who);
   return false;
 }
 function activeConditions(who){
@@ -519,7 +521,6 @@ function controlsLocked(who){
   const o = who === "me" ? G : who;
   return !!o && (o.mindT || 0) > 0;
 }
-function mindControlled(who){ return controlsLocked(who); }
 
 /* How far Lolanthe reaches, in road pixels. Measured in car lengths off the
    shared car box, so it is the same stretch of road on a phone, on a desktop
@@ -612,7 +613,7 @@ function mindShove(victim){
    racer is measured against it in the master frame, so the answer is the same
    whichever column is being drawn and whoever is driving. Lane decides only
    whether the push happens; the aura itself reaches all three. */
-function lolantheAura(who, dt){
+function lolantheAura(who){
   if(!lolantheUltActive(who)) return;
   const reach = mindRange(), y = racerY(who), lane = racerLane(who);
   const all = racers();
@@ -625,10 +626,13 @@ function lolantheAura(who, dt){
     if(a.lane === lane) mindShove(t);
   }
 }
-/* Every Lolanthe on the road, once a frame, from update code. */
-function lolantheAuras(dt){
-  lolantheAura("me", dt);
-  for(let i=0;i<G.rivals.length;i++) lolantheAura(G.rivals[i], dt);
+/* Every Lolanthe on the road, once a frame, from update code. The aura is a
+   question about where everybody is standing rather than about how much time
+   has passed, so it takes no dt: the three seconds it hands out are counted by
+   tickMindControl() on the racer that received them. */
+function lolantheAuras(){
+  lolantheAura("me");
+  for(let i=0;i<G.rivals.length;i++) lolantheAura(G.rivals[i]);
 }
 /* Between races, on a wreck and at the end of an ultimate: nothing of a
    Lolanthe's note may survive into the next one. */

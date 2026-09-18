@@ -643,7 +643,7 @@ function update(dt){
      the flag is tested - so it reads one settled picture of the road rather
      than a half-updated one, and the answer does not depend on where a racer
      happens to sit in the rivals list. */
-  if(st === "running") lolantheAuras(dt);
+  if(st === "running") lolantheAuras();
   checkFinish();
   updateFx(dt, d);
   if(G.seam !== null){
