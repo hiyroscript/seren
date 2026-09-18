@@ -40,11 +40,16 @@ function playerUntouchable(){ return noContact("me"); }
    by sweepDebuffs below. */
 function refusesDebuffs(who){ return noContact(who); }
 function clearDebuffs(who){
+  const o = who === "me" ? G : who;
   if(who === "me"){
     G.slowT = 0; G.blind = 0; G.slipT = 0;
   } else if(who){
     who.slow = 0; who.blind = 0; who.slip = 0;
   }
+  /* Mind Control is a debuff like the other three, so protection takes it
+     away with them - and the three notes go with it rather than being left
+     orbiting a car that is no longer controlled. */
+  if(o){ o.mindT = 0; o.mindPop = 0; o.mindOut = 0; }
 }
 function sweepDebuffs(){
   if(invulnerableMe() || finishedMe()) clearDebuffs("me");
@@ -81,6 +86,9 @@ function conditionOn(who, id){
      both timers rather than from a flag somebody has to remember to set. */
   if(id === "obscured") return (o.blind || 0) > 0 || (o.whiteT || 0) > 0;
   if(id === "skidded") return (me ? G.slipT : o.slip || 0) > 0;
+  /* Derived from the timer itself and from nothing else, so the badge cannot
+     outlive the lock or the lock the badge. */
+  if(id === "mindControlled") return (o.mindT || 0) > 0;
   return false;
 }
 function activeConditions(who){
@@ -132,11 +140,11 @@ function rearContact(who){
   return front;
 }
 
-/* ---------------- the two car-specific ultimates -----------------
+/* ---------------- the four car-specific ultimates ----------------
    Every car runs the same ultimate: seventy-five seconds to charge, fifteen
    seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
-   below is shared by all six. Two of them add something on top of it, and only
-   while that shared lifecycle is running.
+   below is shared by all six. Four of them add something on top of it, and
+   only while that shared lifecycle is running.
 
    These are the predicates that say which car is which, and they are the only
    place in the game a racer's `car` is compared to a name. Everything else -
@@ -146,8 +154,9 @@ function rearContact(who){
    None of it is the Invulnerable Condition and none of it goes through
    noContact(): an ulting Flann still has to physically meet a racer or a
    hazard in order to break it, an ulting Neela still has to physically meet a
-   racer in order to trade places with it, and the puddle must still get
-   through to both. What they are is collision priority, applied at the
+   racer in order to trade places with it, an ulting Verdant is invisible but
+   still physically there to be run into, and the puddle must still get
+   through to all of them. What they are is collision priority, applied at the
    consequence. */
 function flannCar(who){
   const o = who === "me" ? G : who;
@@ -156,6 +165,14 @@ function flannCar(who){
 function neelaCar(who){
   const o = who === "me" ? G : who;
   return !!o && o.car === "neela";
+}
+function lolantheCar(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.car === "lolanthe";
+}
+function verdantCar(who){
+  const o = who === "me" ? G : who;
+  return !!o && o.car === "verdant";
 }
 /* Flann catches fire and becomes a ram, so solid things it hits come apart
    instead of it - and so do racers. */
@@ -182,12 +199,29 @@ function neelaFormActive(who){
   const o = who === "me" ? G : who;
   return neelaUltActive(who) && !!o.neelaForm;
 }
+/* Lolanthe's. The aura, the forced lane change and the note above the car all
+   last exactly as long as the shared fifteen seconds and not a frame longer -
+   there is no second clock and no form to spend, so this is the whole of the
+   question. */
+function lolantheUltActive(who){
+  const o = who === "me" ? G : who;
+  return lolantheCar(who) && !!o.ultOn;
+}
+/* And Verdant's. Invisibility, the directional defence and the immunity to
+   Mind Control are all this one predicate, for the whole of the fifteen
+   seconds - including the split second the car is revealed by a hit, which is
+   a cosmetic timer and never this. */
+function verdantUltActive(who){
+  const o = who === "me" ? G : who;
+  return verdantCar(who) && !!o.ultOn;
+}
 /* Whether this racer's ultimate lets it clear Seren's solid road hazards - the
    tumbleweed and the meteor - rather than being stopped by them. Water is not
    solid and is deliberately not here. One question, asked by the player's
    hazards in this file and the rivals' in race.js. */
 function clearsSolidHazards(who){
-  return flannUltActive(who) || neelaUltActive(who);
+  return flannUltActive(who) || neelaUltActive(who) ||
+         lolantheUltActive(who) || verdantUltActive(who);
 }
 /* And whether this racer is a Neela that still has its one exchange to spend.
    The form has to be up, the swap has to be unspent, and the contact must not
@@ -451,6 +485,293 @@ function updateTrail(who, dt, d){
     addTrailNode(who);
   }
 }
+/* ================================================================
+   LOLANTHE'S ULTIMATE
+   ================================================================
+   The shared lifecycle starts and ends it; everything here is what Lolanthe
+   does inside those fifteen seconds. All of it is advanced from update code
+   and only read by the renderer, so drawing the same frame twice draws the
+   same frame.
+
+   Two things happen to every racer the aura reaches. It is Mind Controlled -
+   a real debuff, with a badge, that takes its driver's controls away for three
+   seconds - and, if it is standing in Lolanthe's own lane, it is pushed out of
+   it. The push is Lolanthe working the victim's steering, not the victim
+   driving, which is why it has a path of its own below and ignores both the
+   control lock and a Skidded car's reversed steering. */
+
+/* Where a racer is, in the master frame every racer is stored against. Player
+   one is held at playerY while the road runs past underneath, so this is the
+   one answer both kinds of racer can be asked for - and it does not depend on
+   which split-screen column happens to be rendering. */
+function racerY(who){ return who === "me" ? playerY : (who ? who.y : playerY); }
+function racerLane(who){ const o = who === "me" ? G : who; return o ? o.lane : 1; }
+
+/* Whether this racer's driver may issue commands at all. One question, asked
+   by the player's steering, the pad's, the local seats', the bots' think-tick
+   and every action any of them can take - so no input surface can quietly
+   bypass the lock by being the one that forgot to ask.
+
+   It is deliberately not a freeze: physics, the road, timed effects, the wreck
+   lifecycle and a running ultimate's own clock all carry on. What stops is the
+   driver, not the car. */
+function controlsLocked(who){
+  const o = who === "me" ? G : who;
+  return !!o && (o.mindT || 0) > 0;
+}
+function mindControlled(who){ return controlsLocked(who); }
+
+/* How far Lolanthe reaches, in road pixels. Measured in car lengths off the
+   shared car box, so it is the same stretch of road on a phone, on a desktop
+   and in one column of a four-way split rather than a number tuned for one
+   viewport. */
+function mindRange(){ return carH*MIND_AURA_LENGTHS; }
+
+/* Whether Lolanthe may take this racer at all. Itself, a wreck, a finisher and
+   anything refusing debuffs are all out, and so is an ulting Verdant for the
+   whole of its ultimate - Lolanthe cannot command a target it cannot see, and
+   the split second a collision reveals Verdant does not change that. */
+function mindTakes(by, target){
+  if(!target || target === by) return false;
+  if(refusesDebuffs(target)) return false;
+  if(verdantUltActive(target)) return false;
+  return true;
+}
+/* Applying it. Set to three seconds, never added to: a racer held in the aura
+   has its timer put back every frame and so stays controlled for as long as it
+   is exposed and for three seconds after the last application. The entrance
+   animation belongs to the inactive-to-active transition alone, so a timer
+   that is merely being reset does not replay it. */
+function applyMindControl(target){
+  const o = target === "me" ? G : target;
+  if(!o) return false;
+  const fresh = !((o.mindT || 0) > 0);
+  o.mindT = MIND_CONTROL_TIME;
+  if(fresh){
+    o.mindPop = MIND_POP;
+    o.mindOut = 0;
+    /* One coin toss per application, so a racer pushed out of the middle lane
+       does not flicker between the two doors from frame to frame. */
+    o.mindSide = Math.random() < 0.5 ? -1 : 1;
+    /* The controls are gone, so anything the driver was holding down goes with
+       them: a car must not keep burning boost because the button happened to
+       be held at the moment it was taken. */
+    o.boosting = false;
+    if(target === "me"){ G.keyBoost = false; G.ptrBoost = false; G.padBoost = false; }
+    else o.wantBoost = false;
+  }
+  return fresh;
+}
+/* One racer's Mind Control clock, one frame. The exit animation is started
+   where the timer runs out rather than where the badge is drawn, so it plays
+   once and from update code. */
+function tickMindControl(who, dt){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  if(o.mindPop > 0) o.mindPop = Math.max(0, o.mindPop - dt);
+  if(o.mindOut > 0) o.mindOut = Math.max(0, o.mindOut - dt);
+  if((o.mindT || 0) > 0){
+    o.mindT = Math.max(0, o.mindT - dt);
+    if(o.mindT === 0){ o.mindOut = MIND_POP; o.mindPop = 0; }
+  }
+}
+
+/* ---- the forced lane change ----
+   Not steering. This is Lolanthe working somebody else's car, so it goes
+   nowhere near move() or rivalLaneTo(): it ignores the control lock it would
+   otherwise trip over, and it ignores a Skidded car's reversed steering,
+   because neither of those is a fact about the car - they are facts about the
+   driver, and the driver is not the one doing this.
+
+   From an outer lane there is one door and the victim takes it. From the
+   middle it takes whichever the coin toss picked, and occupancy is not a
+   reason to cancel: whatever is already in that lane is met through the
+   ordinary barge, so the push can shove, wreck, ram or be swapped away with
+   exactly the consequences any other lane change would have had. The victim is
+   the one arriving, so it is the victim that bumpTarget is told did it - a
+   crash this causes belongs to the collision system and never to a Lolanthe
+   ram rule Lolanthe does not have.
+
+   The logical lane changes at once and the car's x is left to the existing
+   lateral interpolation, so the model slides across rather than teleporting. */
+function mindShove(victim){
+  const o = victim === "me" ? G : victim;
+  if(!o || noContact(victim)) return "none";
+  const lane = o.lane;
+  const dir = lane === 0 ? 1 : (lane === 2 ? -1 : (o.mindSide || 1));
+  const to = clamp(lane + dir, 0, 2);
+  if(to === lane) return "none";
+  const sitting = carAt(to, racerY(victim), victim);
+  if(sitting && laneChangeDied(bumpTarget(sitting, dir, victim))) return "stopped";
+  if(victim === "me") G.lane = to;
+  else { o.lane = to; o.changeT = 0.7; }
+  return "moved";
+}
+
+/* One frame of one ulting Lolanthe's aura over the whole field. Every other
+   racer is measured against it in the master frame, so the answer is the same
+   whichever column is being drawn and whoever is driving. Lane decides only
+   whether the push happens; the aura itself reaches all three. */
+function lolantheAura(who, dt){
+  if(!lolantheUltActive(who)) return;
+  const reach = mindRange(), y = racerY(who), lane = racerLane(who);
+  const all = racers();
+  for(let i=0;i<all.length;i++){
+    const a = all[i];
+    const t = a.me ? "me" : a.obj;
+    if(a.out || !mindTakes(who, t)) continue;
+    if(Math.abs(a.y - y) > reach) continue;
+    applyMindControl(t);
+    if(a.lane === lane) mindShove(t);
+  }
+}
+/* Every Lolanthe on the road, once a frame, from update code. */
+function lolantheAuras(dt){
+  lolantheAura("me", dt);
+  for(let i=0;i<G.rivals.length;i++) lolantheAura(G.rivals[i], dt);
+}
+/* Between races, on a wreck and at the end of an ultimate: nothing of a
+   Lolanthe's note may survive into the next one. */
+function clearLolantheState(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.queenPop = 0; o.queenOut = 0;
+}
+
+/* ================================================================
+   VERDANT'S ULTIMATE
+   ================================================================
+   Fifteen seconds in which the car is still completely there - same hitbox,
+   same contact tests, same place in the race - and simply cannot be seen.
+   Everything below is either cosmetic state or collision priority; none of it
+   touches noContact(), the hull or the race order.
+
+   `verdantHide` is how far into hiding the car is, 0 to 1. Its own driver's
+   view keeps half of it so they can still find their car; every other view
+   loses it entirely. The fade is a quarter of a second in each direction, so
+   the car dissolves rather than blinking out. */
+function verdantHideK(who){
+  const o = who === "me" ? G : who;
+  return o ? clamp(o.verdantHide || 0, 0, 1) : 0;
+}
+/* What a view should draw this racer at. The owner test is the existing
+   split-screen viewer identity, so one player's column answers for that player
+   and nobody else's - and in a single-view game the one view is player one's,
+   exactly as it always was. Visual only: it makes Verdant no easier and no
+   harder to hit, and no easier to find. */
+function racerViewAlpha(who, viewer){
+  if(!verdantCar(who)) return 1;
+  const k = verdantHideK(who);
+  if(k <= 0) return 1;
+  const own = (viewer === undefined ? VOWN : viewer) === who;
+  return 1 + ((own ? VERDANT_OWN_ALPHA : 0) - 1)*k;
+}
+/* The split second of full visibility a racer buys by running into it. It is
+   cosmetic and nothing else: the ultimate is not cut short, the meter is not
+   touched, and the immunity to Lolanthe's aura holds right through it. */
+function verdantReveal(who){
+  const o = who === "me" ? G : who;
+  if(!o || !verdantUltActive(who)) return;
+  o.verdantRevealT = VERDANT_REVEAL;
+  o.verdantHide = 0;
+}
+/* One racer's fade, one frame. Hidden while the ultimate is running and the
+   reveal is not, visible otherwise, and the ramp between them is the only
+   thing that ever writes verdantHide. */
+function tickVerdant(who, dt){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  if(o.verdantRevealT > 0) o.verdantRevealT = Math.max(0, o.verdantRevealT - dt);
+  const want = (verdantUltActive(who) && !(o.verdantRevealT > 0)) ? 1 : 0;
+  const step = VERDANT_FADE > 0 ? dt/VERDANT_FADE : 1;
+  const k = o.verdantHide || 0;
+  o.verdantHide = want > k ? Math.min(want, k + step) : Math.max(want, k - step);
+}
+/* A wreck takes the ultimate with it, so it takes the hiding too - there is no
+   ghost of a car left dissolving through somebody else's wreck animation. */
+function clearVerdantState(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  o.verdantHide = 0; o.verdantRevealT = 0;
+}
+
+/* ---- what a driver can actually see ----
+   Physically touchable and visually detectable are two different questions,
+   and an invisible Verdant is the one racer they disagree about. Contact,
+   hazards and the hull go on asking noContact(); anything that is a driver
+   reading the road - a bot picking a target, covering a lane or judging what
+   is in the one beside it - asks this instead. A bot may still run into what
+   it cannot see, exactly as a person would. */
+function racerDetectable(who){
+  return !verdantUltActive(who);
+}
+/* carAt(), but only for cars a driver could actually see. */
+function carSeenAt(lane, y, skip){
+  const a = carAt(lane, y, skip);
+  if(!a) return null;
+  return racerDetectable(a.me ? "me" : a.obj) ? a : null;
+}
+
+/* ---- the contact priority ----
+   Every physical racer contact with an ulting Verdant on one side of it is
+   settled here, and both of the places contact is detected - the rear-end and
+   the lane barge - ask this first, so the two can never disagree about what a
+   Verdant collision means.
+
+   In order:
+
+     1. an ulting Verdant and an ulting Flann destroy each other, whichever of
+        them arrived, and both meters end at exactly nothing
+     2. an alternate-form Neela meeting an ulting Verdant is destroyed, its
+        meter emptied, with no exchange and no teleport, and Verdant reveals
+     3. anything else that runs into an ulting Verdant is destroyed and
+        Verdant reveals
+
+   And nothing else. A Verdant that does the running into gets the ordinary
+   rules, because its power is a defence and not a ram: it returns null and the
+   shunt, the barge and the rest carry on underneath.
+
+   Two ulting Verdants cancel, exactly as two ramming Flanns do.
+
+   The answer names who was destroyed, because the lane barge has to know
+   whether the car that asked for the lane is still there to take it. */
+function specialContact(by, victim){
+  const byV = verdantUltActive(by), vicV = verdantUltActive(victim);
+  if(byV === vicV) return null;
+  const vd = byV ? by : victim;                  /* the ulting Verdant */
+  const other = byV ? victim : by;
+  if(flannUltActive(other)){ mutualWreck(vd, other); return "both"; }
+  if(neelaFormActive(other)){
+    wreckRacer(other, vd);
+    emptyUlt(other);                             /* exactly nothing, whatever the wreck left */
+    verdantReveal(vd);
+    return other === by ? "by" : "victim";
+  }
+  if(other !== by) return null;                  /* Verdant arrived: no offensive kill */
+  wreckRacer(other, vd);                         /* ordinary wreck terms for the meter */
+  verdantReveal(vd);
+  return "by";
+}
+/* Both racers destroyed by one contact, and neither credited with the other.
+   The wrecks run through the existing lifecycle - blame, particles, shake,
+   audio - and the meters are emptied afterwards, so no reward or penalty
+   sequencing can leave either above nothing. The first wreck cannot make the
+   second racer unreachable, because being wrecked is a fact about the racer
+   that was wrecked and not about the one still standing. */
+function mutualWreck(a, b){
+  wreckRacer(a);
+  wreckRacer(b);
+  emptyUlt(a);
+  emptyUlt(b);
+}
+/* A meter taken to exactly nothing, whether or not an ultimate was running. */
+function emptyUlt(who){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  if(o.ultOn) endUlt(who);
+  o.ult = 0;
+}
+
 /* Which of two racers in contact wins it outright, or null for the ordinary
    rules. Two ulting Flanns cancel: neither can smash the other, so the contact
    falls back to the shunt and the barge like any other pair. */
@@ -477,6 +798,12 @@ function rearEnd(who, victim){
   /* A contact already dealt with this step - the two bodies a swap has just
      put down - is not a second contact. One step's worth, and no more. */
   if(swapGuarded(who) || swapGuarded(vWho)) return;
+
+  /* An ulting Verdant settles the contact before anything else does, and it
+     overrides both the exchange and the ram - see specialContact(). `who` is
+     the racer that ran into the back of `victim`, which is the direction the
+     asymmetric defence turns on. */
+  if(specialContact(who, vWho)) return;
 
   /* Neela in its alternate form trades places with the first racer it meets,
      and that is the whole of the consequence: nobody is wrecked, nobody is
@@ -533,6 +860,15 @@ function bumpTarget(victim, dir, by){
   if(noContact(by) || noContact(vWho)) return "none";
   if(swapGuarded(by) || swapGuarded(vWho)) return "none";
 
+  /* Same priority as the rear-end, out of the same function, so the two ways
+     a contact is detected cannot disagree about Verdant. `by` is the racer
+     that asked for the lane, which is the one that arrived. A barger that
+     destroyed itself has no lane change left to finish; a barger that survived
+     and emptied the lane takes it. */
+  const vsp = specialContact(by, vWho);
+  if(vsp === "both" || vsp === "by") return "stopped";
+  if(vsp === "victim") return "rammed";
+
   /* An alternate-form Neela on either side of the barge trades places instead
      of taking or losing the lane, and both cars are somewhere else by the time
      this returns - so the lane change the caller was in the middle of has
@@ -569,6 +905,7 @@ function bumpTarget(victim, dir, by){
 
 function move(dir){
   if(G.state !== "running" || G.dead > 0 || G.finished !== null) return;
+  if(controlsLocked("me")) return;               /* somebody else has the wheel */
   if(G.slipT > 0) dir = -dir;                    /* no grip: the steering is reversed */
   const n = clamp(G.lane + dir, 0, 2);
   if(n === G.lane) return;
@@ -631,9 +968,12 @@ function startUlt(who){
   o.ult = 1;
   const at = ultPos(who);
   ultBurst(ultOwnerCar(who), at.x, at.y);
-  /* The shared lifecycle is running by here; this is only what Neela adds on
-     top of it, and the pose it takes is the car's from a moment ago. */
+  /* The shared lifecycle is running by here; this is only what each of the
+     cars adds on top of it. Neela's pose is the car's from a moment ago;
+     Lolanthe's note is a pop-in and nothing else. Verdant needs nothing: its
+     fade is derived from the ultimate every frame rather than started here. */
   if(neelaCar(who)) beginNeelaForm(who);
+  if(lolantheCar(who)){ o.queenPop = QUEEN_POP; o.queenOut = 0; }
 }
 function endUlt(who){
   const o = who === "me" ? G : who;
@@ -643,6 +983,11 @@ function endUlt(who){
      form before getting here, so there is nothing left for this to flash. */
   if(o.neelaForm) leaveNeelaForm(who);
   o.neelaOrigin = null; o.neelaSwapped = false; o.swapGuard = 0;
+  /* Lolanthe's note leaves the way it arrived. A wreck has already cleared the
+     pop state before getting here, so there is nothing left for this to play
+     in that case - exactly as with Neela's flash. */
+  if(o.queenPop > 0 || lolantheCar(who)) o.queenOut = QUEEN_POP;
+  o.queenPop = 0;
   o.ultOn = false; o.ultT = 0; o.ultMax = ULT_TIME;
   o.ult = 0;
 }
@@ -670,7 +1015,7 @@ function ultBurst(carId, x, y){
 
 /* Anything that has taken the controls away has taken the ultimate with it. */
 function canFireUlt(){
-  return ruleOn("ults") &&
+  return ruleOn("ults") && !controlsLocked("me") &&
          G.state === "running" && G.dead <= 0 && G.finished === null;
 }
 function fireUlt(){
@@ -682,14 +1027,14 @@ function fireUlt(){
 
 /* The rival side of fireUlt, gate for gate. */
 function fireUltRival(R){
-  if(!ruleOn("ults")) return;
+  if(!ruleOn("ults") || controlsLocked(R)) return;
   if(G.state !== "running" || R.dead > 0 || R.finished !== null) return;
   if(R.ultOn || R.ult < 1) return;
   startUlt(R);
 }
 
 function setBoost(){
-  G.boosting = ruleOn("boost")
+  G.boosting = ruleOn("boost") && !controlsLocked("me")
                && (G.keyBoost || G.ptrBoost || G.padBoost) && !G.boostLock && G.charge > 0
                && G.state === "running" && G.dead <= 0 && G.finished === null;
 }
@@ -709,6 +1054,8 @@ function wreckRival(R, by, force){
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
   R.dead = DEAD_TIME;
   clearNeelaState(R);                          /* no alternate form on a wreck */
+  clearLolantheState(R);                       /* and no note left floating over it */
+  clearVerdantState(R);                        /* nor a ghost dissolving through the wreck */
   if(R.ultOn) endUlt(R);                       /* a running ultimate is lost outright */
   /* The meter itself survives, exactly as the player's does: destroyCar takes
      ULT_ON_WRECK off the top and no more. Wiping it here contradicted the
@@ -923,6 +1270,11 @@ function useItem(who){
   const holder = me ? G : who;
   const id = holder.item;
   if(!id) return false;
+  /* Using what is in the box is a driver's command like any other, so a
+     controlled driver cannot give it - and because this is ahead of every
+     branch below, the command is refused rather than the item being quietly
+     spent or dropped on the way. */
+  if(controlsLocked(who)) return false;
   /* Defence in depth for the reward gate above: with Mystery rewards off, a
      Can, an Oil or a Seeker must not fire even if one somehow reached a holder
      - a saved race, a console poke, a future code path. It is dropped rather
@@ -1477,6 +1829,8 @@ function clearMyUlt(){
 }
 function destroyCar(by){
   clearNeelaState("me");                       /* no alternate form on a wreck */
+  clearLolantheState("me");                    /* and no note left floating over it */
+  clearVerdantState("me");                     /* nor a ghost dissolving through the wreck */
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
   clearDebuffs("me");
   ultDelta("me", ULT_ON_WRECK);

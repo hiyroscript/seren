@@ -43,6 +43,27 @@ const CAR_SPRITES = {};
   });
 })();
 
+/* ---- the two note images ----------------------------------------
+   World artwork rather than car artwork: one floats above an ulting Lolanthe
+   and three orbit every racer it has taken. Fetched, decoded and cached here
+   exactly once, alongside the car sheets and by the same rule - a renderer
+   never builds an Image, it asks for one that already exists. A frame drawn
+   before the image arrives simply draws no note; nothing waits on it and
+   nothing is created per frame. */
+const FX_SPRITES = {};
+(function(){
+  [QUEEN_NOTE_IMG, MIND_NOTE_IMG].forEach(function(src){
+    if(!src || FX_SPRITES[src]) return;
+    const img = new Image();
+    FX_SPRITES[src] = img;
+    img.src = src;
+  });
+})();
+function fxImage(src){
+  const img = FX_SPRITES[src];
+  return img && img.complete && img.naturalWidth && img.naturalHeight ? img : null;
+}
+
 /* ---- where the artwork sits inside a car box --------------------
    The full PNG is drawn, padding and all, scaled and centred so its measured
    visible bounds fill the w x h box. This is that placement, worked out once
@@ -86,6 +107,21 @@ function racerTailPoint(who){
   const t = o.tilt || 0, ca = Math.cos(t), sa = Math.sin(t);
   return { x:cx + a.x*ca - a.y*sa, y:cy + a.x*sa + a.y*ca };
 }
+
+/* ---- one view's opacity on one car ------------------------------
+   An ulting Verdant is drawn at half in its own driver's column and at nothing
+   in everybody else's, and everything that hangs off the car - the shadow, the
+   plume out of its pipe, the flash on its body - has to go with it, or the
+   invisible car is outlined by its own exhaust.
+
+   So the car's opacity is a scale rather than a value: CAR_A is what drawCar
+   was handed, and the handful of places inside it that set an absolute alpha
+   ask carAlpha() instead of writing ctx.globalAlpha themselves. Every one of
+   them is inside drawCar's own save/restore, so nothing leaks past the car
+   being drawn and the next car starts from a clean canvas whatever this one
+   was. */
+let CAR_A = 1;
+function carAlpha(v){ ctx.globalAlpha = clamp(v, 0, 1)*CAR_A; }
 
 function drawSpriteCar(w, h, p, boosting, ulting){
   const fr = spriteFrame(p, w, h);
@@ -295,16 +331,16 @@ function drawMorphFlash(w, h, p, k){
      the canvas for, and this is neither of those things. */
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = 0.16*k;
+  carAlpha(0.16*k);
   ctx.fillStyle = "#BFE6FF";
   ctx.fillRect(-w*0.72, -h*0.62, w*1.44, h*1.24);
-  ctx.globalAlpha = 0.20*k;
+  carAlpha(0.20*k);
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(-w*0.46, -h*0.54, w*0.92, h*1.08);
   ctx.restore();
 
   ctx.save();
-  ctx.globalAlpha = clamp(k, 0, 1);
+  carAlpha(k);
   ctx.beginPath();
   for(let i=0;i<shape.length;i++){
     const px = shape[i][0]*w, py = shape[i][1]*h;
@@ -328,165 +364,33 @@ function drawMorphFlash(w, h, p, k){
 
    Menus pass none of the three, so a preview is never on fire, never white,
    and always wearing its own car model. */
-function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white){
+function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white, alpha){
+  const a = alpha === undefined ? 1 : clamp(alpha, 0, 1);
+  if(a <= 0) return;
+  const was = CAR_A;
   ctx.save();
+  CAR_A = a;
+  ctx.globalAlpha = a;
   ctx.translate(x, y);
   if(tilt) ctx.rotate(tilt);
-  /* One car has a fire of its own; the other five have the shared models. */
+  /* One car has a fire of its own; the other three sprites and the two shared
+     models have the ordinary pipes. */
   if(p.style === "sprite") drawSpriteCar(w, h, p, boosting, !!ulting && p.key === "flann");
-  else if(p.style === "buggy") drawBuggy(w, h, p, isPlayer, boosting);
-  else if(p.style === "wedge") drawWedge(w, h, p, isPlayer, boosting);
   else if(p.style === "coupe") drawCoupe(w, h, p, isPlayer, boosting);
   else if(p.style === "cruiser") drawCruiser(w, h, p, isPlayer, boosting);
   if(white) drawMorphFlash(w, h, p, white);
   ctx.restore();
+  CAR_A = was;
 }
 
 function flames(w, h, hot, cool){
-  ctx.globalAlpha = 0.75;
+  carAlpha(0.75);
   fillRR(-w*0.30, h*0.50, w*0.18, h*0.30, w*0.09, hot);
   fillRR( w*0.12, h*0.50, w*0.18, h*0.30, w*0.09, hot);
-  ctx.globalAlpha = 0.5;
+  carAlpha(0.5);
   fillRR(-w*0.26, h*0.50, w*0.10, h*0.46, w*0.05, cool);
   fillRR( w*0.16, h*0.50, w*0.10, h*0.46, w*0.05, cool);
-  ctx.globalAlpha = 1;
-}
-
-/* Bolt: a short, wide, high-clearance buggy with an exposed roll cage */
-function drawBuggy(w, h, p, isPlayer, boosting){
-  fillRR(-w/2+3, -h/2+7, w*1.02, h*0.94, w*0.2, "rgba(0,0,0,0.42)");
-
-  const ww = w*0.21, wh = h*0.19;                 /* fat knobbly tyres, well proud */
-  fillRR(-w/2-ww*0.55, -h*0.33, ww, wh, ww*0.32, "#0C0D10");
-  fillRR( w/2-ww*0.45, -h*0.33, ww, wh, ww*0.32, "#0C0D10");
-  fillRR(-w/2-ww*0.55,  h*0.14, ww, wh, ww*0.32, "#0C0D10");
-  fillRR( w/2-ww*0.45,  h*0.14, ww, wh, ww*0.32, "#0C0D10");
-  ctx.fillStyle = "#3A3A3A";
-  ctx.fillRect(-w/2-ww*0.5, -h*0.27, ww*0.9, wh*0.16);
-  ctx.fillRect( w/2-ww*0.4, -h*0.27, ww*0.9, wh*0.16);
-  ctx.fillRect(-w/2-ww*0.5,  h*0.20, ww*0.9, wh*0.16);
-  ctx.fillRect( w/2-ww*0.4,  h*0.20, ww*0.9, wh*0.16);
-
-  fillRR(-w*0.52, -h*0.40, w*1.04, h*0.80, w*0.10, p.body);   /* short wide tub */
-  rr(-w*0.52, -h*0.40, w*1.04, h*0.80, w*0.10);
-  ctx.strokeStyle = "rgba(0,0,0,0.4)"; ctx.lineWidth = Math.max(1, w*0.035); ctx.stroke();
-
-  ctx.fillStyle = p.dark;                                      /* hazard chevrons */
-  for(let i=0;i<3;i++){
-    ctx.save();
-    ctx.beginPath();
-    rr(-w*0.52, -h*0.40, w*1.04, h*0.80, w*0.10); ctx.clip();
-    ctx.beginPath();
-    const yy = -h*0.38 + i*h*0.27;
-    ctx.moveTo(-w*0.52, yy + h*0.09); ctx.lineTo(0, yy);
-    ctx.lineTo(w*0.52, yy + h*0.09);  ctx.lineTo(w*0.52, yy + h*0.15);
-    ctx.lineTo(0, yy + h*0.06);       ctx.lineTo(-w*0.52, yy + h*0.15);
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
-
-  fillRR(-w*0.48, -h*0.50, w*0.96, h*0.075, w*0.04, p.dark);   /* bull bar */
-  fillRR(-w*0.36, -h*0.485, w*0.16, h*0.042, w*0.02, "#FFF3B0");
-  fillRR( w*0.20, -h*0.485, w*0.16, h*0.042, w*0.02, "#FFF3B0");
-
-  fillRR(-w*0.30, -h*0.20, w*0.60, h*0.40, w*0.09, p.dark);    /* open cockpit */
-  fillRR(-w*0.25, -h*0.16, w*0.50, h*0.30, w*0.07, p.glass);
-  ctx.strokeStyle = "#DADADA"; ctx.lineWidth = Math.max(1.4, w*0.045);
-  ctx.beginPath();                                             /* roll cage */
-  ctx.moveTo(-w*0.28, -h*0.18); ctx.lineTo(w*0.28, h*0.18); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(w*0.28, -h*0.18); ctx.lineTo(-w*0.28, h*0.18); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(-w*0.30, h*0.02); ctx.lineTo(w*0.30, h*0.02); ctx.stroke();
-
-  fillRR(-w*0.50, h*0.30, w*1.00, h*0.085, w*0.045, p.dark);   /* high rear wing */
-  ctx.fillStyle = p.body;
-  ctx.fillRect(-w*0.10, h*0.24, w*0.06, h*0.10);
-  ctx.fillRect( w*0.04, h*0.24, w*0.06, h*0.10);
-  fillRR(-w*0.40, h*0.42, w*0.18, h*0.038, w*0.02, "#FF6A3A");
-  fillRR( w*0.22, h*0.42, w*0.18, h*0.038, w*0.02, "#FF6A3A");
-
-  if(boosting) flames(w, h, p.flame[0], p.flame[1]);
-}
-
-/* Timestamp: a hard-edged wedge, all straight lines and sharp corners */
-function wedgePath(w, h){
-  ctx.beginPath();
-  ctx.moveTo(0, -h*0.52);
-  ctx.lineTo(w*0.38, -h*0.10);
-  ctx.lineTo(w*0.46,  h*0.30);
-  ctx.lineTo(w*0.40,  h*0.50);
-  ctx.lineTo(-w*0.40, h*0.50);
-  ctx.lineTo(-w*0.46, h*0.30);
-  ctx.lineTo(-w*0.38, -h*0.10);
-  ctx.closePath();
-}
-function drawWedge(w, h, p, isPlayer, boosting){
-  ctx.save(); ctx.translate(3, 7);
-  wedgeShell(w, h); ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fill();
-  ctx.restore();
-
-  const ww = w*0.155, wh = h*0.15;
-  fillRR(-w*0.44-ww*0.5, -h*0.31, ww, wh, ww*0.4, "#0C0D10");
-  fillRR( w*0.44-ww*0.5, -h*0.31, ww, wh, ww*0.4, "#0C0D10");
-  fillRR(-w*0.46-ww*0.5,  h*0.14, ww, wh, ww*0.4, "#0C0D10");
-  fillRR( w*0.46-ww*0.5,  h*0.14, ww, wh, ww*0.4, "#0C0D10");
-
-  wedgeShell(w, h);
-  ctx.fillStyle = p.body; ctx.fill();
-  ctx.strokeStyle = "rgba(4,20,12,0.45)"; ctx.lineWidth = Math.max(1, w*0.03); ctx.stroke();
-
-  ctx.save(); wedgeShell(w, h); ctx.clip();
-  ctx.fillStyle = p.dark;                                /* black bonnet and roof band */
-  ctx.beginPath();
-  ctx.moveTo(-w*0.30, -h*0.52); ctx.lineTo(w*0.30, -h*0.52);
-  ctx.lineTo(w*0.24, -h*0.28);  ctx.lineTo(-w*0.24, -h*0.28);
-  ctx.closePath(); ctx.fill();
-  ctx.fillRect(-w*0.48, h*0.24, w*0.96, h*0.10);
-  if(isPlayer){ ctx.fillStyle = p.trim; ctx.fillRect(-w*0.045, -h*0.52, w*0.09, h*1.04); }
-  ctx.restore();
-
-  fillRR(-w*0.34, -h*0.52, w*0.68, h*0.05, w*0.025, p.dark);       /* front splitter */
-  fillRR(-w*0.30, -h*0.508, w*0.16, h*0.030, w*0.015, "#D6FFE9");  /* slim headlights */
-  fillRR( w*0.14, -h*0.508, w*0.16, h*0.030, w*0.015, "#D6FFE9");
-
-  fillRR(-w*0.32, -h*0.24, w*0.64, h*0.44, w*0.12, p.dark);        /* cabin */
-  ctx.beginPath();                                                  /* raked windscreen */
-  ctx.moveTo(-w*0.26, -h*0.11); ctx.lineTo(w*0.26, -h*0.11);
-  ctx.lineTo(w*0.19, -h*0.21);  ctx.lineTo(-w*0.19, -h*0.21);
-  ctx.closePath(); ctx.fillStyle = p.glass; ctx.fill();
-  ctx.beginPath();                                                  /* fastback glass */
-  ctx.moveTo(-w*0.25, h*0.05); ctx.lineTo(w*0.25, h*0.05);
-  ctx.lineTo(w*0.20, h*0.16);  ctx.lineTo(-w*0.20, h*0.16);
-  ctx.closePath(); ctx.fill();
-
-  ctx.beginPath();                                                  /* clock badge */
-  ctx.arc(0, -h*0.37, w*0.085, 0, 6.2832);
-  ctx.fillStyle = p.dark; ctx.fill();
-  ctx.strokeStyle = p.trim; ctx.lineWidth = Math.max(1.4, w*0.028);
-  ctx.beginPath(); ctx.arc(0, -h*0.37, w*0.085, 0, 6.2832); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(0, -h*0.405); ctx.lineTo(0, -h*0.37); ctx.lineTo(w*0.05, -h*0.352);
-  ctx.stroke();
-
-  fillRR(-w*0.44, h*0.40, w*0.88, h*0.06, w*0.028, p.dark);         /* ducktail */
-  fillRR(-w*0.36, h*0.415, w*0.72, h*0.028, w*0.014, "#3FD98A");    /* full-width bar */
-
-  if(boosting) flames(w, h, p.flame[0], p.flame[1]);
-}
-function wedgeShell(w, h){
-  /* long, low and straight-sided, tapering to a narrow fastback tail */
-  ctx.beginPath();
-  ctx.moveTo(-w*0.30, -h*0.54);
-  ctx.lineTo( w*0.30, -h*0.54);
-  ctx.quadraticCurveTo( w*0.46, -h*0.50,  w*0.47, -h*0.26);
-  ctx.lineTo( w*0.48, h*0.16);
-  ctx.quadraticCurveTo( w*0.47, h*0.46,  w*0.34, h*0.54);
-  ctx.lineTo(-w*0.34, h*0.54);
-  ctx.quadraticCurveTo(-w*0.47, h*0.46, -w*0.48, h*0.16);
-  ctx.lineTo(-w*0.47, -h*0.26);
-  ctx.quadraticCurveTo(-w*0.46, -h*0.50, -w*0.30, -h*0.54);
-  ctx.closePath();
+  carAlpha(1);
 }
 
 /* Rose: soft and round, petal shapes worked into the bodywork */
@@ -1104,6 +1008,104 @@ function drawTrails(){
   for(let i=0;i<G.rivals.length;i++) drawRacerTrail(G.rivals[i]);
 }
 
+/* ================================================================
+   THE NOTES
+   ================================================================
+   Two world effects out of two images, and between them the whole of what
+   Lolanthe's ultimate looks like: one note above the car that is doing it, and
+   three around every car it has taken.
+
+   Everything moving in here is read off the clock or off a timer the update
+   code advances, exactly as the exhaust pulse and Flann's body fire are.
+   Nothing is stored, nothing is seeded and no race state is touched, so
+   drawing the same frame twice draws the same notes - and none of it is
+   collision geometry: the hull a racer is collided at is racerModel()'s and is
+   not affected by anything below.
+
+   Reduced motion keeps both effects on screen and takes the movement out of
+   them: the queen note stops rising and falling and the three stop turning.
+   The pops are ramps rather than oscillations, so they are the same either
+   way - an effect appearing is not motion anybody asked to be spared. */
+
+/* How far in these notes are: the entrance ramping up, a flat 1 while they are
+   simply there, and the exit ramping back down. Derived from the two timers
+   and the state that owns them, so a timer merely being reset - which is what
+   a racer held inside the aura gets every frame - leaves this sitting at 1
+   rather than replaying the entrance. */
+function noteFade(on, popT, outT, span){
+  if(on) return span > 0 ? clamp(1 - (popT || 0)/span, 0, 1) : 1;
+  return span > 0 ? clamp((outT || 0)/span, 0, 1) : 0;
+}
+/* A pop rather than a fade-up: it comes in small, swells a shade past its size
+   and settles on it. On the way out it simply shrinks back, because a note
+   going away should not draw attention to itself on the way. */
+function popScale(k, entering){
+  return 0.30 + 0.70*k + (entering ? 0.28*Math.sin(k*Math.PI) : 0);
+}
+/* One note, upright, centred on a point in the world. Square artwork, drawn at
+   one size, with its own save/restore so nothing it does reaches the next
+   thing drawn. */
+function drawNoteImg(img, x, y, size, alpha){
+  if(!img || !(size > 0) || alpha <= 0.004) return;
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha, 0, 1);
+  ctx.drawImage(img, x - size/2, y - size/2, size, size);
+  ctx.restore();
+}
+
+/* Lolanthe's own note. Anchored off racerDims() rather than off carW, so it
+   sits the same distance above a Lolanthe at any viewport size and in any
+   split-screen column - and drawn in the world rather than in the car's
+   rotated space, so it stays upright through a lane change instead of leaning
+   with the steering. */
+function drawQueenNote(who, cx, cy, alpha){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  const on = lolantheUltActive(who);
+  const k = noteFade(on, o.queenPop, o.queenOut, QUEEN_POP);
+  if(k <= 0) return;
+  const img = fxImage(QUEEN_NOTE_IMG);
+  if(!img) return;
+  const d = racerDims(who);
+  const bob = motionReduced() ? 0
+            : Math.sin(performance.now()/1000*6.2832/QUEEN_BOB_RATE)*d.h*QUEEN_BOB;
+  drawNoteImg(img, cx, cy - d.h*QUEEN_LIFT + bob,
+              d.h*QUEEN_NOTE_K*popScale(k, on), k*(alpha === undefined ? 1 : alpha));
+}
+/* And the three around a Mind Controlled racer. A third of a turn apart on a
+   ring measured off that racer's own box, so they surround a Lolanthe, a
+   Neela, a Flann, a Verdant, a Rose and a Siren alike. No rise and fall: that
+   belongs to the queen note and is what tells the two effects apart at a
+   glance. */
+function drawMindNotes(who, cx, cy, alpha){
+  const o = who === "me" ? G : who;
+  if(!o) return;
+  const on = (o.mindT || 0) > 0;
+  const k = noteFade(on, o.mindPop, o.mindOut, MIND_POP);
+  if(k <= 0) return;
+  const img = fxImage(MIND_NOTE_IMG);
+  if(!img) return;
+  const d = racerDims(who);
+  const rx = d.w*MIND_ORBIT_X, ry = d.h*MIND_ORBIT_Y;
+  const size = d.h*MIND_NOTE_K*popScale(k, on);
+  const spin = motionReduced() ? 0 : performance.now()/1000*MIND_ORBIT*6.2832;
+  const a = k*(alpha === undefined ? 1 : alpha);
+  /* An exact third of a turn each, so the ring is even rather than nearly
+     even - the rounded tau the rest of the file spells its circles with is a
+     hundredth of a degree out, which shows up as a lopsided triangle. */
+  for(let i=0;i<3;i++){
+    const t = spin + i*(Math.PI*2/3);
+    drawNoteImg(img, cx + Math.cos(t)*rx, cy + Math.sin(t)*ry, size, a);
+  }
+}
+/* Both of them, in the order the car effects are drawn: over the body and
+   under the seat flag and the Condition badges. A racer can wear both at once
+   - a Lolanthe taken by another Lolanthe is a note above and three around. */
+function drawRacerNotes(who, cx, cy, alpha){
+  drawQueenNote(who, cx, cy, alpha);
+  drawMindNotes(who, cx, cy, alpha);
+}
+
 /* ---- the white transition ---------------------------------------
    Belongs to a view, not to the canvas: it is drawn over one column, after
    that column's road and after that column's instruments, so the whole of one
@@ -1200,28 +1202,37 @@ function renderView(dy){
     if(G.state === "idle" || RV.dead > 0) continue;
     const rc = racerModel(RV);
     const rblink = RV.invuln > 0 && Math.floor(RV.invuln*9) % 2 === 0;
-    if(!rblink){
+    /* How much of this car this particular view is allowed to see. It is 1 for
+       every racer and every view but one: an ulting Verdant, which its own
+       driver's column draws at half and every other column draws at nothing.
+       Everything pinned to the car reads the same number, so an invisible car
+       cannot be given away by its own exhaust, its seat flag or its badges. */
+    const ra = racerViewAlpha(RV);
+    if(!rblink && ra > 0.004){
       const rd = racerDims(RV);
       drawCar(RV.x, RV.y, rd.w, rd.h, rc, RV.tilt, true,
-              RV.boosting || RV.ultOn, flannUltActive(RV), morphFlash(RV));
+              RV.boosting || RV.ultOn, flannUltActive(RV), morphFlash(RV), ra);
       ctx.globalAlpha = 1;
-      if(G.local && RV.human) drawSeatMark(RV, RV.x, RV.y);
+      drawRacerNotes(RV, RV.x, RV.y, ra);
+      if(G.local && RV.human) drawSeatMark(RV, RV.x, RV.y, ra);
     }
-    if(VOWN !== RV) drawConditionStack(RV, RV.x, RV.y);
+    if(VOWN !== RV && ra > 0.004) drawConditionStack(RV, RV.x, RV.y, ra);
   }
 
   const blink = G.invuln > 0 && Math.floor(G.invuln*9) % 2 === 0;
   const meSeen = !G.local || (playerY >= CT - carH*2 && playerY <= CB + carH*2);
   if(G.state !== "idle" && G.dead <= 0 && meSeen){
     const car = racerModel("me");
-    if(!blink){
+    const ma = racerViewAlpha("me");
+    if(!blink && ma > 0.004){
       const cd = racerDims("me");
       drawCar(G.x, playerY, cd.w, cd.h, car, G.tilt, true,
-              G.boosting || G.ultOn, flannUltActive("me"), morphFlash("me"));
+              G.boosting || G.ultOn, flannUltActive("me"), morphFlash("me"), ma);
       ctx.globalAlpha = 1;
-      if(G.local) drawSeatMark("me", G.x, playerY);
+      drawRacerNotes("me", G.x, playerY, ma);
+      if(G.local) drawSeatMark("me", G.x, playerY, ma);
     }
-    if(VOWN !== "me") drawConditionStack("me", G.x, playerY);
+    if(VOWN !== "me" && ma > 0.004) drawConditionStack("me", G.x, playerY, ma);
   }
 
   for(let i=0;i<G.fx.length;i++){

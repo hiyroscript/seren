@@ -69,20 +69,29 @@ const STR = {
                  fr:"Bloquent, bousculent et placent bien leurs ultimes."},
   brutalDesc:   {en:"Miss nothing, defend every lane, wreck you if they can.",
                  fr:"Ne ratent rien, d\u00e9fendent chaque voie, vous d\u00e9truisent si possible."},
-  bolt:         {en:"Bolt",                        fr:"Bolt"},
-  boltUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
+  /* The third car whose ultimate is more than the shared speed boost. What
+     the fifteen seconds do, in the words the road uses: everything close by
+     loses its driver, and anything sharing Lolanthe's lane is put out of it
+     whether or not the next lane is free. */
+  lolanthe:     {en:"Lolanthe",                    fr:"Lolanthe"},
+  lolantheUlt: {en:"Fifteen seconds at double pace, and it takes the road with it: every racer within about four car lengths is Mind Controlled — no steering, no boost, no item, no ultimate — for three seconds from the last moment it was in range, and a fresh hold resets those three seconds rather than adding to them. Anything caught in Lolanthe's own lane is forced out of it, into the next lane whether or not somebody is already there, so the shove can wreck them both. It smashes straight through tumbleweeds and meteors for the whole fifteen. Puddles still get you.",
+               fr:"Quinze secondes à double allure, et elle prend la route avec elle : tout concurrent à moins de quatre longueurs environ est sous Contrôle mental — ni direction, ni turbo, ni objet, ni ultime — pendant trois secondes à compter du dernier instant passé à portée, et une nouvelle emprise remet ces trois secondes à zéro au lieu de s'y ajouter. Ce qui se trouve dans la voie de Lolanthe en est chassé, vers la voie voisine qu'elle soit occupée ou non, quitte à les détruire tous les deux. Elle fracasse virevoltants et météores pendant les quinze secondes. Les flaques vous atteignent toujours."},
   place3:       {en:"3rd",                         fr:"3e"},
   place4:       {en:"4th",                         fr:"4e"},
   place5:       {en:"5th",                         fr:"5e"},
   place6:       {en:"6th",                         fr:"6e"},
-  timestamp:    {en:"Timestamp",                   fr:"Timestamp"},
-  timestampUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
+  /* And the fourth. Invisible, not absent: the car is still on the road, still
+     in the way, and still something you can run into - which is the whole of
+     the bargain the description has to make plain. */
+  verdant:      {en:"Verdant",                     fr:"Verdant"},
+  verdantUlt: {en:"Fifteen seconds at double pace, and invisible: your opponents cannot see it, though it is still physically on the road and still in the race. Any racer that crashes into Verdant is destroyed on the spot, and Verdant shows itself for a split second as it happens. Verdant wins nothing by running into anybody — the defence only works one way. Its own driver still sees it, at half opacity. It smashes straight through tumbleweeds and meteors for the whole fifteen. Puddles still get you.",
+              fr:"Quinze secondes à double allure, et invisible : vos adversaires ne la voient plus, alors qu'elle est toujours physiquement sur la route et toujours en course. Tout concurrent qui la percute est détruit sur place, et Verdant se révèle un très bref instant. Verdant ne gagne rien à percuter quelqu'un — la défense ne joue que dans un sens. Son propre pilote la voit encore, à demi-opacité. Elle fracasse virevoltants et météores pendant les quinze secondes. Les flaques vous atteignent toujours."},
   rose:         {en:"Rose",                        fr:"Rose"},
   roseUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
   siren:        {en:"Siren",                       fr:"Siren"},
   sirenUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
   /* ---- conditions ----
-     The five names, the two pages the garage splits them across, and the
+     The six names, the two pages the garage splits them across, and the
      paragraph each one gets on its reference card. The garage is the only
      place a Condition is named on screen - in a race it is the badge and
      nothing else - so the description has to carry the whole meaning. */
@@ -91,6 +100,7 @@ const STR = {
   condSlowed:       {en:"Slowed",       fr:"Ralenti"},
   condObscured:     {en:"Obscured",     fr:"Obscurci"},
   condSkidded:      {en:"Skidded",      fr:"En d\u00e9rapage"},
+  condMindControlled:{en:"Mind Controlled", fr:"Contr\u00f4le mental"},
   condBuff:     {en:"Buff",                        fr:"Bonus"},
   condDebuff:   {en:"Debuff",                      fr:"Malus"},
   garage:       {en:"Cars & more",                 fr:"Voitures et plus"},
@@ -151,6 +161,8 @@ const STR = {
                  fr:"Plus rien ne vous atteint\u00a0: aucun malus, danger, pi\u00e8ge ni attaque. Vous traversez tout, et les malus en cours sont effac\u00e9s aussit\u00f4t. C'est la r\u00e9apparition apr\u00e8s une destruction qui l'accorde, pour deux secondes."},
   obscuredInfo: {en:"Your view of the road is gone for a moment: water from a puddle thrown over your screen, or the white flash of a Neela transformation. You keep driving throughout.",
                  fr:"Vous perdez la route des yeux un instant\u00a0: l'eau d'une flaque sur votre \u00e9cran, ou l'\u00e9clair blanc d'une transformation de Neela. Vous continuez \u00e0 conduire pendant ce temps."},
+  mindControlledInfo:{en:"Somebody else has your car. For three seconds you cannot steer, boost, use an item or fire your ultimate \u2014 the car keeps driving, and everything already happening to it keeps happening, but none of it answers to you. Lolanthe's ultimate is what applies it, and a fresh application resets the three seconds rather than adding another three.",
+                 fr:"Quelqu'un d'autre a votre voiture. Pendant trois secondes vous ne pouvez ni tourner, ni acc\u00e9l\u00e9rer, ni utiliser d'objet, ni d\u00e9clencher votre ultime \u2014 la voiture continue de rouler, et tout ce qui lui arrive d\u00e9j\u00e0 continue, mais plus rien ne vous ob\u00e9it. C'est l'ultime de Lolanthe qui l'applique, et une nouvelle emprise remet les trois secondes \u00e0 z\u00e9ro au lieu d'en ajouter trois."},
   boostedInfo:  {en:"Shown by anything that makes you go faster, whatever put it there: the boost meter, a boost can, an ultimate, or the shove a rear-end gives you.",
                  fr:"Affich\u00e9 par tout ce qui vous acc\u00e9l\u00e8re, quelle qu'en soit la cause\u00a0: la jauge de turbo, un bidon de boost, un ultime, ou la pouss\u00e9e re\u00e7ue d'un choc arri\u00e8re."},
   itemCan:      {en:"Boost can",   fr:"Bidon de boost"},

@@ -72,18 +72,27 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     equal('refusesDebuffs(who)',false);equal('noContact(who)',false);
     equal('invulnerableWho(who)',false);
     equal(`who === 'me' ? playerUntouchable() : safeCar(who)`,false);
-    /* Neither car-specific ultimate is the Invulnerable Condition: both are
-       collision priority, changing who loses a contact rather than whether the
-       contact can happen at all. So every answer above is the same for all
-       six, and the predicates below are the only thing that differs. */
+    /* None of the four car-specific ultimates is the Invulnerable Condition:
+       all of them are collision priority or visibility, changing who loses a
+       contact or who can see it rather than whether the contact can happen at
+       all. So every answer above is the same for all six, and the predicates
+       below are the only thing that differs. An invisible Verdant is the
+       sharpest case: it is hidden from sight and reachable by everything. */
     equal('flannUltActive(who)',car === 'flann');
     equal('neelaUltActive(who)',car === 'neela');
     equal('neelaFormActive(who)',car === 'neela');
-    equal('clearsSolidHazards(who)',car === 'flann' || car === 'neela');
+    equal('lolantheUltActive(who)',car === 'lolanthe');
+    equal('verdantUltActive(who)',car === 'verdant');
+    equal('clearsSolidHazards(who)',
+          ['flann','neela','lolanthe','verdant'].indexOf(car) >= 0);
     equal('neelaCanSwap(who)',car === 'neela');
+    equal('racerDetectable(who)',car !== 'verdant');
+    /* And none of them takes its own driver's controls away. */
+    equal('controlsLocked(who)',false);
   });
   const priority = car === 'flann' ? 'the ram'
-                 : car === 'neela' ? 'the exchange' : 'ordinary barging';
+                 : car === 'neela' ? 'the exchange'
+                 : car === 'verdant' ? 'the one-way defence' : 'ordinary barging';
   test(label + ' collision priority: ' + priority,()=>{
     setup(car,kind);
     run(`globalThis.attacker = who === 'me' ? G.rivals[0] : 'me';
@@ -124,6 +133,28 @@ for(const car of cars) for(const kind of ['player','bot','local']){
       equal('outcome','rammed');
       equal('tgt.dead > 0',true);equal('o.dead',0);equal('o.ultOn',true);
       equal(`who === 'me' ? G.slowT : o.slow`,0);
+    } else if(car === 'verdant'){
+      /* Barging into an invisible Verdant destroys the barger. Verdant does
+         not move lane, is not slowed, keeps its ultimate, and shows itself for
+         a split second - which is cosmetic and does not cut the ultimate
+         short. */
+      equal('outcome','stopped');
+      equal('o.lane',1);equal('o.dead',0);equal('o.ultOn',true);equal('o.ultT',15);
+      equal(`who === 'me' ? G.slowT : o.slow`,0);
+      equal('att.dead > 0',true);
+      equal('o.verdantRevealT > 0',true);
+      equal('verdantUltActive(who)',true);
+      /* And from the other side it wins nothing: Verdant barging out is an
+         ordinary barge, so the car in the lane is shoved rather than killed. */
+      setup(car,kind);
+      run(`globalThis.target = who === 'me' ? G.rivals[0] : 'me';
+           globalThis.tgt = target === 'me' ? G : target;
+           tgt.dead = 0; tgt.invuln = 0; tgt.lane = 1; if(target !== 'me') tgt.x = laneCX(1);
+           globalThis.outcome = bumpTarget({me:target==='me',obj:target==='me'?null:target,lane:1},1,who);`);
+      equal('outcome','moved');
+      equal('tgt.dead',0);
+      equal('tgt.lane',2);
+      equal('o.verdantRevealT',0,'an ordinary barge reveals nothing');
     } else {
       equal('outcome','moved');
       equal('o.lane',2);equal('o.dead',0);
@@ -133,9 +164,10 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     }
   });
   for(const type of ['puddle','weed','oil','meteor','seeker']){
-    /* The two solid hazards are Flann's and Neela's to smash while their
-       ultimates run; water, oil and a guided missile are not, for anybody. */
-    const smashed = (car === 'flann' || car === 'neela') &&
+    /* The two solid hazards are Flann's, Neela's, Lolanthe's and Verdant's to
+       smash while their ultimates run; water, oil and a guided missile are
+       not, for anybody. */
+    const smashed = ['flann','neela','lolanthe','verdant'].indexOf(car) >= 0 &&
                     (type === 'weed' || type === 'meteor');
     test(label + (smashed ? ' smashes ' : ' vulnerable to ') + type,()=>{
       setup(car,kind);hit(kind,type);
@@ -171,24 +203,42 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     run(`o.finished=null;`);
   });
 }
-/* Every pair of cars, both ulting, running into each other's backs. Only the
-   pairs with exactly one Flann or exactly one Neela in them behave
-   differently: two ulting Flanns cannot smash each other and two
-   alternate-form Neelas cannot trade places with each other, so both of those
-   pairs fall back to the ordinary shunt like anybody else.
+/* Every pair of cars, both ulting, running into each other's backs. The four
+   pairs that behave differently are the ones with exactly one Flann, exactly
+   one alternate-form Neela, or exactly one Verdant in them: two of any of
+   those cancel, so they fall back to the ordinary shunt like anybody else.
 
-   A Flann and a Neela meeting is the exchange rather than the kill: the swap
-   is settled first because the contact spends Neela's form either way, and
-   spending it on a wreck would leave a car destroyed and a swap still owed. */
-test('rear contact between every pair of ulting cars, ordinary except the ram and the exchange',()=>{
+   The priority is written out here as the rules describe it rather than as the
+   code implements it, so a refactor that quietly reorders the three cannot
+   pass. In order: the two symmetric Verdant pairs, then Verdant's one-way
+   defence, then the exchange, then the ram, then the shunt.
+
+   A Flann and a Neela meeting with no Verdant involved is still the exchange
+   rather than the kill: the swap is settled first because the contact spends
+   Neela's form either way, and spending it on a wreck would leave a car
+   destroyed and a swap still owed. */
+function pairOutcome(me, them){
+  /* `me` is always the racer that did the running into. */
+  const meV = me === 'verdant', themV = them === 'verdant';
+  if(meV !== themV){
+    const other = meV ? them : me;                 /* the one that is not hidden */
+    if(other === 'flann') return 'mutual';         /* both go, both meters emptied */
+    if(other === 'neela') return meV ? 'themDead' : 'meDead';
+    return meV ? 'shunt' : 'meDead';               /* the defence only works one way */
+  }
+  if((me === 'neela') !== (them === 'neela')) return 'swap';
+  if(me === 'flann' && them !== 'flann') return 'themDead';
+  if(them === 'flann' && me !== 'flann') return 'meDead';
+  return 'shunt';
+}
+test('rear contact between every pair of ulting cars, priority in the documented order',()=>{
   for(const car of cars) for(const rival of cars){
-    const swap = (car === 'neela') !== (rival === 'neela');
-    const meRam = !swap && car === 'flann' && rival !== 'flann';
-    const themRam = !swap && rival === 'flann' && car !== 'flann';
+    const want = pairOutcome(car,rival);
+    const label = car + ' into ' + rival;
     setup(car,'player');run(`globalThis.r=G.rivals[0];r.car=${JSON.stringify(rival)};r.lane=G.lane;r.y=playerY-carH*0.5;startUlt(r);
       globalThis.beforeM=[G.meters,metersOf(r)];
       rearEnd('me',{me:false,obj:r,lane:r.lane,y:r.y});`);
-    if(swap){
+    if(want === 'swap'){
       /* Nobody is wrecked and nobody is shunted; the two of them have simply
          exchanged places, and both ultimates are still running. */
       equal('G.dead',0);equal('r.dead',0);
@@ -199,22 +249,53 @@ test('rear contact between every pair of ulting cars, ordinary except the ram an
       /* and they really did move: the two metre readings have traded */
       equal('Math.abs(G.meters-beforeM[1]) < 1e-6',true);
       equal('Math.abs(metersOf(r)-beforeM[0]) < 1e-6',true);
-    } else if(meRam){
-      /* Driving into the back of somebody while on fire destroys them, and
-         the ram takes none of the ordinary rear-end consequence for it. */
-      equal('r.dead > 0',true);equal('G.dead',0);
+    } else if(want === 'mutual'){
+      /* An ulting Verdant and an ulting Flann destroy each other whichever of
+         them arrived, and neither is left holding any fuel at all. */
+      assert.equal(run('G.dead > 0'),true,label);
+      assert.equal(run('r.dead > 0'),true,label);
+      assert.equal(run('G.ult'),0,label+': the player kept fuel');
+      assert.equal(run('r.ult'),0,label+': the rival kept fuel');
+      assert.equal(run('G.ultOn'),false,label);
+      assert.equal(run('r.ultOn'),false,label);
+    } else if(want === 'themDead'){
+      /* Driving into the back of somebody while on fire destroys them, and the
+         ram takes none of the ordinary rear-end consequence for it - and the
+         same shape of answer when a transformed Neela meets a hidden Verdant,
+         except that it is Neela that goes and Neela's meter that is emptied. */
+      assert.equal(run('r.dead > 0'),true,label);
+      assert.equal(run('G.dead'),0,label);
       equal('G.slowT',0);equal('r.shuntT',0);equal('G.ultOn',true);
-    } else if(themRam){
-      /* And rear-ending an ulting Flann destroys the car that did it. */
-      equal('G.dead > 0',true);equal('r.dead',0);
+      if(car === 'verdant'){
+        assert.equal(run('r.ult'),0,label+': the wrecked Neela kept fuel');
+        assert.equal(run('G.verdantRevealT > 0'),true,label+': no reveal on contact');
+        assert.equal(run('neelaFormActive(r)'),false,label);
+        /* and no swap: the two of them are exactly where they were */
+        assert.equal(run('Math.abs(G.meters-beforeM[0]) < 1e-6'),true,label);
+      }
+    } else if(want === 'meDead'){
+      /* Rear-ending an ulting Flann, or an invisible Verdant, destroys the car
+         that did it. */
+      assert.equal(run('G.dead > 0'),true,label);
+      assert.equal(run('r.dead'),0,label);
       equal('G.slowT',0);equal('r.shuntT',0);equal('r.ultOn',true);
+      if(rival === 'verdant'){
+        assert.equal(run('r.verdantRevealT > 0'),true,label+': no reveal on contact');
+        if(car === 'neela') assert.equal(run('G.ult'),0,label+': Neela kept fuel');
+      }
     } else {
-      equal('G.slowT > 0',true);equal('r.shuntT > 0',true);equal('r.dead',0);equal('G.dead',0);
+      assert.equal(run('G.slowT > 0'),true,label);
+      assert.equal(run('r.shuntT > 0'),true,label);
+      assert.equal(run('r.dead'),0,label);
+      assert.equal(run('G.dead'),0,label);
       /* The shove reads as Boosted, exactly as ordinary boost does. */
       equal(`activeConditions(r).indexOf('boosted') >= 0`,true);
+      /* And an ulting Verdant that merely arrived won nothing by it. */
+      if(car === 'verdant') assert.equal(run('G.verdantRevealT'),0,label);
     }
     run(`endUlt('me');endUlt(r);`);
-    equal('r.dead > 0',meRam);equal('G.dead > 0',themRam);
+    assert.equal(run('r.dead > 0'),want === 'themDead' || want === 'mutual',label);
+    assert.equal(run('G.dead > 0'),want === 'meDead' || want === 'mutual',label);
   }
 });
 /* ================================================================
@@ -225,7 +306,7 @@ test('rear contact between every pair of ulting cars, ordinary except the ram an
    whether the car is being driven by the person holding the controller, by a
    bot, or by a second person in a local seat. */
 function duel(kind, ulting = true){
-  run(`G.local = false; G.car = ${kind === 'player' ? '"flann"' : '"bolt"'};
+  run(`G.local = false; G.car = ${kind === 'player' ? '"flann"' : '"rose"'};
        G.rules = defaultRules(); G.rules.bots = 1; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); G.state = 'running';
        G.nextTrap = 1e9; G.nextRow = 1e9;
@@ -233,7 +314,7 @@ function duel(kind, ulting = true){
        G.dead = 0; G.invuln = 0; G.finished = null; G.slowT = 0; G.blind = 0;
        G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
        globalThis.rvl = G.rivals[0];
-       rvl.car = ${kind === 'player' ? '"bolt"' : '"flann"'}; rvl.human = ${kind === 'local'};
+       rvl.car = ${kind === 'player' ? '"rose"' : '"flann"'}; rvl.human = ${kind === 'local'};
        rvl.dead = 0; rvl.invuln = 0; rvl.finished = null; rvl.slow = 0; rvl.blind = 0;
        rvl.slip = 0; rvl.shuntT = 0; rvl.bumpCD = 0; rvl.changeT = 1e6;
        rvl.lane = 1; rvl.x = laneCX(1); rvl.y = playerY - carH*0.4;
@@ -376,7 +457,7 @@ for(const kind of ['player','bot','local']){
 /* The falling rock is tested against the player's own car and always has been,
    so this half of the meteor rule is a player-side one. */
 test('flann/player ultimate smashes a falling rock instead of being crushed',()=>{
-  for(const car of ['flann','bolt']){
+  for(const car of ['flann','rose']){
     duel('player');
     run(`G.car = ${JSON.stringify(car)};
          globalThis.mo = {kind:'meteor', x:G.x, y:0, r:80, mr:18,
@@ -413,8 +494,8 @@ test('the ram works through the ordinary per-frame contact sweep',()=>{
   }
 });
 
-/* The other four keep the ultimate they always had. */
-for(const car of ['bolt','timestamp','rose','siren'])
+/* The two cars with no power of their own keep the ultimate they always had. */
+for(const car of ['rose','siren'])
   test(car + ' gains no collision or hazard power from its ultimate',()=>{
     run(`G.local=false;G.car=${JSON.stringify(car)};G.rules=defaultRules();
          G.rules.bots=1;G.rules.bubbles=false;G.mode='endless';startRace();
@@ -553,7 +634,8 @@ test('a finished racer is out of play and wears no badge',()=>{
 /* The icon layer: one table, one renderer, and a badge for every Condition. */
 test('every Condition has one canonical colour, type and icon',()=>{
   const ids = Array.from(run('CONDITION_IDS'));
-  assert.deepEqual(ids,['invulnerable','boosted','slowed','obscured','skidded']);
+  assert.deepEqual(ids,['invulnerable','boosted','slowed','obscured','skidded',
+                        'mindControlled']);
   const seen = new Set();
   for(const id of ids){
     const col = run(`CONDITIONS[${JSON.stringify(id)}].col`);
@@ -576,8 +658,12 @@ test('every Condition has one canonical colour, type and icon',()=>{
   assert.equal(run('typeof CONDITIONS.launched'),'undefined');
   assert.equal(run('typeof CONDITIONS.winner'),'undefined');
 });
-test('Timestamp boost leaves meteor, weed and opponent simulation unchanged',()=>{
-  setup('timestamp','player');
+/* The generic normal-ultimate example. Rose and Siren are the only two cars
+   left with nothing on top of the shared fifteen seconds, so one of them is
+   what a test asking "does an ordinary ultimate disturb anything?" has to
+   use - the other four all have a power that would be the answer instead. */
+test('an ordinary ultimate leaves meteor, weed and opponent simulation unchanged',()=>{
+  setup('rose','player');
   run(`globalThis.r=G.rivals[0];r.human=true;r.abs=BASE_SPEED;
        updateRival(r,0.1,'running');
        G.traps=[{kind:'meteor',x:roadX,y:-1000,r:20,mr:10,fall:1,max:1,phase:0,t:0},
@@ -705,7 +791,7 @@ function duo(nSide, vSide, ulting = true){
   const nExpr = nSide === 'me' ? '"me"' : 'G.rivals[0]';
   const vExpr = vSide === 'me' ? '"me"'
               : (nSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
-  run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"bolt"'};
+  run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"rose"'};
        G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
@@ -714,7 +800,7 @@ function duo(nSide, vSide, ulting = true){
        G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
        G.tilt = 0; G.whiteT = 0; G.morphT = 0; G.swapGuard = 0;
        G.rivals.forEach((r, i) => {
-         r.car = "bolt"; r.human = false; r.dead = 0; r.invuln = 0;
+         r.car = "rose"; r.human = false; r.dead = 0; r.invuln = 0;
          r.finished = null; r.slow = 0; r.blind = 0; r.slip = 0; r.shuntT = 0;
          r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.whiteT = 0; r.morphT = 0;
          r.swapGuard = 0; r.ult = 0; r.lane = 1; r.x = laneCX(1);
@@ -1348,6 +1434,536 @@ test('a whiteout covers only the views it belongs to, in two, three and four sea
       equal(`whiteoutActive(G.humans[${i}])`,false,'no seat is dragged in with it');
     run('G.local = false; VIEWS = 1;');
   }
+});
+
+/* ================================================================
+   LOLANTHE'S AND VERDANT'S ULTIMATES
+   ================================================================
+   The lifecycle above is shared and stays shared; everything here is what
+   these two add on top of it while ultOn is true, and all of it has to be
+   identical whether the car is being driven by the person holding the
+   controller, by a bot, or by a second person in a local seat.
+
+   Two named racers on an otherwise empty road, on either side of the three
+   ownership boundaries that matter. Everybody else is parked three kilometres
+   up the road in a car with no power of its own, so nothing below can be an
+   accident of who happened to be nearby. */
+function pair(aSide, bSide, aCar, bCar){
+  assert.notEqual(aSide, bSide);
+  const aExpr = aSide === 'me' ? '"me"' : 'G.rivals[0]';
+  const bExpr = bSide === 'me' ? '"me"' : (aSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
+  run(`G.local = false; G.car = "rose";
+       G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
+       G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
+       G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
+       G.traps = []; G.slicks = []; G.missiles = []; G.boxes = []; G.fx = [];
+       G.dead = 0; G.invuln = 0; G.finished = null; G.slowT = 0; G.blind = 0;
+       G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
+       G.tilt = 0; G.mindT = 0; G.mindPop = 0; G.mindOut = 0;
+       G.rivals.forEach((r, i) => {
+         r.car = "rose"; r.human = false; r.dead = 0; r.invuln = 0;
+         r.finished = null; r.slow = 0; r.blind = 0; r.slip = 0; r.shuntT = 0;
+         r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.ult = 0;
+         r.mindT = 0; r.mindPop = 0; r.mindOut = 0;
+         r.lane = 1; r.x = laneCX(1);
+         r.y = playerY - 3000 - i*900; r.abs = BASE_SPEED;
+       });
+       globalThis.A = ${aExpr}; globalThis.B = ${bExpr};
+       globalThis.ao = A === 'me' ? G : A; globalThis.bo = B === 'me' ? G : B;
+       ao.car = ${JSON.stringify(aCar)}; bo.car = ${JSON.stringify(bCar)};
+       ${aSide === 'seat' ? 'ao.human = true;' : ''}
+       ${bSide === 'seat' ? 'bo.human = true;' : ''}
+       globalThis.yOf = w => w === 'me' ? playerY : w.y;
+       globalThis.laneOf = w => (w === 'me' ? G : w).lane;
+       /* Put w in other's lane, dy screen pixels below it. Player one is held
+          at playerY and cannot be placed, so when it is the one being put the
+          other racer is moved to match instead - which is the same relative
+          position and the only way to get it. */
+       globalThis.putBeside = (w, other, dy) => {
+         const o = w === 'me' ? G : w, t = other === 'me' ? G : other;
+         if(w === 'me'){ G.lane = t.lane; G.x = t.x; other.y = playerY - dy; }
+         else if(other === 'me'){ o.lane = G.lane; o.x = G.x; o.y = playerY + dy; }
+         else { o.lane = t.lane; o.x = t.x; o.y = t.y + dy; }
+       };
+       globalThis.others = () => G.rivals.filter(r => r !== A && r !== B);`);
+}
+const PAIRS = [['me','bot'],['me','seat'],['bot','me'],['bot','seat'],
+               ['seat','me'],['seat','bot']];
+
+/* ---- the aura ---------------------------------------------------- */
+test('an ulting Lolanthe controls every valid racer in range and nobody else',()=>{
+  for(const [a, b] of PAIRS){
+    pair(a, b, 'lolanthe', 'rose');
+    /* Out of range, in a different lane, and untouched. */
+    run(`putBeside(B, A, -mindRange()*2); if(B !== 'me') B.lane = 0, B.x = laneCX(0);
+         ao.ult = 1; startUlt(A); update(1/60);`);
+    equal('lolantheUltActive(A)',true);
+    equal('bo.mindT',0);
+    /* Inside the reach, in another lane: controlled, and left in its lane. */
+    run(`putBeside(B, A, -mindRange()*0.5);
+         if(B === 'me'){ G.lane = 0; G.x = laneCX(0); } else { B.lane = 0; B.x = laneCX(0); }
+         update(1/60);`);
+    near('bo.mindT',run('MIND_CONTROL_TIME'));
+    equal('laneOf(B)',0,'lane decides the shove, never the hold');
+    equal(`conditionOn(B,'mindControlled')`,true);
+    equal('controlsLocked(B)',true);
+    /* Lolanthe never takes itself. */
+    equal('ao.mindT',0);
+    equal('controlsLocked(A)',false);
+    /* Nobody three kilometres up the road is touched. */
+    equal('others().every(r => r.mindT === 0)',true);
+    /* The ultimate ending lets it lapse rather than cutting it off. */
+    run(`endUlt(A); update(1/60);`);
+    equal('bo.mindT > 0',true,'the last three seconds run on after the aura');
+    run(`for(let i=0;i<200;i++) update(1/60);`);
+    equal('bo.mindT',0);
+    equal(`conditionOn(B,'mindControlled')`,false);
+    equal('controlsLocked(B)',false);
+  }
+});
+test('the aura refuses a wrecked, finished, protected or invisible racer',()=>{
+  for(const shield of ['dead','finished','invuln','verdant']){
+    pair('me','bot','lolanthe','rose');
+    run(`putBeside(B, A, -mindRange()*0.4); ao.ult = 1; startUlt(A);`);
+    if(shield === 'verdant') run(`bo.car = "verdant"; bo.ult = 1; startUlt(B);`);
+    else run(`bo.${shield} = ${shield === 'finished' ? '1' : '2'};`);
+    run('update(1/60);');
+    equal('bo.mindT',0,shield+' still took mind control');
+    if(shield === 'verdant'){
+      /* Absolute for the whole ultimate, including the split second a hit
+         reveals the car - Lolanthe cannot command what it cannot see. */
+      run(`verdantReveal(B); update(1/60);`);
+      equal('bo.verdantRevealT > 0',true);
+      equal('bo.mindT',0,'the reveal handed Lolanthe a target');
+      equal('bo.mindPop',0);
+      run(`endUlt(B);`);
+    }
+  }
+});
+test('mind control resets to three seconds and never stacks',()=>{
+  pair('me','bot','lolanthe','rose');
+  run(`putBeside(B, A, -mindRange()*0.4); ao.ult = 1; startUlt(A);`);
+  run('update(1/60);');
+  near('bo.mindT',run('MIND_CONTROL_TIME'));
+  const popped = run('bo.mindPop');
+  assert.ok(popped > 0,'the entrance is armed on the first application');
+  /* Held in the aura: the timer is put back, never added to, and the entrance
+     is not replayed. */
+  run(`bo.mindPop = 0; bo.mindT = 0.4; update(1/60);`);
+  near('bo.mindT',run('MIND_CONTROL_TIME'));
+  equal('bo.mindPop',0,'a reset replayed the pop-in');
+  /* Five continuous seconds of exposure - the victim is held alongside, since
+     a Lolanthe at double pace would otherwise simply drive away from it. */
+  run(`for(let i=0;i<300;i++){ putBeside(B, A, -mindRange()*0.4); update(1/60); }`);
+  assert.ok(run('bo.mindT') <= run('MIND_CONTROL_TIME') + 1e-9,
+            'five seconds in the aura stacked past three');
+  near('bo.mindT',run('MIND_CONTROL_TIME'));
+  /* And out of it, it runs down from the last application and no further. */
+  run(`endUlt(A); globalThis.left = bo.mindT; for(let i=0;i<60;i++) update(1/60);`);
+  assert.ok(run('bo.mindT') < run('left'));
+  assert.ok(run('bo.mindT') > 0);
+  run(`for(let i=0;i<300 && bo.mindT > 0;i++) update(1/60);`);
+  equal('bo.mindT',0);
+  /* The exit is armed on the frame the timer runs out rather than the notes
+     simply being dropped, and it is short - a pop, not a second lifecycle. */
+  equal('bo.mindOut > 0',true);
+  assert.ok(run('bo.mindOut') <= run('MIND_POP') + 1e-9);
+  run(`for(let i=0;i<60;i++) update(1/60);`);
+  equal('bo.mindOut',0);
+});
+test('a racer sharing Lolanthe’s lane is forced out of it, occupied or not',()=>{
+  for(const lane of [0, 1, 2]){
+    pair('me','bot','lolanthe','rose');
+    run(`if(A === 'me'){ G.lane = ${lane}; G.x = laneCX(${lane}); }
+         else { A.lane = ${lane}; A.x = laneCX(${lane}); }
+         putBeside(B, A, -mindRange()*0.3);
+         ao.ult = 1; startUlt(A); update(1/60);`);
+    equal('laneOf(B) !== '+lane,true,'the victim was left in Lolanthe’s lane');
+    if(lane === 0) equal('laneOf(B)',1,'from the left wall there is one door');
+    if(lane === 2) equal('laneOf(B)',1,'and from the right wall there is one door');
+    if(lane === 1) equal('laneOf(B) === 0 || laneOf(B) === 2',true);
+    /* Nobody is destroyed by the shove itself: Lolanthe is not a ram. */
+    equal('bo.dead',0);equal('ao.dead',0);
+    /* And the move is a lane change, not a teleport - x is still catching up. */
+    equal('Math.abs(bo.x - laneCX(laneOf(B))) > 0',true);
+  }
+});
+test('the forced move goes through the real barge and can wreck both cars',()=>{
+  /* Lolanthe in the middle with the victim beside it and both doors blocked,
+     so whichever way the coin lands the victim meets somebody - and meets them
+     through the ordinary barge rather than passing through. Both occupants are
+     against a barrier, so the shove wrecks whichever one it reaches: a chain
+     reaction the collision system produced, not a Lolanthe rule. */
+  pair('me','bot','lolanthe','rose');
+  run(`G.lane = 1; G.x = laneCX(1);
+       putBeside(B, A, -mindRange()*0.2);
+       B.lane = 1; B.x = laneCX(1);
+       globalThis.L0 = others()[0]; globalThis.R0 = others()[1];
+       [L0, R0].forEach((c, i) => { c.lane = i*2; c.x = laneCX(i*2); c.y = B.y;
+         c.dead = 0; c.invuln = 0; c.changeT = 1e6; });
+       ao.ult = 1; startUlt(A); update(1/60);`);
+  equal('B.lane !== 1',true,'the victim was left in Lolanthe’s lane');
+  equal('B.lane === 0 || B.lane === 2',true);
+  equal(`(B.lane === 0 ? L0 : R0).dead > 0`,true,
+        'the car in the destination lane was driven through');
+  /* The other door is untouched - one shove, not two. */
+  equal(`(B.lane === 0 ? R0 : L0).dead`,0);
+  /* And none of it is a Lolanthe kill: Lolanthe is not a ram. */
+  equal('G.dead',0);
+  equal('B.dead',0);
+  /* With room on the far side, the occupant is shoved across instead and both
+     cars survive - again the ordinary barge, applied to a move the victim
+     never asked for. */
+  pair('me','bot','lolanthe','rose');
+  run(`G.lane = 0; G.x = laneCX(0);
+       putBeside(B, A, -mindRange()*0.2);
+       B.lane = 0; B.x = laneCX(0);
+       globalThis.M0 = others()[0]; M0.lane = 1; M0.x = laneCX(1); M0.y = B.y;
+       M0.dead = 0; M0.invuln = 0; M0.changeT = 1e6;
+       ao.ult = 1; startUlt(A); update(1/60);`);
+  equal('B.lane',1,'from the wall there is one door and it was taken');
+  equal('M0.lane',2,'the occupant was shoved across');
+  equal('M0.dead',0);equal('B.dead',0);equal('G.dead',0);
+  equal('M0.slow > 0',true,'and left labouring, exactly as an ordinary barge leaves it');
+});
+test('a forced move ignores reversed steering and the control lock alike',()=>{
+  pair('me','bot','lolanthe','rose');
+  run(`G.lane = 0; G.x = laneCX(0);
+       putBeside(B, A, -mindRange()*0.3);
+       B.slip = 5;                           /* Skidded: the driver's steering is reversed */
+       ao.ult = 1; startUlt(A); update(1/60);`);
+  equal('controlsLocked(B)',true,'the victim is locked out of its own controls');
+  equal('B.slip > 0',true);
+  equal('B.lane',1,'Lolanthe moved it inward regardless of either');
+});
+
+/* ---- the control lock -------------------------------------------- */
+test('a controlled driver can steer, boost, item or ultimate by no route at all',()=>{
+  for(const [a, b] of PAIRS){
+    pair(a, b, 'lolanthe', 'rose');
+    run(`putBeside(B, A, -mindRange()*0.3);
+         if(B === 'me'){ G.lane = 1; G.x = laneCX(1); } else { B.lane = 1; B.x = laneCX(1); }
+         if(A === 'me'){ G.lane = 0; G.x = laneCX(0); } else { A.lane = 0; A.x = laneCX(0); }
+         G.rules.boost = true;
+         bo.canT = 0; bo.charge = 1; bo.boostLock = false;
+         ao.ult = 1; startUlt(A); update(1/60);`);
+    equal('controlsLocked(B)',true);
+    /* Charged and handed its item only once control has already been taken: a
+       bot that was ready to press a button a frame earlier is entitled to have
+       pressed it. */
+    run('bo.ult = 1; bo.item = "can";');
+    const lane = run('laneOf(B)');
+    /* Steering, by the player's own path and by a seat's. */
+    run(`if(B === 'me') move(1); else humanSteer(B, 1);`);
+    equal('laneOf(B)',lane,'a controlled driver steered');
+    run(`if(B === 'me') move(-1); else humanSteer(B, -1);`);
+    equal('laneOf(B)',lane);
+    /* Boost, held down at the moment control was taken and refused after it. */
+    run(`if(B === 'me'){ G.keyBoost = true; setBoost(); } else humanBoost(B, true);
+         update(1/60);`);
+    equal('bo.boosting',false,'a controlled driver kept boosting');
+    /* The ultimate, by either door. */
+    run(`if(B === 'me') fireUlt(); else fireUltRival(B); humanUlt(B);`);
+    equal('bo.ultOn',false,'a controlled driver fired an ultimate');
+    equal('bo.ult',1,'and the meter was not spent on the attempt');
+    /* The item, which is kept rather than swallowed. */
+    equal(`useItem(B)`,false);
+    equal('bo.item','can');
+    equal('bo.canT',0);
+    /* The car itself is not frozen: it is still driving, still collidable,
+       still running its clocks. */
+    run(`globalThis.wasY = yOf(B); globalThis.wasM = B === 'me' ? G.meters : metersOf(B);
+         for(let i=0;i<20;i++) update(1/60);`);
+    equal(`(B === 'me' ? G.meters : metersOf(B)) > wasM`,true,'the car stopped moving');
+    equal('noContact(B)',false);
+    equal('bo.mindT > 0',true);
+  }
+});
+test('a bot under control makes no lane, item, boost or ultimate decision',()=>{
+  pair('me','bot','lolanthe','rose');
+  run(`putBeside(B, A, -mindRange()*0.3);
+       B.lane = 1; B.x = laneCX(1); G.lane = 0; G.x = laneCX(0);
+       B.changeT = 0; B.blind = 0; B.useT = -1;
+       B.charge = 1; B.boostLock = false; G.rules.boost = true;
+       G.ult = 1; startUlt('me'); update(1/60);`);
+  equal('controlsLocked(B)',true);
+  /* Charged and armed only once control has already been taken - a bot that
+     was ready a frame earlier is entitled to have acted on it. */
+  run(`B.item = "can"; B.ult = 1;`);
+  run(`globalThis.lane0 = B.lane; B.changeT = 0;
+       for(let i=0;i<40;i++) update(1/60);`);
+  equal('B.ultOn',false,'a controlled bot fired its ultimate');
+  equal('B.item','can','a controlled bot spent its item');
+  equal('B.boosting',false,'a controlled bot boosted');
+  /* Its lane only ever changes because Lolanthe moved it, never because it
+     decided to - so it is out of Lolanthe's lane and not wandering. */
+  equal('B.lane !== G.lane',true);
+  /* And once control lapses it thinks again. */
+  run(`endUlt('me'); for(let i=0;i<400;i++) update(1/60);`);
+  equal('B.mindT',0);
+  equal('controlsLocked(B)',false);
+});
+test('control does not cancel an ultimate the victim was already running',()=>{
+  pair('me','bot','lolanthe','rose');
+  run(`putBeside(B, A, -mindRange()*0.3);
+       bo.ult = 1; startUlt(B); globalThis.wasT = bo.ultT;
+       ao.ult = 1; startUlt(A); update(1/60);`);
+  equal('controlsLocked(B)',true);
+  equal('bo.ultOn',true,'the victim’s own ultimate was cut short');
+  assert.ok(run('bo.ultT') < run('wasT'),'and its clock kept running');
+  run(`for(let i=0;i<30;i++) update(1/60);`);
+  equal('bo.ultOn',true);
+});
+test('protection clears mind control the way it clears every other debuff',()=>{
+  pair('me','bot','lolanthe','rose');
+  run(`putBeside(B, A, -mindRange()*0.3); ao.ult = 1; startUlt(A); update(1/60);`);
+  equal('bo.mindT > 0',true);
+  run(`bo.invuln = INVULNERABLE_TIME; sweepDebuffs();`);
+  equal('bo.mindT',0);
+  equal(`conditionOn(B,'mindControlled')`,false);
+  equal('controlsLocked(B)',false);
+  /* A wreck does the same, and leaves nothing of the notes behind. */
+  run(`bo.invuln = 0; update(1/60); globalThis.held = bo.mindT;`);
+  assert.ok(run('held') > 0);
+  run(`wreckRival(B, 'me');`);
+  equal('bo.mindT',0);equal('bo.mindPop',0);equal('bo.mindOut',0);
+  /* And so does the flag. */
+  run(`bo.dead = 0; bo.invuln = 0; update(1/60);`);
+  assert.ok(run('bo.mindT') > 0);
+  run(`bo.finished = 1; sweepDebuffs();`);
+  equal('bo.mindT',0);
+  equal(`JSON.stringify(activeConditions(B))`,'[]');
+  run(`bo.finished = null;`);
+});
+test('Lolanthe destroys nobody merely by touching them',()=>{
+  for(const [a, b] of PAIRS){
+    pair(a, b, 'lolanthe', 'rose');
+    run(`ao.ult = 1; startUlt(A); putBeside(B, A, -carH*0.4);
+         rearEnd(B, {me:A === 'me', obj:A === 'me' ? null : A, lane:laneOf(A), y:yOf(A)});`);
+    equal('ao.dead',0);
+    equal('bo.dead',0,'an ulting Lolanthe rammed somebody');
+    /* An ordinary rear-end, with the ordinary consequences on both sides. */
+    equal(`(B === 'me' ? G.slowT : bo.slow) > 0 || bo.shuntT > 0 || ao.shuntT > 0`,true);
+  }
+});
+
+/* ---- Verdant ----------------------------------------------------- */
+test('an invisible Verdant is physically present, in the race and reachable',()=>{
+  for(const [a, b] of PAIRS){
+    pair(a, b, 'verdant', 'rose');
+    run(`globalThis.hullBefore = JSON.stringify(carHit(A).points.map(p => [p.x - (A === 'me' ? G.x : A.x), p.y - yOf(A)]));
+         globalThis.placeBefore = A === 'me' ? G.meters : metersOf(A);
+         ao.ult = 1; startUlt(A); for(let i=0;i<20;i++) update(1/60);`);
+    equal('verdantUltActive(A)',true);
+    near('ao.verdantHide',1);
+    /* Hidden from sight and from nothing else. */
+    equal('racerDetectable(A)',false);
+    equal('noContact(A)',false);
+    equal('safeCar(A)',false);
+    equal('ao.dead',0);
+    equal('invulnerableWho(A)',false);
+    equal(`JSON.stringify(carHit(A).points.map(p => [p.x - (A === 'me' ? G.x : A.x), p.y - yOf(A)]))`,
+          run('hullBefore'),'hiding changed the hitbox');
+    /* Still in the order, and still drawn into the standings. */
+    equal(`fieldView(B).some(x => x.who === A)`,true);
+    equal(`fieldView(B).find(x => x.who === A).out`,false);
+    equal(`fieldView(B).find(x => x.who === A).touch`,true);
+    equal(`fieldView(B).find(x => x.who === A).seen`,false);
+    /* And the fade goes back the way it came when the ultimate ends. */
+    run(`endUlt(A); for(let i=0;i<30;i++) update(1/60);`);
+    equal('ao.verdantHide',0);
+    equal('racerDetectable(A)',true);
+  }
+});
+test('Verdant destroys whoever runs into it and wins nothing by arriving',()=>{
+  for(const [a, b] of PAIRS){
+    /* Somebody runs into the back of it: they are destroyed and it reveals. */
+    pair(a, b, 'verdant', 'rose');
+    run(`ao.ult = 1; startUlt(A); putBeside(B, A, carH*0.4);
+         rearEnd(B, {me:A === 'me', obj:A === 'me' ? null : A, lane:laneOf(A), y:yOf(A)});`);
+    equal('bo.dead > 0',true,'the racer that arrived survived');
+    equal('ao.dead',0);
+    equal('ao.ultOn',true,'the defence cut the ultimate short');
+    equal('ao.ultT',15);
+    equal('ao.verdantRevealT > 0',true);
+    /* The reveal is cosmetic and short, and it lapses on its own. */
+    run(`for(let i=0;i<20;i++) update(1/60);`);
+    equal('ao.verdantRevealT',0);
+    equal('ao.ultOn',true);
+    /* And the other way: Verdant running into somebody is an ordinary
+       rear-end, not a kill. */
+    pair(a, b, 'verdant', 'rose');
+    run(`ao.ult = 1; startUlt(A); putBeside(A, B, -carH*0.4);
+         rearEnd(A, {me:B === 'me', obj:B === 'me' ? null : B, lane:laneOf(B), y:yOf(B)});`);
+    equal('bo.dead',0,'an ulting Verdant rammed somebody');
+    equal('ao.dead',0);
+    equal('ao.verdantRevealT',0,'an ordinary contact revealed it');
+    equal(`bo.shuntT > 0 || (A === 'me' ? G.slowT : ao.slow) > 0`,true);
+  }
+});
+test('the defence also runs through the ordinary per-frame contact sweep',()=>{
+  /* The player drives up the back of a car it cannot see, on the frame loop
+     rather than through a direct call. */
+  pair('me','bot','rose','verdant');
+  run(`bo.ult = 1; startUlt(B); B.lane = G.lane; B.x = G.x; B.y = playerY - carH*0.2;
+       B.changeT = 1e6; B.abs = BASE_SPEED; update(1/60);`);
+  equal('G.dead > 0',true,'the player drove into the hidden car and lived');
+  equal('B.dead',0);equal('B.ultOn',true);
+  equal('B.verdantRevealT > 0',true);
+  /* And the other way, from inside updateRival(): a bot running up the back of
+     an invisible player is destroyed by it. */
+  pair('me','bot','verdant','rose');
+  run(`ao.ult = 1; startUlt(A); B.lane = G.lane; B.x = G.x; B.y = playerY + carH*0.2;
+       B.changeT = 1e6; B.abs = BASE_SPEED; updateRival(B, 1/60, 'running');`);
+  equal('B.dead > 0',true);
+  equal('G.dead',0);equal('G.ultOn',true);
+  equal('G.verdantRevealT > 0',true);
+});
+test('an ulting Verdant and an ulting Flann destroy each other with nothing left',()=>{
+  for(const first of ['verdant','flann']) for(const [a, b] of PAIRS){
+    pair(a, b, first === 'verdant' ? 'verdant' : 'flann',
+               first === 'verdant' ? 'flann' : 'verdant');
+    run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
+         putBeside(B, A, carH*0.4);
+         rearEnd(B, {me:A === 'me', obj:A === 'me' ? null : A, lane:laneOf(A), y:yOf(A)});`);
+    equal('ao.dead > 0',true);
+    equal('bo.dead > 0',true);
+    equal('ao.ult',0,'a meter survived the mutual wreck');
+    equal('bo.ult',0,'a meter survived the mutual wreck');
+    equal('ao.ultOn',false);equal('bo.ultOn',false);
+  }
+  /* And through the lane barge, which must agree with the rear-end. */
+  pair('me','bot','verdant','flann');
+  run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
+       B.lane = G.lane; B.x = G.x; B.y = playerY;
+       globalThis.out = bumpTarget({me:false,obj:B,lane:B.lane}, 1, 'me');`);
+  equal('out','stopped');
+  equal('G.dead > 0',true);equal('B.dead > 0',true);
+  equal('G.ult',0);equal('B.ult',0);
+});
+test('a transformed Neela meeting an ulting Verdant is destroyed, with no swap',()=>{
+  for(const first of ['neela','verdant']) for(const [a, b] of PAIRS){
+    pair(a, b, first === 'neela' ? 'neela' : 'verdant',
+               first === 'neela' ? 'verdant' : 'neela');
+    run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
+         globalThis.N2 = ao.car === 'neela' ? A : B;
+         globalThis.V2 = ao.car === 'neela' ? B : A;
+         globalThis.n2 = N2 === 'me' ? G : N2; globalThis.v2 = V2 === 'me' ? G : V2;
+         putBeside(B, A, carH*0.4);
+         /* Taken once the two of them are in position, so this is where they
+            were at the instant of contact and not where they started. */
+         globalThis.nWas = N2 === 'me' ? G.meters : metersOf(N2);
+         globalThis.vWas = V2 === 'me' ? G.meters : metersOf(V2);
+         rearEnd(B, {me:A === 'me', obj:A === 'me' ? null : A, lane:laneOf(A), y:yOf(A)});`);
+    equal('neelaFormActive(N2)',false);
+    equal('n2.dead > 0',true,'Neela survived an ulting Verdant');
+    equal('n2.ult',0,'Neela kept fuel');
+    equal('v2.dead',0,'Verdant did not survive');
+    equal('v2.ultOn',true);
+    equal('v2.verdantRevealT > 0',true,'contact happened but nothing was revealed');
+    /* No swap: neither of them was teleported anywhere. */
+    equal(`Math.abs((N2 === 'me' ? G.meters : metersOf(N2)) - nWas) < 1e-6`,true);
+    equal(`Math.abs((V2 === 'me' ? G.meters : metersOf(V2)) - vWas) < 1e-6`,true);
+  }
+  /* An ordinary, untransformed Neela gets no special handling beyond the
+     one-way defence. */
+  pair('me','bot','neela','verdant');
+  run(`bo.ult = 1; startUlt(B); putBeside(A, B, 0);
+       G.y = playerY; globalThis.out = bumpTarget({me:false,obj:B,lane:B.lane}, 1, 'me');`);
+  equal('neelaUltActive("me")',false);
+  equal('out','stopped');
+  equal('G.dead > 0',true);
+  equal('B.dead',0);
+});
+test('the Neela-versus-Flann priority is untouched where no Verdant is involved',()=>{
+  pair('me','bot','neela','flann');
+  run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
+       putBeside(B, A, carH*0.4);
+       rearEnd(B, {me:true, obj:null, lane:G.lane, y:playerY});`);
+  /* Still the exchange, still ahead of the ram, and still nobody wrecked. */
+  equal('G.dead',0);equal('B.dead',0);
+  equal('G.ultOn',true);equal('B.ultOn',true);
+  equal('G.neelaSwapped',true);
+});
+test('bots do not aim at what they cannot see, and still collide with it',()=>{
+  pair('me','bot','verdant','rose');
+  run(`ao.ult = 1; startUlt(A); B.lane = 1; B.x = laneCX(1); B.y = playerY - carH*3;
+       G.lane = 1; G.x = laneCX(1); B.human = false;
+       for(let i=0;i<20;i++) update(1/60);
+       globalThis.s = botSense(B);`);
+  equal('s.all.find(x => x.who === A).seen',false);
+  equal('botTarget(B, s)',null,'a bot picked the invisible car as a target');
+  /* It is not in the lane picture either - a person could not see it. */
+  equal(`laneRisk(B).every(v => v === 0)`,true);
+  equal(`carSeenAt(1, B.y, B)`,null);
+  /* But it is physically there, so a contact still lands. */
+  equal(`carAt(1, playerY, B) !== null || carAt(G.lane, B.y, B) !== null`,true);
+  /* And once it is visible again the bot sees it like anybody else. */
+  run(`endUlt(A); for(let i=0;i<30;i++) update(1/60); globalThis.s2 = botSense(B);`);
+  equal('s2.all.find(x => x.who === A).seen',true);
+});
+test('both new ultimates value themselves without claiming the other two do not',()=>{
+  /* A crowd is worth something to Lolanthe and an empty road is not. */
+  pair('me','bot','lolanthe','rose');
+  run(`A === 'me'; globalThis.L = G.rivals[1]; L.car = "lolanthe"; L.human = false;
+       L.lane = 1; L.x = laneCX(1); L.y = playerY - 2000; L.dead = 0; L.invuln = 0;
+       G.rivals.forEach(r => { if(r !== L) r.y = playerY - 9000; });
+       G.lane = 0; G.x = laneCX(0); globalThis.s = botSense(L);`);
+  const alone = run('botUltExtra(L, s)');
+  assert.equal(alone,0,'an empty road is worth nothing extra');
+  run(`G.rivals.forEach(r => { if(r !== L){ r.y = L.y + carH; r.lane = 1;
+         r.dead = 0; r.invuln = 0; } });
+       globalThis.s = botSense(L);`);
+  const crowd = run('botUltExtra(L, s)');
+  assert.ok(crowd > alone,'a crowd in its own lane is worth more');
+  /* Verdant values it against what is close enough to be a problem. */
+  run(`L.car = "verdant"; globalThis.s = botSense(L);`);
+  const threatened = run('botUltExtra(L, s)');
+  assert.ok(threatened > 0,'traffic all around is worth something to Verdant');
+  /* Alone on the road, with nobody within reach in either direction, it is
+     worth nothing beyond the pace - which is a different judgement from the
+     ram's and from the exchange's, not a copy of either. */
+  run(`L.y = playerY - 12000;
+       G.rivals.forEach(r => { if(r !== L) r.y = playerY - 30000; });
+       globalThis.s = botSense(L);`);
+  assert.equal(run('botUltExtra(L, s)'),0,'an empty road is worth nothing extra');
+  /* And the other two are exactly as they were. */
+  run(`L.car = "rose"; globalThis.s = botSense(L);`);
+  assert.equal(run('botUltExtra(L, s)'),0);
+});
+test('both clear exactly the solid hazards Neela clears, and no more',()=>{
+  for(const car of ['lolanthe','verdant']){
+    /* The tumbleweed and the meteor come apart; the puddle still lands. */
+    setup(car,'player');
+    hit('player','weed');
+    equal('G.slowT',0);equal('G.traps.length',0);equal('G.ultOn',true);
+    setup(car,'player');
+    hit('player','puddle');
+    equal('G.blind > 0',true,car+' shrugged off water');
+    setup(car,'player');
+    hit('player','oil');
+    equal('G.slipT > 0',true,car+' shrugged off oil');
+    setup(car,'player');
+    hit('player','meteor');
+    equal('G.dead',0);equal('G.ultOn',true);
+  }
+});
+test('nothing of either ultimate survives a restart',()=>{
+  pair('me','bot','lolanthe','verdant');
+  run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
+       putBeside(B, A, -mindRange()*0.3);
+       for(let i=0;i<20;i++) update(1/60);
+       G.mindT = MIND_CONTROL_TIME; G.mindPop = MIND_POP; G.mindOut = 0;
+       G.queenPop = QUEEN_POP; G.verdantHide = 1; G.verdantRevealT = 0.1;`);
+  run(`G.local = false; G.car = "flann"; G.rules = defaultRules();
+       G.mode = 'endless'; startRace(); clearTimers();`);
+  equal('G.mindT',0);equal('G.mindPop',0);equal('G.mindOut',0);
+  equal('G.queenPop',0);equal('G.queenOut',0);
+  equal('G.verdantHide',0);equal('G.verdantRevealT',0);
+  equal(`G.rivals.every(r => r.mindT === 0 && r.mindPop === 0 && r.mindOut === 0 &&
+                             r.queenPop === 0 && r.queenOut === 0 &&
+                             r.verdantHide === 0 && r.verdantRevealT === 0)`,true);
+  equal(`JSON.stringify(activeConditions('me'))`,'[]');
 });
 
 console.log(`\n${checks} ultimate regression checks passed (DOM/Canvas doubles; no physical controller or visual QA).`);

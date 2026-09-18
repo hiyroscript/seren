@@ -26,7 +26,13 @@ const COND_PATHS = {
   slow:     ["M12 3.6v9.6", "M7.4 9 12 13.6 16.6 9", "M6.4 18.6h11.2"],
   eye:      ["M3.2 12S7 6.6 12 6.6 20.8 12 20.8 12 17 17.4 12 17.4 3.2 12 3.2 12Z",
              "M4.4 4.4 19.6 19.6"],
-  skid:     ["M7.6 19.6v-7.4c0-3.4 1-5.6 3.2-7", "M13.6 19.6v-7.4c0-3.4 1-5.6 3.2-7"]
+  skid:     ["M7.6 19.6v-7.4c0-3.4 1-5.6 3.2-7", "M13.6 19.6v-7.4c0-3.4 1-5.6 3.2-7"],
+  /* A single note: the stem, its flag, and a filled-looking head drawn as an
+     outline like everything else here. Blunt enough to still read as a note at
+     a third of this size, and the same idea as the three that orbit the car -
+     one artwork, two scales, the way the shield and the chevrons work. */
+  note:     ["M13.4 16.6V4.8", "M13.4 4.8c3.4.9 5.2 2.8 5.2 5.6",
+             "M13.4 16.6a3 2.5 0 1 0-3 2.5 3 2.5 0 0 0 3-2.5Z"]
 };
 
 /* How light the ink is decides what the badge is rimmed with: a near-black
@@ -106,8 +112,10 @@ function condR(){ return Math.max(5.5, COND_R*SCENE); }
    x is clamped into this view's own column rather than the whole canvas, so
    one split-screen window's badges can never leak into the next; if the right
    side would cross the edge, the stack flips to the left of the car. */
-function drawConditionStack(who, cx, cy){
+function drawConditionStack(who, cx, cy, alpha){
   if(cy < CT - carH || cy > CB + carH) return;          /* not in this viewport */
+  const a = alpha === undefined ? 1 : clamp(alpha, 0, 1);
+  if(a <= 0.004) return;            /* a car this view cannot see wears nothing */
   const on = activeConditions(who);
   if(!on.length) return;
   const r = condR(), step = r*2 + Math.max(2, 3*SCENE);
@@ -118,8 +126,14 @@ function drawConditionStack(who, cx, cy){
   const foot = cy - carH*0.16;                          /* clear of the seat flag */
   const top = foot - (on.length - 1)*step;
   const lift = Math.max(0, (CT + r + 3) - top);
+  ctx.save();
+  /* The badges fade with the car they belong to, so a Verdant dissolving into
+     its ultimate does not leave a column of badges hanging in the air where it
+     used to be. */
+  ctx.globalAlpha = a;
   for(let i=0;i<on.length;i++)
     drawConditionBadge(on[i], x, Math.min(foot - i*step + lift, CB - r - 3), r);
+  ctx.restore();
 }
 
 /* ---- the page's own badges ----
@@ -195,18 +209,20 @@ function clearConditions(){
    A ring on the road under every human car and, on the cars that are not
    yours, a small numbered flag. Two players in identical positions on two
    columns still have to be told apart, and the car alone will not do it. */
-function drawSeatMark(who, cx, cy){
+function drawSeatMark(who, cx, cy, alpha){
   const i = seatOf(who);
   if(i < 0) return;
+  const a = alpha === undefined ? 1 : clamp(alpha, 0, 1);
+  if(a <= 0.004) return;            /* an invisible car has no ring and no flag */
   const col = PCOLS[i];
   const own = VOWN === who;
   ctx.save();
-  ctx.globalAlpha = own ? 0.5 : 0.95;
+  ctx.globalAlpha = (own ? 0.5 : 0.95)*a;
   ctx.beginPath();
   if(ctx.ellipse) ctx.ellipse(cx, cy + carH*0.5, carW*0.64, carW*0.22, 0, 0, 6.2832);
   else ctx.arc(cx, cy + carH*0.5, carW*0.5, 0, 6.2832);
   ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.6, 2.6*SCENE); ctx.stroke();
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = a;
   if(!own){
     const w = 24*SCENE, h = 16*SCENE, ty = cy - carH*0.62 - h;
     fillRR(cx - w/2, ty, w, h, 4*SCENE, col);
@@ -681,6 +697,11 @@ function drawLadder(){
     marks.push({
       col: pipColour(R.car), pcol: seatCol(R), gap: rm - mine, y: ladderY(rm, g, span),
       off: !own && (R.y < CT - 18 || R.y > CB + 18), above: R.y < CT - 18, me: own,
+      /* A racer this view cannot see keeps its dot on the line - it is still in
+         the race and still in the order - and loses the badges, because those
+         print the lane it is in and the metres to it, which is the one thing an
+         invisible car must not hand over. */
+      hidden: !own && !racerDetectable(R),
       ex: clamp(R.x, roadX + 30, roadX + roadW - 30)     /* the lane it is in */
     });
   }
@@ -689,6 +710,7 @@ function drawLadder(){
                y: ladderY(G.meters, g, span),
                off: !own1 && (playerY < CT - 18 || playerY > CB + 18),
                above: playerY < CT - 18, me: own1,
+               hidden: !own1 && !racerDetectable("me"),
                ex: clamp(G.x, roadX + 30, roadX + roadW - 30) });
 
   /* Every off-screen racer gets a marker now, not just the nearest one each
@@ -696,7 +718,7 @@ function drawLadder(){
   const near = [], far = [];
   for(let i=0;i<marks.length;i++){
     const m = marks[i];
-    if(!m.off) continue;
+    if(!m.off || m.hidden) continue;
     /* gate on the number the badge would print, so a badge reading 499m is a
        badge that is shown and one reading 500m never appears */
     if(Math.round(Math.abs(m.gap)) < PIP_FAR) near.push(m); else far.push(m);

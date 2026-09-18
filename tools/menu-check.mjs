@@ -57,7 +57,7 @@ for(const language of ['en','fr']){
   click('btnGarage');
   for(const tab of ['Cars','Tracks','Items','Conditions']){click('tab'+tab);test(language+' reference '+tab,()=>{assert.ok($('#garageBody').children.length);assert.equal($('#tab'+tab).getAttribute('aria-selected'),'true');});}
   /* The Conditions page: two sub-tabs generated from CONDITIONS[id].type, the
-     right five entries split across them, and no Launched or Winner anywhere. */
+     right six entries split across them, and no Launched or Winner anywhere. */
   test(language+' Conditions opens on Buff with both sub-tabs',()=>{
     assert.equal(run('garageTab'),'conditions');assert.equal(run('condTab'),'buff');
     assert.equal($('#condTabBuff').getAttribute('aria-selected'),'true');
@@ -76,7 +76,8 @@ for(const language of ['en','fr']){
   $('#condTabDebuff').click();
   test(language+' Debuff sub-tab switches the page in place',()=>{
     assert.equal(run('condTab'),'debuff');assert.equal(run('garageTab'),'conditions');
-    assert.deepEqual(Array.from(run('conditionsOfType("debuff")')),['slowed','obscured','skidded']);
+    assert.deepEqual(Array.from(run('conditionsOfType("debuff")')),
+                     ['slowed','obscured','skidded','mindControlled']);
     const html=$('#garageBody').innerHTML;
     for(const id of run('conditionsOfType("debuff")')) assert.ok(html.includes(run('t(CONDITIONS["'+id+'"].key)')),id);
     assert.ok(!/Launched|Propuls|Winner|Vainqueur/.test(html));
@@ -165,7 +166,7 @@ for(const lang of ['en','fr']){
     assert.equal(f.run('t("neela")'),'Neela');
     const power=f.run('t("neelaUlt")');
     assert.ok(power.length>40,'Neela has a description of its own, not the shared one');
-    assert.notEqual(power,f.run('t("boltUlt")'));
+    assert.notEqual(power,f.run('t("roseUlt")'));
     /* It says what the ultimate actually does, in the words the road uses. */
     for(const word of lang==='en'
         ? ['shape','tumbleweed','meteor','swap','Puddles']
@@ -196,10 +197,11 @@ test('no Phantom string survives anywhere the player can read',()=>{
 });
 test('every menu preview is the car model, never the alternate form',()=>{
   f.run(`globalThis.drawn=[];globalThis.realDrawCar=drawCar;
-         drawCar=function(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white){
+         drawCar=function(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white,alpha){
            drawn.push({key:p.key,sprite:p.sprite||null,boost:!!boosting,
-                       ult:!!ulting,white:white||0});
-           return realDrawCar(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white);};`);
+                       ult:!!ulting,white:white||0,
+                       alpha:alpha===undefined?1:alpha});
+           return realDrawCar(x,y,w,h,p,tilt,isPlayer,boosting,ulting,white,alpha);};`);
   try{
     /* Even with an alternate form up on the road, the menus are unmoved: they
        paint from CARS directly and never ask what a racer is wearing. */
@@ -215,10 +217,98 @@ test('every menu preview is the car model, never the alternate form',()=>{
       assert.equal(d.boost,false);
       assert.equal(d.ult,false);
       assert.equal(d.white,0);
+      /* A menu is not a view, so nobody's ultimate may fade a preview out. */
+      assert.equal(d.alpha,1,'a menu drew a car at anything but full opacity');
     }
     assert.equal(f.run('neelaFormActive("me")'),true,'the road still has it, though');
     f.run('endUlt("me");');
   } finally { f.run('drawCar=realDrawCar;'); }
+});
+
+/* ================================================================
+   LOLANTHE AND VERDANT IN THE MENUS
+   ================================================================
+   The same questions Neela's slot was asked. Each took the slot the car it
+   replaced had always held rather than being added as a seventh or an eighth,
+   the screens print its own name and its own ultimate description, and neither
+   of the two cars it replaced survives anywhere a player can read. */
+test('Lolanthe and Verdant hold the third and fourth slots',()=>{
+  const ids=Array.from(f.run('CAR_IDS'));
+  assert.equal(ids.length,6);
+  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rose','siren']);
+  assert.equal(ids.includes('bolt'),false);
+  assert.equal(ids.includes('timestamp'),false);
+  for(const [id,btn] of [['lolanthe','#carLolanthe'],['verdant','#carVerdant']]){
+    assert.ok(f.$(btn),'the select screen has a '+id+' button');
+    assert.equal(f.$(btn).querySelector('canvas').getAttribute('data-car'),id);
+    /* The generic carEl()/capitalisation path still reaches it. */
+    assert.equal(f.run('carEl("'+id+'").id'),btn.slice(1));
+  }
+  /* The temperaments moved across rather than being left behind or invented. */
+  assert.deepEqual(JSON.parse(f.run('JSON.stringify(TEMPERS.lolanthe)')),
+                   {nerve:0.54,spite:0.64,patience:0.68,guard:0.52});
+  assert.deepEqual(JSON.parse(f.run('JSON.stringify(TEMPERS.verdant)')),
+                   {nerve:0.38,spite:0.32,patience:0.88,guard:0.74});
+  assert.equal(f.run('typeof TEMPERS.bolt'),'undefined');
+  assert.equal(f.run('typeof TEMPERS.timestamp'),'undefined');
+});
+for(const lang of ['en','fr']){
+  test('Lolanthe and Verdant are named and described on screen in '+lang,()=>{
+    f.run(`chooseLang(${JSON.stringify(lang)});`);
+    for(const id of ['lolanthe','verdant']){
+      const name=f.run('t("'+id+'")');
+      assert.equal(name,id[0].toUpperCase()+id.slice(1));
+      const power=f.run('t("'+id+'Ult")');
+      assert.ok(power.length>40,id+' has a description of its own, not the shared one');
+      assert.notEqual(power,f.run('t("roseUlt")'));
+      f.run('previewCar("'+id+'");');
+      assert.equal(f.$('#carHeroName').textContent,name);
+      assert.equal(f.$('#carHeroPower').textContent,power);
+      assert.equal(f.$('#carHero').getAttribute('data-car'),id);
+    }
+    /* Each says what its own fifteen seconds actually do. */
+    const lol=f.run('t("lolantheUlt")').toLowerCase();
+    for(const word of lang==='en'
+        ? ['mind control','three seconds','lane','tumbleweed','puddles']
+        : ['contrôle mental','trois secondes','voie','virevoltants','flaques']){
+      assert.ok(lol.includes(word.toLowerCase()),lang+' Lolanthe mentions '+word);
+    }
+    const ver=f.run('t("verdantUlt")').toLowerCase();
+    for(const word of lang==='en'
+        ? ['invisible','destroyed','half','tumbleweed','puddles']
+        : ['invisible','détruit','demi','virevoltants','flaques']){
+      assert.ok(ver.includes(word.toLowerCase()),lang+' Verdant mentions '+word);
+    }
+    /* And neither leaks implementation vocabulary into the garage. */
+    for(const leak of ['mindt','verdanthide','hitbox','sprite','alpha','vown']){
+      assert.equal(lol.includes(leak),false,lang+' Lolanthe leaks '+leak);
+      assert.equal(ver.includes(leak),false,lang+' Verdant leaks '+leak);
+    }
+  });
+}
+test('Mind Controlled is a Condition the garage can show',()=>{
+  f.run('chooseLang("en");');
+  assert.equal(f.run('CONDITIONS.mindControlled.type'),'debuff');
+  assert.equal(f.run('t("condMindControlled")'),'Mind Controlled');
+  assert.ok(f.run('t("mindControlledInfo")').length>40);
+  /* The badge is a vector path like every other one; the PNG artwork is the
+     world effect and is deliberately not in the badge system. */
+  assert.ok(f.run('JSON.stringify(COND_PATHS[CONDITIONS.mindControlled.icon])'));
+  const svg=f.run('conditionSvg("mindControlled",22)');
+  assert.ok(svg.includes('<svg')&&svg.includes(f.run('CONDITIONS.mindControlled.col')));
+  assert.equal(/\.PNG/i.test(svg),false,'the badge reaches for artwork instead of a path');
+});
+test('no Bolt or Timestamp string survives anywhere the player can read',()=>{
+  const strings=f.run('JSON.stringify(STR)');
+  assert.equal(/\bbolt\b/i.test(strings),false,'STR still carries a Bolt entry');
+  assert.equal(/timestamp/i.test(strings),false,'STR still carries a Timestamp entry');
+  for(const lang of ['en','fr']){
+    f.run(`chooseLang(${JSON.stringify(lang)});`);
+    const text=f.document.body.textContent;
+    assert.equal(/\bbolt\b/i.test(text),false,'the page still prints Bolt in '+lang);
+    assert.equal(/timestamp/i.test(text),false,'the page still prints Timestamp in '+lang);
+  }
+  f.run('chooseLang("en");');
 });
 
 console.log('\n'+checks+' menu behavior checks passed (DOM/Canvas test doubles; visual and hardware checks separate).');

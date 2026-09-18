@@ -8,26 +8,32 @@ function test(name,fn){fn();checks++;console.log('  ok  '+name);}
 function eq(code,value){assert.equal(run(code),value,code);}
 function near(code,value){assert.ok(Math.abs(run(code)-value)<1e-7,code);}
 f.boot();
+/* The shared car box the hull arithmetic below is measured against. */
+const carW0=100, carH0=186;
 run('G.local=false;G.mode="endless";G.car="flann";G.rules=defaultRules();startRace();clearTimers();G.state="running";carW=100;carH=186;G.x=200;playerY=300;G.tilt=0;');
-/* The two sprite cars are drawn larger on the road than the shared car box, so
-   their hulls have to come out larger by exactly the same factor. A big car
-   wearing a small hitbox is the failure this guards against. */
+/* Three of the four sprite cars are drawn larger on the road than the shared
+   car box, so their hulls have to come out larger by exactly the same factor.
+   A big car wearing a small hitbox is the failure this guards against.
+
+   Lolanthe is in the unscaled list on purpose: it is a sprite car whose
+   measured artwork already fills the box across, so it carries no race scale
+   and must be treated exactly like the two procedural cars here. */
 test('sprite race dimensions scale by their own factors and nobody else moves',()=>{
-  for(const [car,k] of [['flann',1.12],['neela',1.18]]){
+  for(const [car,k] of [['flann',1.12],['neela',1.18],['verdant',1.10]]){
     near(`raceScale(${JSON.stringify(car)})`,k);
     near(`carDims(${JSON.stringify(car)}).w/carW`,k);
     near(`carDims(${JSON.stringify(car)}).h/carH`,k);
     near(`carDims(${JSON.stringify(car)}).h/carDims(${JSON.stringify(car)}).w`,run('carH/carW'));
   }
-  for(const car of ['bolt','timestamp','rose','siren']){
+  for(const car of ['lolanthe','rose','siren']){
     eq(`raceScale(${JSON.stringify(car)})`,1);
     near(`carDims(${JSON.stringify(car)}).w`,run('carW'));
     near(`carDims(${JSON.stringify(car)}).h`,run('carH'));
   }
   /* And the racer-shaped reader agrees with the car-id one, for either kind. */
-  run('G.car="flann";Object.assign(G.rivals[0],{car:"bolt",neelaForm:false});');
+  run('G.car="flann";Object.assign(G.rivals[0],{car:"rose",neelaForm:false});');
   eq('JSON.stringify(racerDims("me"))===JSON.stringify(carDims("flann"))',true);
-  eq('JSON.stringify(racerDims(G.rivals[0]))===JSON.stringify(carDims("bolt"))',true);
+  eq('JSON.stringify(racerDims(G.rivals[0]))===JSON.stringify(carDims("rose"))',true);
 });
 test('the tapered eight-point hull scales with the render and stays inset',()=>{
   run('G.car="flann";G.tilt=0;');
@@ -39,8 +45,10 @@ test('the tapered eight-point hull scales with the render and stays inset',()=>{
   eq('Math.abs(carHit().points[0].x-G.x) < Math.abs(carHit().points[3].x-G.x)',true);
   /* Inset: still well inside the artwork's own width. */
   eq('Math.abs(carHit().points[3].x-G.x) < carDims("flann").w/2',true);
-  /* A rectangle car is untouched by any of it. */
-  run('G.car="bolt";');
+  /* A rectangle car is untouched by any of it. Rose rather than one of the
+     four cars that now have a power of its own, so this measures geometry and
+     nothing else. */
+  run('G.car="rose";');
   near('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))',0.40*100);
   near('carHit().points.map(p=>Math.abs(p.y-playerY)).reduce((a,b)=>Math.max(a,b))',0.42*186);
   eq('carHit().points.length',4);
@@ -59,7 +67,7 @@ test('Flann hit geometry exists before its image loads',()=>{
   assert.equal(run('JSON.stringify(carHit())'),before);
 });
 test('nearest-point distance detects exact side contact and a tiny separation',()=>{
-  run('G.car="bolt";G.tilt=0;');
+  run('G.car="rose";G.tilt=0;');
   near('nearestOnCar(carHit(),250,300).x',240);
   near('nearestOnCar(carHit(),250,300).y',300);
   eq('insideHitPolygon(carHit().points,240,300)',true);
@@ -117,7 +125,7 @@ test('finish, wreck and invulnerability protections still exclude contact',()=>{
   }
 });
 test('rotated oil rejects empty bounding-box corners and accepts body overlap',()=>{
-  run('G.car="bolt";G.x=200;playerY=300;G.tilt=Math.PI/4;globalThis.hs={x:280,y:370,rx:3,ry:3,rot:0.6,jit:0.1,s:0.3};');
+  run('G.car="rose";G.x=200;playerY=300;G.tilt=Math.PI/4;globalThis.hs={x:280,y:370,rx:3,ry:3,rot:0.6,jit:0.1,s:0.3};');
   eq('slickHits(hs,carHit())',false);run('hs.x=G.x;hs.y=playerY;');eq('slickHits(hs,carHit())',true);
 });
 test('puddle collision follows the smoothed outline and supports swept positions',()=>{
@@ -215,7 +223,7 @@ test('hull returns to the car on a racer swap and on natural expiry',()=>{
   run(`G.local=false;G.car="neela";G.rules=defaultRules();G.rules.bots=1;
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0;G.dead=0;G.invuln=0;G.lane=1;G.x=laneCX(1);
-       globalThis.v=G.rivals[0];v.car="bolt";v.dead=0;v.invuln=0;v.finished=null;
+       globalThis.v=G.rivals[0];v.car="rose";v.dead=0;v.invuln=0;v.finished=null;
        v.lane=1;v.x=G.x;v.y=playerY-carH*0.3;v.tilt=0;v.changeT=1e6;
        G.ult=1;startUlt("me");`);
   eq('carHit().points.length',20);
@@ -253,7 +261,7 @@ test('alternate-form contact still meets edge touch and a tiny separation',()=>{
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0;G.lane=1;G.x=laneCX(1);G.dead=0;G.invuln=0;
        G.rivals.forEach(r=>{r.y=playerY+9000;r.finished=null;});
-       globalThis.r=G.rivals[0];r.car="bolt";r.dead=0;r.invuln=0;r.finished=null;
+       globalThis.r=G.rivals[0];r.car="rose";r.dead=0;r.invuln=0;r.finished=null;
        r.lane=1;r.x=G.x;r.tilt=0;G.ult=1;startUlt("me");`);
   /* Nose of the alternate body to tail of a rectangle car: touching counts,
      a thousandth of a pixel clear does not. */
@@ -277,6 +285,80 @@ test('Neela hit geometry exists before either of its images loads',()=>{
   fresh.images.forEach(i=>i.load());
   fresh.run('endUlt("me");');
   assert.equal(fresh.run('JSON.stringify(carHit())'),before);
+});
+
+/* ================================================================
+   LOLANTHE AND VERDANT  -  two more measured bodies
+   ================================================================
+   Both are sprite cars whose geometry is measured off their own artwork, so
+   these are the numbers that turn that measurement into a regression rather
+   than an undocumented visual guess. None of them is Flann's or Neela's, and
+   neither car is allowed to quietly fall back on the generic rectangle. */
+test('Lolanthe and Verdant carry their own traced hulls, not the shared rectangle',()=>{
+  run(`G.local=false;G.mode="endless";G.car="flann";G.rules=defaultRules();
+       startRace();clearTimers();G.state="running";carW=100;carH=186;
+       G.x=200;playerY=300;G.tilt=0;`);
+  for(const car of ['lolanthe','verdant']){
+    run(`G.car=${JSON.stringify(car)};`);
+    /* Its own hull, out of its own CARS entry, and not the four-point box. */
+    eq('carHit().points.length',24);
+    eq(`CARS[${JSON.stringify(car)}].hitShape === racerModel("me").hitShape`,true);
+    eq(`JSON.stringify(racerModel("me").hitShape)===JSON.stringify(CAR_HIT_RECT)`,false);
+    eq(`JSON.stringify(racerModel("me").hitShape)===JSON.stringify(CARS.flann.hitShape)`,false);
+    eq(`JSON.stringify(racerModel("me").hitShape)===JSON.stringify(CARS.neela.hitShape)`,false);
+    /* Symmetric about the car's centre line, which the artwork is. */
+    eq(`CARS[${JSON.stringify(car)}].hitShape.every(function(p){
+          return CARS[${JSON.stringify(car)}].hitShape.some(function(q){
+            return Math.abs(q[0]+p[0])<1e-9 && Math.abs(q[1]-p[1])<1e-9; }); })`,true);
+    /* Inset: never wider or longer than the body the renderer will draw. */
+    const d=run(`JSON.stringify(racerDims("me"))`);
+    const dim=JSON.parse(d);
+    const fr=JSON.parse(run(`JSON.stringify(CARS[${JSON.stringify(car)}].spriteBounds)`));
+    const bodyW=dim.w*Math.min(1,(fr[2]*1024/(fr[3]*1536))*(carH0/carW0));
+    assert.ok(run('carHit().points.map(p=>Math.abs(p.x-G.x)).reduce((a,b)=>Math.max(a,b))')
+              <= bodyW/2+1e-6, car+' hull is wider than its own artwork');
+    assert.ok(run('carHit().points.map(p=>Math.abs(p.y-playerY)).reduce((a,b)=>Math.max(a,b))')
+              <= dim.h/2+1e-6, car+' hull is longer than its own box');
+    /* A point on the centre line is inside it and one well off the corner is not. */
+    eq('insideHitPolygon(carHit().points,G.x,playerY)',true);
+    eq('insideHitPolygon(carHit().points,G.x+carDims(G.car).w,playerY-carDims(G.car).h)',false);
+  }
+  run('G.car="flann";');
+});
+test('Lolanthe and Verdant hulls exist before their images load',()=>{
+  const fresh=fixture();fresh.boot();
+  fresh.run(`G.local=false;G.mode="endless";G.car="lolanthe";G.rules=defaultRules();
+             startRace();clearTimers();G.state="running";carW=100;carH=186;
+             G.x=200;playerY=300;G.tilt=0;`);
+  assert.equal(fresh.images.every(i=>!i.complete),true);
+  assert.equal(fresh.run('carHit().points.length'),24);
+  const before=fresh.run('JSON.stringify(carHit())');
+  fresh.images.forEach(i=>i.load());
+  assert.equal(fresh.run('JSON.stringify(carHit())'),before);
+});
+test('an invisible Verdant is collided exactly as a visible one is',()=>{
+  run(`G.local=false;G.car="verdant";G.rules=defaultRules();G.rules.bots=1;
+       G.mode="endless";startRace();clearTimers();G.state="running";
+       carW=100;carH=186;G.tilt=0;G.x=200;playerY=300;G.dead=0;G.invuln=0;`);
+  const before=run('JSON.stringify(carHit())');
+  run('G.ult=1;startUlt("me");tickVerdant("me",1);');
+  eq('verdantUltActive("me")',true);
+  eq('G.verdantHide',1);                       /* fully hidden */
+  eq('noContact("me")',false);                 /* and fully present */
+  assert.equal(run('JSON.stringify(carHit())'),before,'hiding moved the hitbox');
+  run('endUlt("me");tickVerdant("me",1);');
+  eq('G.verdantHide',0);
+  assert.equal(run('JSON.stringify(carHit())'),before);
+});
+test('the notes change no collision geometry',()=>{
+  run(`G.local=false;G.car="rose";G.rules=defaultRules();G.mode="endless";
+       startRace();clearTimers();G.state="running";carW=100;carH=186;
+       G.tilt=0;G.x=200;playerY=300;G.dead=0;G.invuln=0;`);
+  const before=run('JSON.stringify(carHit())');
+  run('applyMindControl("me");');
+  eq('conditionOn("me","mindControlled")',true);
+  assert.equal(run('JSON.stringify(carHit())'),before,'the three notes moved the hull');
+  run('clearDebuffs("me");');
 });
 
 console.log(`\n${checks} hitbox checks passed.`);
