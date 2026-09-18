@@ -195,11 +195,12 @@ function laneCX(i){ return roadX + laneW*(i+0.5); }
    carW/carH above are the road's car: the size the lane, the grid and most of
    the six racers are built around, and nothing here makes them bigger. What a
    car may have is a race scale of its own - CARS.<id>.raceScale - and three of
-   the four sprite cars do, each measured off its own artwork: Flann is drawn
+   the five sprite cars do, each measured off its own artwork: Flann is drawn
    and collided a little over a tenth larger, Neela a shade under a fifth and
    Verdant a tenth, so all of them read properly against the asphalt. Lolanthe
-   already fills the box across at 1:1 and needs none, and the two procedural
-   cars are built around the shared box and have none.
+   and Rhosyn already fill the box across at 1:1 and need none - both are broad
+   against their own length - and Siren is built around the shared box and has
+   none.
 
    These two are the only readers of that number, and everything that genuinely
    needs a racer's physical body - the sprite, the hull in carHit(), the gap a
@@ -218,7 +219,8 @@ function carDims(carId){
   return { w:carW*k, h:carH*k };
 }
 /* ---- which body a racer is wearing ------------------------------
-   Five cars and a normal Neela are their own entry in CARS. A Neela in its
+   Five cars and a normal Neela are their own entry in CARS - the five sprite
+   bodies and Siren's. A Neela in its
    alternate form is the entry nested under Neela, which carries its own
    sprite, its own measured bounds, its own emitter, its own hull and its own
    size relative to the racer's box.

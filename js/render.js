@@ -1083,17 +1083,27 @@ function aeroSeed(i, salt){
   return v - Math.floor(v);
 }
 
-/* The void itself: black everywhere, with the horizon bleeding magenta. */
+/* The void itself: black everywhere, with a band of magenta bleeding off the
+   horizon and nothing else. The band is deliberately tight - the world has to
+   read as near-total black with one light in it, so a wash over half the view
+   would make it a purple sky rather than a void. */
 function aeroBackdrop(top, height, horizon){
   ctx.fillStyle = AERO_VOID;
   ctx.fillRect(0, top, W, height);
-  const haze = ctx.createLinearGradient(0, horizon - height*0.34, 0, horizon + height*0.30);
+  const haze = ctx.createLinearGradient(0, horizon - height*0.20, 0, horizon + height*0.13);
   haze.addColorStop(0,    withA(AERO_PINK, 0));
-  haze.addColorStop(0.55, withA(AERO_PINK, 0.30));
-  haze.addColorStop(0.72, withA(AERO_PALE, 0.16));
+  haze.addColorStop(0.46, withA(AERO_PINK, 0.10));
+  haze.addColorStop(0.62, withA(AERO_PINK, 0.24));
+  haze.addColorStop(0.72, withA(AERO_PALE, 0.15));
   haze.addColorStop(1,    withA(AERO_PINK, 0));
   ctx.fillStyle = haze;
   ctx.fillRect(0, top, W, height);
+  /* and the foreground sunk back into the black it came out of */
+  const sink = ctx.createLinearGradient(0, horizon + height*0.30, 0, top + height);
+  sink.addColorStop(0, "rgba(0,0,0,0)");
+  sink.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = sink;
+  ctx.fillRect(0, horizon, W, top + height - horizon);
   /* the line the whole world converges on */
   ctx.fillStyle = withA(AERO_PALE, 0.5);
   ctx.fillRect(0, horizon, W, 1);
