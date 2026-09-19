@@ -1,1276 +1,513 @@
-You are modifying the current main branch of the GitHub repository:
-
-hiyroscript/seren
+Modify the Seren game in the hiyroscript/seren repository carefully and comprehensively. Do not make a superficial constants-only patch. Trace every affected gameplay path, HUD path, bot/local-player path, documentation reference, and automated check so all systems continue to agree with one another.
 
-You must also inspect and use the visual track implementation from:
+The goal is to rebalance the race around a new 1.00× → 3.00× speed progression, remove the old five-minute finish trigger, lengthen/rebalance boost and ultimate charging, and add skill-based ultimate-charge rewards for perfect hazard dodges and Mystery Bubble pickups.
 
-hiyroscript/ponu
+Do not change unrelated car abilities, collision priorities, track visuals, item behavior, custom-race rules, difficulty philosophy, or finish parking behavior.
 
-Do not implement these requirements from assumptions. Read the current Seren code, understand how each relevant system already works, and extend the existing architecture rather than creating disconnected one-off systems.
+Repository architecture that matters
 
-The required work has four major parts:
+The current implementation is spread across several files and must be changed consistently.
 
-1. Completely replace Siren with Saffron, including a new sprite car and a dragon-form ultimate.
-2. Improve Flann’s ultimate fire visuals and change Flann’s ram collision rule from symmetric to directional.
-3. Rebuild Rhosyn’s Aero-Glow world using Ponu’s track visuals, while removing race-position HUD information inside Aero-Glow.
-4. Re-measure and fix the newly changed Rhosyn sprite, including its size, hitbox, and exhaust placement.
+js/data.js owns the shared tuning constants. It currently contains ULT_CHARGE = 75, SPEED_SECONDS = 30, MULT_STEP = 0.05, MAX_MULT = 2.00, derived MAX_TIER, RACE_MINUTES = 5, FINAL_TRACKS = 3, and FINISH_STRETCH = 900.
 
-All existing local multiplayer, bot, player, rendering, ultimate, collision, hazard, HUD, pause, finish, respawn, and reduced-motion behavior must remain correct.
+js/race.js owns the main race update loop. It currently computes player pace from BASE_SPEED * speedMult(), applies the existing normal boost at ×1.5, scrolls the world with d = G.speed * dt, changes speed tiers through G.speedT, starts the closing race phase after RACE_MINUTES * 60, charges the player’s ultimate, and separately applies the same boost/ultimate systems to rivals and local human racers.
 
-⸻
+js/mechanics.js contains speedMult(), ultDelta(), Mystery Bubble collection through takeBubble(), trap collision geometry, markPassed(), hazard handling, and the shared ultimate reward/penalty infrastructure.
 
-1. Understand the existing architecture before changing anything
+js/hud.js currently assumes the old five-minute finish system in both raceSpan() and #raceClock. That logic must be rewritten rather than left pointing at a deleted RACE_MINUTES.
 
-The current Seren implementation already has systems that should be reused.
+js/runtime.js currently initializes speedT with a literal 30; this must not remain stale after the new speed interval is introduced.
 
-Important existing files include at minimum:
+js/render.js scrolls visual patterns from G.scroll and has speed-streak intensity based on hard-coded speed normalization. Audit this for the new 3.00× maximum so visuals do not behave as though 2.00× were still the effective ceiling.
 
-* js/data.js
-* js/runtime.js
-* js/mechanics.js
-* js/race.js
-* js/render.js
-* js/hud.js
-* js/ai.js
-* js/ui.js
-* js/main.js
-* js/i18n.js
-* index.html
-* css/app.css
-* tools/check.mjs
-* tools/menu-check.mjs
-* tools/ultimate-check.mjs
-* tools/sprite-check.mjs
-* tools/hitbox-check.mjs
-* relevant files under docs/
+README.md and docs/TUNING.md explicitly describe the old 75-second ultimate, ~2.5-second boost, ~7-second refill, five-minute race structure, and 1.00×–2.00× progression. They need to match the implementation after the change.
 
-Important current systems to preserve and extend:
+tools/ultimate-check.mjs currently explicitly asserts ULT_CHARGE === 75 and a one-second refill of 1/75. Update it and add regression coverage for the new mechanics. Extend the existing validation/test tools rather than leaving these changes untested.
 
-* CARS contains sprite bounds, exhaust anchors, hit shapes, race scaling, alternate forms, etc.
-* raceScale(), carDims(), racerModel(), modelScale(), and racerDims() provide the authoritative model/size path.
-* carHit() reads the active model and active model dimensions. Do not create a second unrelated collision geometry system.
-* Neela already has an alternate form using CARS.neela.altForm.
-* Neela already has the exact transformation presentation required here:
-    * startWhiteout()
-    * startMorph()
-    * WHITEOUT_TIME
-    * MORPH_TIME
-* racerModel() ensures the rendered model and hit shape switch together.
-* drawSpriteCar() / drawSpriteExhaust() already support any number of exhaust anchors.
-* spriteFrame() and spriteAnchor() already keep exhaust locations attached to measured image-space locations through scaling and rotation.
-* Rhosyn already uses explicit Aero-Glow phases and deliberately keeps canonical race simulation running in the shared world.
-* Flann currently uses flannUltActive() and a symmetric ramWinner() system. This is one of the things that must change.
-* Verdant collision priority already lives in specialContact(). Preserve this ordering.
-* Lolanthe Mind Control uses mindT, controlsLocked(), mindTakes(), mindShove(), and the aura system.
-* The ultimate lifecycle is intentionally shared:
-    * ULT_CHARGE = 75
-    * ULT_TIME = 15
-    * ULT_SPEED = 2.0
+1. Change the base race speed progression to 1.00× → 3.00×
 
-Do not change those shared numbers for Saffron.
+The standard road-speed progression must start at 1.00× and stop at 3.00×.
 
-⸻
+Change the tuning to:
 
-2. Fully rename Siren to Saffron
+const SPEED_SECONDS = 20;
+const MULT_STEP = 0.10;
+const MAX_MULT = 3.00;
+const MAX_TIER = Math.round((MAX_MULT - 1) / MULT_STEP);
 
-Siren must cease to exist as a playable car and as an internal car identifier.
+BASE_SPEED remains 420.
 
-The new canonical identifier is:
+The resulting MAX_TIER should still be 20.
 
-saffron
+The progression must therefore be exactly:
 
-The displayed name is:
+0:00   1.00×
+0:20   1.10×
+0:40   1.20×
+1:00   1.30×
+...
+3:20   2.00×
+...
+6:20   2.90×
+6:40   3.00×
 
-Saffron
+Every increase must be exactly +0.10×.
 
-Replace Siren everywhere, including code, markup, translations, comments, docs, tests, fixtures, car lists, temperament data, and UI IDs.
+Never allow 3.10×, floating-point-looking HUD values such as 2.999999×, or an extra tier beyond MAX_TIER.
 
-Examples that must change include, but are not limited to:
+Keep speedMult() as the canonical source of the base race multiplier. It should continue clamping to MAX_MULT.
 
-* CARS.siren → CARS.saffron
-* "siren" → "saffron"
-* CAR_IDS
-* TEMPERS
-* siren / sirenUlt i18n keys
-* #carSiren → #carSaffron
-* data-car="siren" → data-car="saffron"
-* main.js click wiring
-* tests that currently use Siren as the ordinary control car
-* README tables/descriptions
-* architecture comments
-* stale comments describing Siren as the sixth or only procedural car
-* the currently present sirenOwner runtime field: either rename it appropriately if it genuinely has a purpose or remove it if it is dead state
+Do not create a second independent notion of race speed.
 
-Do not leave a hidden compatibility alias named siren unless the current game actually has persisted data requiring a migration. If there is no persisted Siren selection, remove the old identifier completely.
+The base target for every racer must continue to be derived from:
 
-At completion, a repository-wide case-insensitive search for siren should return no stale game references.
+BASE_SPEED * speedMult()
 
-⸻
+before personal modifiers such as ultimate, slowing, normal boost, boost cans, or shunts are applied.
 
-3. Saffron base vehicle — v_saffron.PNG
+Player, bots, and local human racers must all use the same progression.
 
-Saffron is no longer a procedurally drawn style:"cruiser" car.
+2. Make world scrolling genuinely follow the new speed progression
 
-Use:
+The new multiplier must affect the actual race, not only a HUD number.
 
-v_saffron.PNG
+The current canonical player/world scroll path is:
 
-This asset already exists at the repository root.
+target = BASE_SPEED * speedMult();
+...
+G.speed = ...
+G.scroll += G.speed * dt;
+...
+const d = G.speed * dt;
 
-Saffron must use the exact same sprite-data architecture as Flann, Neela, Lolanthe, Verdant, and Rhosyn.
+Preserve that architecture.
 
-In CARS.saffron, define accurate data measured from the actual current PNG:
+Road markings, scenery, props, walking features, hazards, Mystery Bubbles, finish-line positioning, distance accumulation, and every other world-fixed object that currently consumes G.speed, G.scroll, or d must continue to scroll from that canonical movement.
 
-* key:"saffron"
-* style:"sprite"
-* sprite:"v_saffron.PNG"
-* an appropriate accent
-* spriteBounds
-* exactly 2 exhaust anchors
-* hitShape
-* appropriate flame/boost colors
-* raceScale only if the measured artwork requires it
+At 3.00× base speed, the road must actually move at roughly three times the 1.00× base rate before personal modifiers.
 
-Do not guess the current PNG bounds from another vehicle.
+Do not change the multiplier only visually.
 
-Inspect the alpha-visible artwork in v_saffron.PNG and measure:
+Do not introduce a separate fixed scroll speed.
 
-* the true visible vehicle body bounds
-* transparent margins
-* the actual two exhaust/tailpipe openings
-* the real physical body outline
+Audit for hidden assumptions that 2.00× is the maximum. In particular, js/render.js currently computes road-speed streak strength using hard-coded numbers:
 
-The hitShape must describe Saffron’s visible collision body rather than a generic rectangle. Exclude transparent corners, shadows, decorative exhaust flames, isolated trim, or other pixels that should not physically collide.
+const sr = clamp((G.speed - 330) / 620, 0, 1) + ...
 
-Preserve the PNG’s aspect ratio. Do not stretch the car independently on X/Y just to make it fit.
+Retune this normalization around BASE_SPEED and MAX_MULT, or otherwise make it suitable for the new 3.00× range so the visual acceleration still has useful progression rather than effectively saturating around the old ceiling.
 
-Size the base car so it visually belongs beside Flann and Neela and does not look like a tiny icon or an oversized boss vehicle.
+Likewise, inspect any engine/audio normalization or similar hard-coded speed visualization. It is fine for effects to saturate at extreme temporary speeds from boosts/ultimates, but normal 1.00×–3.00× progression should be represented sensibly.
 
-The base Saffron must have exactly two boost plumes, and each plume root must remain inside the correct tailpipe through:
+Keep the existing short physical speed easing unless removing it is truly necessary. The important requirement is that the canonical target and actual scrolling follow the new tier. Do not create a HUD multiplier that disagrees with the baseline race-speed system.
 
-* race scaling
-* different viewport sizes
-* local split-screen
-* lane-change tilt
-* reduced motion
-* player and rival rendering
+3. Remove the five-minute finish trigger completely
 
-Use the existing image-space exhaust anchoring system. Do not manually place flames using arbitrary world-space offsets.
+The race must no longer enter its closing phase because five minutes have elapsed.
 
-Delete the old procedural Siren cruiser rendering if it becomes unused after this conversion.
+Remove RACE_MINUTES = 5 as a finish-condition tuning value and remove all gameplay/HUD dependencies on it.
 
-⸻
+G.raceT may remain. It is useful as elapsed-race time and is used elsewhere for animations/projections. Do not delete raceT just because the five-minute rule disappears.
 
-4. Saffron ultimate — futuristic metal dragon
+The old logic in js/race.js currently does approximately this:
 
-Saffron’s ultimate transforms the vehicle into:
+if (G.tracksLeft < 0 && G.raceT >= RACE_MINUTES * 60)
+  G.tracksLeft = FINAL_TRACKS;
 
-vtm_saffron.PNG
+That condition must disappear.
 
-This is a large futuristic metallic dragon.
+Do not replace five minutes with another arbitrary elapsed-time threshold.
 
-The dragon is an alternate form of the same racer. It is not a second racer and must never create a second race position.
+4. Start the final-track/finish-line sequence only after 3.00× is reached
 
-Use the existing alternate-model architecture rather than making rendering and collision independently ask whether Saffron is ulting.
+For race modes that run to a flag (bots and local through the existing toFlag() behavior), the closing sequence must become eligible only once the normal speed progression has reached 3.00×.
 
-Add a Saffron alternate model containing measurements from the actual vtm_saffron.PNG:
+The correct lifecycle is:
 
-* key:"saffronAlt" or an equivalently clear internal name
-* style:"sprite"
-* sprite:"vtm_saffron.PNG"
-* measured spriteBounds
-* measured dragon hitShape
-* exactly 6 exhaust/tailpipe anchors
-* appropriate flame/boost colors
-* any model sizing metadata needed to achieve the required two-lane scale
+Race starts
+→ speed progresses from 1.00× to 3.00×
+→ exactly when MAX_TIER / 3.00× is reached, arm the existing FINAL_TRACKS phase
+→ existing track transitions continue
+→ after the existing final-track countdown reaches zero, plant the finish line
+→ FINISH_STRETCH remains 900 metres
+→ racers finish and park exactly as they do now
 
-The six exhaust positions must be measured from the actual six tailpipes in the dragon image.
+Use the existing G.tracksLeft, FINAL_TRACKS, switchTrack(), G.finishAt, FINISH_STRETCH, checkFinish(), and parking system instead of building a second finish mechanism.
 
-Do not approximate six effects around the back of the sprite. Each effect must originate from a real tailpipe.
+A good authoritative place for the new trigger is immediately after the speed-tier update in the running-race clock block:
 
-Dragon size
+if (
+  toFlag() &&
+  G.finished === null &&
+  G.tracksLeft < 0 &&
+  G.tier >= MAX_TIER
+) {
+  G.tracksLeft = FINAL_TRACKS;
+}
 
-The dragon must visually occupy approximately two full Seren lanes in width.
+The exact structure can vary, but it must be a one-time state transition associated with reaching MAX_TIER.
 
-There are three lanes, and the dragon should clearly span the visual width of two of them.
+Do not repeatedly reset G.tracksLeft to FINAL_TRACKS every frame.
 
-Do this from measured sprite bounds and lane geometry, not from a hardcoded desktop-pixel width.
+Do not plant the finish line immediately at 3.00×. Reaching 3.00× starts the existing final-track system. The finish line must still come through that system and the existing FINISH_STRETCH.
 
-The scaling must remain correct on:
+Keep FINAL_TRACKS = 3 and FINISH_STRETCH = 900 unless another existing invariant requires a structural rewrite.
 
-* mobile
-* desktop
-* 2-player local
-* 3-player local
-* 4-player local
+Endless mode must remain endless. Reaching 3.00× in Endless must never create tracksLeft, finishAt, or a finish line.
 
-Preserve the dragon image’s natural aspect ratio.
+5. Rewrite the HUD race projection for the new finish rule
 
-The two-lane width is primarily the visible airborne dragon footprint. Do not distort the sprite simply to hit an arbitrary number.
+js/hud.js::raceSpan() currently projects the end of the race using the time remaining until the five-minute mark. That becomes invalid.
 
-⸻
+Rewrite the projection around time remaining until MAX_TIER.
 
-5. Saffron transformation must reuse Neela’s transition
+Before 3.00×, determine the remaining speed-progression time from G.tier and G.speedT.
 
-When Saffron activates the ultimate, use the same transformation transition presentation Neela already uses.
+For example, conceptually:
 
-That means reusing the shared:
+const tiersRemaining = MAX_TIER - G.tier;
+const secondsToMax =
+  tiersRemaining <= 0
+    ? 0
+    : G.speedT + Math.max(0, tiersRemaining - 1) * SPEED_SECONDS;
 
-* startWhiteout()
-* startMorph()
-* WHITEOUT_TIME
-* MORPH_TIME
+Then account for the track timer as it will stand when the 3.00× threshold is reached and project the existing closing tracks plus FINISH_STRETCH.
 
-Do not create a second white-flash implementation with different timing.
+The old raceSpan() already contains logic that advances G.trackT conceptually to a future race milestone. Reuse that idea, replacing the old five-minute milestone with the new 3.00× milestone.
 
-The owner’s screen should white-flash just as Neela’s transformation does, and the vehicle itself should use the same morph/body flash system.
+Once G.tracksLeft >= 0, continue using the actual final-track state.
 
-This must remain per-view in local multiplayer. Transforming Saffron in one split-screen column must not white out the other players’ columns.
+Once G.finishAt exists, use the real finish distance exactly as today.
 
-The shared ultimate continues to be:
+Endless must still return no fixed finish span.
 
-* 15 seconds
-* 2× pace
-* normal shared ultimate meter
-* normal shared ultimate lifecycle
+6. Replace the obsolete five-minute HUD clock with a speed readout
 
-⸻
+The current #raceClock displays the five-minute countdown before the final phase. That countdown must disappear.
 
-6. Flying state — do not change canonical race position
+Before the final-track sequence begins, use that HUD space to display the current base race multiplier to two decimals:
 
-As Saffron transforms into the dragon, it begins lifting away from the track.
+1.00×
+1.10×
+1.20×
+...
+3.00×
 
-Implement explicit Saffron flight state carried by every racer, similar in spirit to the existing per-racer Neela/Rhosyn state.
+It must come from the same canonical multiplier as gameplay, preferably speedMult(), not from a duplicated formula.
 
-A clean phase model would be conceptually equivalent to:
+When the closing-track phase begins, preserve the useful final-race information, but keep the speed state understandable. A compact format such as these is appropriate:
 
-* off
-* rise
-* air
-* drop
+3.00× · T-3
+3.00× · T-2
+3.00× · T-1
+3.00× · 842m
 
-Naming can differ if the implementation is clearer, but the state must be explicit.
+The exact separator can match Seren’s existing HUD style, but do not display the removed five-minute countdown anywhere.
 
-Also maintain a purely visual altitude/lift factor, for example a normalized 0→1 value.
+Avoid adding a large new HUD component if the existing #raceClock can cleanly become the speed/final-state readout.
 
-Critical invariant:
+7. Increase shared ultimate charge time from 75 seconds to 85 seconds
 
-Altitude must not become a second race coordinate.
+Change:
 
-Do not create:
+const ULT_CHARGE = 75;
 
-* a second race distance
-* a second lane
-* a second world
-* an alternate meters
-* an alternate biome
-* a teleport-out/teleport-back position
+to:
 
-While flying, Saffron’s canonical:
+const ULT_CHARGE = 85;
 
-* lane
-* lateral X
-* tilt
-* speed
-* metres
-* race order
-* finish progress
-* biome progression
+This must remain the one shared charging clock for every racer.
 
-must keep updating through the ordinary shared simulation.
+The player and every rival/local human already charge using:
 
-This is similar to the good invariant already used by Rhosyn: presentation/state must not fork the race simulation.
+dt / ULT_CHARGE
 
-The visual dragon may be elevated on screen and rendered above the road, but the racer’s canonical road position remains authoritative.
+Preserve that shared architecture.
 
-⸻
+One second of normal charge should therefore add exactly approximately:
 
-7. Make the dragon genuinely appear above the track
+1 / 85 = 0.0117647...
 
-The dragon must clearly read as flying high above:
+to the normalized 0–1 ultimate meter.
 
-* the road
-* racers
-* hazards
+A completely empty ultimate meter takes 85 seconds of eligible charging to reach 100%.
 
-Do not simply swap the PNG while leaving it looking glued to the tarmac.
+Do not change:
 
-Use a visual altitude presentation that does not corrupt the canonical Y/distance.
+ULT_TIME = 15
+ULT_SPEED = 2.0
 
-For example:
+The active ultimate should still last 15 seconds and still provide its existing 2× personal pace multiplier.
 
-* maintain a road-position shadow or grounding cue at the canonical position
-* raise the dragon visually away from that footprint
-* optionally vary shadow softness/opacity/offset with altitude
-* ensure the airborne dragon draws above road-level cars and hazards in render order
-* do not make its visual altitude change metersOf(), race ordering, hazard world positions, or collision world coordinates
+Update stale comments saying “seventy-five seconds.”
 
-The rise should begin at the same time as the transformation.
+Update the hard-coded tests in tools/ultimate-check.mjs from 75 and 1/75 to 85 and 1/85.
 
-By the end of the morph/rise transition, the dragon should clearly be high above the track.
+8. Add +10 percentage points of ultimate charge for a true perfect hazard dodge
 
-The owner must still be able to understand their lane position and steer accurately despite the large sprite.
+Add a skill reward for a genuine last-second hazard dodge.
 
-⸻
+A successful perfect dodge grants:
 
-8. Physical interaction while Saffron is airborne
++0.10
 
-Once the dragon form is active, ordinary road-level things cannot reach Saffron.
+to the racer’s normalized ultimate meter, i.e. +10 percentage points.
 
-While airborne:
+Introduce a named tuning constant rather than burying the reward inline, for example:
 
-* racer-to-racer rear contact must not hit it
-* lane barges must not hit it
-* tumbleweeds must not hit it
-* puddles must not hit it
-* oil slicks must not hit it
-* road pickups/mystery bubbles must not be collected by merely flying over them
-* road-level seekers/projectiles must not physically strike it if they are intended to travel on the road
-* ordinary hazard explosions on the ground must not destroy it
-* ordinary racers cannot destroy it by collision
-* the dragon must not destroy racers simply by passing above them
-* the dragon must not clear or smash ordinary hazards by passing above them
+const ULT_ON_PERFECT_DODGE = 0.10;
 
-Do not add Saffron to clearsSolidHazards().
+The timing window should be intentionally very small. Use approximately:
 
-That existing predicate means the racer physically hits and destroys solid road hazards. Saffron’s behavior is different: it is above them.
+const PERFECT_DODGE_WINDOW = 0.12;
 
-The dragon must fly over tumbleweeds rather than smash them.
+meaning roughly 120 milliseconds of genuine imminent danger.
 
-It must fly over puddles rather than clear them.
+The important design requirement is that this must not become a generic “passed near a hazard” bonus.
 
-This distinction should be reflected in tests.
+A racer should qualify only when the hazard was on a legitimate collision course within that tiny imminent-impact window and the racer then avoids the impact through last-second lateral movement.
 
-⸻
+Use Seren’s real collision geometry. Do not implement this with lane numbers alone.
 
-9. Saffron must still be vulnerable to Mind Control
+The game already has useful primitives such as carHit(), nearestOnCar(), puddleHits(), sweptY(), the trap radius values, and the per-racer hazard bit system used by o.hit, o.nm, and markPassed().
 
-There is one deliberate exception to the airborne isolation:
+Build the perfect-dodge system around those existing primitives.
 
-Saffron can still be Mind Controlled while flying.
+A robust design is to maintain small per-hazard bitmasks such as a “perfect-dodge threat” mask and “perfect-dodge already rewarded” mask. Player bit 1 and the existing rival bits (2 << index) can be reused so one shared hazard can independently track all racers without creating a parallel player-only implementation.
 
-Lolanthe’s Mind Control must continue to affect an airborne Saffron if Saffron is inside the aura’s normal canonical road-distance range.
+Only arm the threat bit if the racer’s pre-avoidance trajectory/hull would genuinely collide with the hazard within PERFECT_DODGE_WINDOW.
 
-This means:
+Then, when that hazard safely passes that racer or resolves without hitting them, grant the reward only if that threat bit was armed and the racer actually escaped the threatened collision.
 
-* mindT can be applied
-* the Mind Controlled Condition appears
-* controls are locked
-* held boost/input is cancelled exactly as for other racers
-* an already-running Saffron ultimate continues ticking
-* Saffron continues physically moving through the simulation because Mind Control is not a freeze
-* the forced lane change from Lolanthe should still be able to change Saffron’s canonical lane when the existing aura rule calls for it
+Use swept/predicted geometry so a 120 ms window does not become frame-rate dependent. The main frame loop caps dt, but the mechanic should still work at 30, 60, 120+ FPS and under occasional long frames.
 
-Be careful with the current architecture here.
+For road hazards such as puddles and tumbleweeds, use their actual shape/radius and relative movement.
 
-At present, refusesDebuffs() is derived from noContact(). If airborne Saffron is simply added to noContact() without another change, Mind Control would incorrectly become impossible.
+For meteors, treat the imminent rock/impact/blast timing consistently with the existing rockLead(), rockAlt(), falling timer, and detonation geometry. A racer that genuinely exits the danger footprint during the tiny final window may earn the reward; simply being nowhere near the meteor must not.
 
-Separate the concepts cleanly.
+A normal early lane change must not qualify.
 
-Rhosyn being in Aero-Glow should still reject Mind Control because Rhosyn is literally absent from the shared road/world.
+A wide miss must not qualify.
 
-Saffron is different: it is vertically above the shared track but still mentally reachable by Lolanthe.
+Driving beside a hazard without making a last-second avoidance must not qualify.
 
-Do not weaken Verdant’s existing Mind Control immunity.
+Getting hit must not qualify.
 
-⸻
+The same hazard must never award the same racer twice.
 
-10. Meteor exception
+Do not award perfect-dodge charge to a racer that is wrecked, finished, invulnerable, outside the shared road in Rhosyn’s Aero-Glow, or airborne as Saffron where normal road-hazard interaction is intentionally absent.
 
-Saffron cannot smash road hazards like the other hazard-clearing ultimates.
+The mechanic should work fairly for the player, local human racers, and bots. Difficulty may affect whether a bot is capable of making such a maneuver through its normal driving intelligence, but difficulty must not multiply the reward.
 
-However, a falling meteor is different because it comes from above.
+Grant the reward through the existing:
 
-If a falling meteor physically comes down onto the airborne dragon:
+ultDelta(who, ULT_ON_PERFECT_DODGE);
 
-the meteor must be destroyed.
+infrastructure.
 
-Saffron takes no damage.
+That is important because ultDelta() already preserves Seren’s invariant that charge rewards/penalties do not extend or shorten an ultimate that is currently active.
 
-The meteor must be removed before it reaches the road and must not proceed into its normal ground detonation.
+Do not add +10% directly to G.ult or R.ult in a way that bypasses that invariant.
 
-Play appropriate destruction particles/audio.
+9. Mystery Bubble collection must grant +5 percentage points of ultimate charge
 
-This is a special airborne meteor interception rule, not membership in clearsSolidHazards().
+Every successfully collected Mystery Bubble must now grant the collecting racer:
 
-It must work for:
++0.05
 
-* player-controlled Saffron
-* bot Saffron
-* local multiplayer Saffron
+ultimate charge, i.e. +5 percentage points.
 
-The existing meteor logic currently has a player-side falling-rock/roof path and a later blast path. Generalize this carefully enough that a Saffron dragon belonging to any racer can intercept a descending meteor when the falling rock overlaps the dragon.
+Add a named constant such as:
 
-A meteor that lands/explodes on the ground underneath an airborne Saffron should not kill Saffron.
+const ULT_ON_BUBBLE = 0.05;
 
-Do not accidentally make Saffron destroy tumbleweeds because of the meteor rule.
+and apply it through:
 
-⸻
+ultDelta(who, ULT_ON_BUBBLE);
 
-11. End of Saffron ultimate — transform back, then drop
+The important repository-specific detail is that Mystery Bubble item rewards are currently intentionally disabled:
 
-When the 15-second ultimate ends, Saffron must transform back into the normal v_saffron.PNG car using the same Neela-style white/morph transition.
+const MYSTERY_ITEMS_ENABLED = false;
 
-The return sequence is:
+Do not turn this back on.
 
-1. Begin the white/morph transition.
-2. Switch back from dragon model to Saffron’s normal car model under the transition.
-3. The normal car is still visually high above the road.
-4. Instead of smoothly landing, it drops rapidly onto its canonical road position.
-5. On touchdown, resolve the special landing impact.
-6. Then restore ordinary road collision/hazard behavior.
+The new +5 ultimate-charge reward must work independently of the disabled item-reward gate.
 
-Do not teleport Saffron in race distance during this sequence.
-
-The canonical simulation already knows exactly where the racer belongs.
-
-⸻
-
-12. Saffron touchdown kill
-
-If Saffron lands directly on another racer at the end of the drop, that racer is destroyed.
-
-The landing check should use actual measured collision geometry rather than “same lane means hit.”
-
-At the touchdown frame:
-
-* use Saffron’s normal-car touchdown hull, because the dragon has already transformed back
-* compare it against the actual hulls of reachable racers
-* destroy any racer genuinely overlapped by the touchdown body
-* use the existing wreck lifecycle and credit Saffron as the attacker where appropriate
-* skip racers that are already finished, wrecked, invulnerable, or absent in Aero-Glow
-* do not create a new destruction implementation
-
-This landing kill is a unique top-down impact, not an ordinary rear-end or side barge.
-
-Do not route it through Flann’s ram helper.
-
-If more than one reachable racer is directly overlapped at touchdown, resolve all genuine overlaps rather than arbitrarily choosing the first array entry.
-
-After resolving the impact, add a tiny one-step landing/contact guard if necessary so the exact same overlap cannot immediately be processed again as an ordinary rear-end in the same simulation step.
-
-If Saffron crosses the finish line while still flying, normal finish cleanup must remove the form/flight state without causing a phantom landing attack after the race.
-
-⸻
-
-13. Saffron exhaust/boost visuals
-
-Normal Saffron:
-
-* exactly 2 tailpipes
-* exactly 2 correctly anchored boost plumes
-
-Dragon Saffron:
-
-* exactly 6 tailpipes
-* exactly 6 correctly anchored boost plumes
-
-Use the existing drawSpriteExhaust() loop and sprite-space anchoring.
-
-Do not add six hardcoded render calls.
-
-Make the data carry the six anchors.
-
-The exhaust roots must remain accurate after:
-
-* dragon two-lane scaling
-* lane-change tilt
-* split-screen scaling
-* viewport resizing
-
-The active model must determine the active exhaust anchors automatically through racerModel().
-
-The existing renderer currently treats an active ultimate as a boosted-speed visual as well. Keep that behavior consistent unless the surrounding code clearly requires otherwise: Saffron’s dragon should visibly emit through all six outlets while traveling at ultimate pace.
-
-⸻
-
-14. Flann collision behavior — make the ram directional
-
-Flann’s current ram logic is symmetric.
-
-Current code effectively allows an ulting Flann to destroy the other racer regardless of which racer initiated contact.
-
-That must change.
-
-New rule:
-
-An ulting Flann destroys a racer only when Flann is the racer that collides into them.
-
-If another ordinary racer collides into an ulting Flann, the other racer must not automatically be destroyed.
-
-The collision should fall back to the ordinary applicable collision response.
-
-This applies to both contact entry paths:
-
-* rear-end contact
-* lane-barge contact
-
-Direction matters.
-
-Examples:
-
-* Ulting Flann rear-ends Saffron → Saffron is destroyed.
-* Saffron rear-ends an ulting Flann → Saffron is NOT destroyed merely because Flann is ulting; ordinary rear-end behavior happens.
-* Ulting Flann barges into another racer’s lane → the other racer is destroyed.
-* Another racer barges into an ulting Flann → do not automatically kill the barger; resolve the ordinary barge rules.
-* Two ulting Flanns meeting should continue to cancel the special ram and use ordinary collision behavior rather than arbitrarily letting array order decide a winner.
-
-Do not keep using a symmetric ramWinner(a,b) abstraction if it obscures who initiated the collision.
-
-The call sites already know the initiator:
-
-* rearEnd(who, victim) → who initiated the rear-end
-* bumpTarget(victim, dir, by) → by initiated the lane collision
-
-Use that information.
-
-⸻
-
-15. Preserve the special Flann vs ulting Verdant interaction
-
-The directional Flann change must not alter the existing special interaction between an ulting Flann and an ulting Verdant.
-
-The current Verdant priority is handled before ordinary Flann ram resolution in specialContact().
-
-Preserve this special case:
-
-ulting Flann + ulting Verdant collision = mutual destruction
-
-This remains true regardless of which of those two racers initiated the contact.
-
-Do not accidentally let the new directional Flann rule bypass or weaken this.
-
-Also preserve all other Verdant collision behavior unless explicitly changed by this task.
-
-⸻
-
-16. Improve Flann’s ultimate fire dramatically
-
-The current Flann ultimate fire is built from an outer halo plus flame tongues around the sides/rear/shoulders.
-
-Improve it substantially.
-
-The important visual requirement is:
-
-the fire must look like it is actually burning in and through the car, not like detached flames placed around the outside of the sprite.
-
-Keep it as a renderer-only cosmetic effect.
-
-Do not write race state from the fire renderer.
-
-Recommended approach:
-
-* use Flann’s measured hull/body geometry as the spatial guide
-* put hot flame cores inside the visible body/silhouette
-* place animated fire pockets over engine/body regions
-* root outer tongues inside the car before they extend outward
-* use white/yellow-hot internal cores, orange/red outer flame, softer heat glow
-* optionally clip an interior fire layer to Flann’s physical/visible hull
-* allow selected tongues to escape from the body edges
-* keep enough of v_flann.PNG visible that the car remains identifiable
-* use additive/lighten compositing carefully instead of washing the entire sprite into a featureless blob
-* ensure the effect follows car tilt and race scaling because it is rendered in car-local coordinates
-
-The effect should clearly look more intense and more integrated than the existing ten detached tongues.
-
-Reduced-motion mode must still show that Flann is on fire, but without animated flicker.
-
-Ordinary boost must still show only the normal tailpipe boost effect.
-
-A boost can must not ignite the body.
-
-Only an active Flann ultimate gets the body fire.
-
-⸻
-
-17. Update Flann text to match the new collision rule
-
-The current English ultimate description says Flann “wrecks any racer it touches,” which will become inaccurate.
-
-Update English and French descriptions so they communicate the directional behavior correctly.
-
-The description should convey that Flann destroys racers it rams/crashes into, rather than implying that touching an ulting Flann is always fatal.
-
-Keep the meteor/tumbleweed/puddle details accurate.
-
-⸻
-
-18. Rebuild Rhosyn’s Aero-Glow using Ponu’s track visuals
-
-Inspect hiyroscript/ponu, especially:
-
-js/14-rendering.js
-
-The relevant Ponu track renderer contains:
-
-* RUNG_M = 3.4
-* DASH_M = 2.2
-* eachRung()
-* drawTrack()
-* drawHorizon()
-* drawEdges()
-
-Also inspect:
-
-js/08-vfx.js
-
-for:
-
-* ambient track motes
-* speed lines
-* lane-change/dash visual language
-* track/world-scrolling behavior
-
-Ponu’s track visual language includes:
-
-* a softly highlighted current/player column
-* three clear columns/lanes
-* short transverse “rungs” inside each lane
-* every fourth rung stronger/brighter
-* faint continuous lane divider lines
-* stronger scrolling dash/dot marks laid on top of those divider lines
-* world-motion-driven spacing rather than screen-fixed decoration
-* subtle ambient specks
-* speed-dependent streaks
-* horizon/entry fade
-* side-edge gradients that strengthen as speed increases
-* minimal clean geometric framing
-
-The divider dash/dot rhythm is particularly important. The user specifically wants the same dots/dashes that separate the lanes in Ponu.
-
-⸻
-
-19. Aero-Glow should become a real-looking three-lane world
-
-The existing Aero-Glow renderer is a black/magenta perspective void with a horizon and glowing route ribbons.
-
-Replace/expand that presentation so Aero-Glow feels like a complete stylized race world based on Ponu’s three-column track.
-
-It should still unmistakably be Rhosyn’s private black-and-pink realm.
-
-Use pink variants of Ponu’s visual elements.
-
-A suitable palette direction is:
-
-* near-black void/background
-* extremely dark pink-black track
-* hot magenta primary accents
-* pale pink highlights
-* dim rose divider lines
-* brighter pink divider dots/dashes
-* pink-tinted rungs
-* pink ambient motes
-* pale-pink/high-magenta speed lines
-* pink horizon and edge fades
-
-Do not simply copy Ponu’s white paper/black ink colors.
-
-Translate its visual hierarchy into Aero-Glow’s existing black/pink identity.
-
-⸻
-
-20. Preserve Rhosyn’s canonical simulation invariant
-
-Do not break the strongest part of the current Rhosyn implementation.
-
-Aero-Glow remains a view plus interaction isolation, not a second track simulation.
-
-While Rhosyn is in Aero-Glow:
-
-* canonical metres continue advancing
-* canonical lane/X continue updating
-* ultimate 2× pace continues
-* steering continues
-* race order continues updating
-* track/biome transitions continue underneath
-* finish progress continues
-* Rhosyn can legitimately finish the race
-* G.biome, G.next, G.seam, etc. remain the real shared-world state
-
-Do not implement a separate Aero-Glow distance.
-
-Drive all scrolling Ponu-style track motifs from the owner’s canonical travel/distance so they move at exactly the speed Rhosyn is actually covering ground.
-
-Rendering Aero-Glow twice with unchanged state must not mutate the game or advance its visuals independently.
-
-Reduced-motion mode should stop cosmetic flicker/random animation without removing the world structure.
-
-⸻
-
-21. What to borrow from Ponu and what NOT to borrow
-
-Bring over/adapt the track/environment visual language.
-
-Do include equivalents of:
-
-* lane highlight
-* lane divider lines
-* lane divider dots/dashes
-* rungs
-* stronger periodic rungs
-* ambient track specks
-* speed streaks
-* edge shading
-* horizon/top fade
-* clean track framing
-* motion tied to world travel
-
-Do not import Ponu gameplay.
-
-Do not add:
-
-* Ponu hazards
-* Ponu barriers
-* Ponu falling squares
-* Ponu boost pads
-* Ponu mystery pickups
-* Ponu marble racers
-* Ponu item slot
-* Ponu course generation
-* Ponu finish-line logic
-* Ponu HUD/race ladder
-
-Aero-Glow remains Seren gameplay underneath.
-
-It only adopts Ponu’s track visual design.
-
-There must still be:
-
-* no other racers visible
-* no Seren hazards visible
-* no pickups visible
-* no oil visible
-* no seekers visible
-* no shared-world scenery visible
-
-Only Rhosyn and the Aero-Glow world belong there.
-
-⸻
-
-22. Aero-Glow HUD changes
-
-While a Rhosyn owner is inside Aero-Glow, remove all race-position/distance information from that owner’s view.
-
-The user specifically does not want:
-
-* the normal player distance meter/readout
-* place rows
-* distance rows
-* the right-side race tracker/ladder
-* racer distance indicators associated with that tracker
-
-The normal page HUD currently contains:
-
-* #trackName
-* .readout
-* #hudDist
-* the #posRow* position/distance rows
-
-The canvas HUD/local-player equivalent is generated through:
-
-* hudReadout()
-* drawLadder()
-* drawSeatHud()
-
-Modify these systems conditionally for the Aero-Glow owner.
-
-Single-screen behavior
-
-While player one is viewing Aero-Glow:
-
-* #trackName must show Aero-Glow
-* hide the normal .readout block
-* hide/remove the right-hand race ladder/tracker
-* do not show distance/place indicators
-
-Keep gameplay-critical controls/meters that were not requested to disappear, especially the ultimate meter, so the owner can see how much Aero-Glow time remains.
-
-When Rhosyn returns:
-
-* restore the actual current shared-world track name immediately
-* restore the readout
-* restore the race tracker
-* use the current biome/track at that moment, not the track Rhosyn originally left
-
-Do not set curTrackKey to Aero-Glow. Aero-Glow still is not the actual race track.
-
-Local multiplayer behavior
-
-Only the Rhosyn owner’s split-screen column should lose its distance/place HUD and tracker.
-
-Other local players must retain their normal readout and tracker.
-
-Do not use a global DOM/class state that accidentally removes race information from every local player.
-
-The Aero-Glow owner’s column should identify the world as Aero-Glow in an appropriate local-view location.
-
-⸻
-
-23. Rhosyn sprite has changed — remeasure everything
-
-The current v_rhosyn.PNG has changed.
-
-Do not trust the currently hardcoded Rhosyn measurements merely because tests currently pass.
-
-The existing data currently assumes particular bounds, exhaust locations, hit shape, and raceScale: 1 behavior.
-
-Re-measure the current v_rhosyn.PNG from scratch.
-
-Update:
-
-* spriteBounds
-* exhaust anchors
-* hitShape
-* raceScale
-
-The new hit shape must follow the current artwork.
-
-If the new sprite still contains internal empty/transparent geometry, do not fill those spaces simply to make a convex blob.
-
-The hitbox should be as precise as practical using the same polygon system the other sprite cars already use.
-
-It must continue to rotate with the vehicle correctly.
-
-Hit geometry must exist without relying on the image having loaded.
-
-⸻
-
-24. Resize Rhosyn so it visually belongs in Seren
-
-The current Rhosyn model should be resized so it feels consistent with cars such as Flann and Neela.
-
-Use raceScale, measured bounds, and the existing sizing system.
-
-Do not manually draw the image at a random percentage just in render.js, because then collision geometry and rendering would disagree.
-
-A reasonable visual goal is that Rhosyn’s visible body occupies a comparable amount of its lane to the established sprite cars rather than dominating the lane or looking undersized.
-
-Flann’s current tuning intentionally lands around roughly 70% of a lane visually.
-
-Use the current artwork’s proportions to find a natural scale near that visual family.
-
-Preserve aspect ratio.
-
-Update every existing test that assumes Rhosyn has no race scaling.
-
-⸻
-
-25. Fix Rhosyn’s exhaust after the model change
-
-The boost effect must originate from the real exhaust/tailpipe locations in the new v_rhosyn.PNG.
-
-Re-measure the tailpipes in source pixels and update CARS.rhosyn.exhaust.
-
-Do not preserve old normalized coordinates merely because the sprite filename stayed the same.
-
-Verify both plumes remain in the exhaust openings at:
-
-* multiple race sizes
-* several tilt angles
-* the new race scale
-* menu preview
-* race rendering
-* local multiplayer columns
-
-If the new artwork has a different number of visible tailpipes than the old artwork, use the actual new artwork rather than forcing old assumptions. Otherwise maintain the intended two-plume presentation.
-
-⸻
-
-26. Rhosyn Aero-Glow rendering and boost
-
-The resized/re-measured Rhosyn must use exactly the same active model inside Aero-Glow as on the shared road.
-
-Do not maintain a separate Aero-Glow size.
-
-Its exhaust must still work inside Aero-Glow.
-
-The existing private-world renderer should continue to draw only Rhosyn and its own exhaust/morph state.
-
-The vehicle should remain at its canonical lane/X/tilt.
-
-⸻
-
-27. Model selection architecture
-
-Extend racerModel() cleanly so both transformed vehicles remain authoritative.
+takeBubble() currently returns immediately when MYSTERY_ITEMS_ENABLED is false. Therefore apply the ultimate-charge reward before that early return.
 
 Conceptually:
 
-* Neela alternate form while neelaFormActive()
-* Saffron dragon while Saffron’s dragon-form state is active
-* otherwise base CARS[o.car]
+function takeBubble(who, bx, by) {
+  ultDelta(who, ULT_ON_BUBBLE);
+  if (!MYSTERY_ITEMS_ENABLED) {
+    popFx(bx, by, "#BFC6D0");
+    return;
+  }
+  // existing item reward path
+}
 
-Do not spread direct checks for o.car === "saffron" throughout rendering, collision, exhaust, and size calculations.
+Keep the existing plain Bubble pop when item rewards are disabled.
 
-Car-specific lifecycle predicates belong in mechanics.
+Do not grant an item while the switch is false.
 
-The renderer and carHit() should get the correct answer from the common model abstraction.
+If item rewards are eventually switched back on, the same Bubble should grant the +5 ultimate charge and then continue through the normal item roll exactly once.
 
-The model being rendered and the model whose geometry is being measured must always be the same model on the same frame.
+Because this goes through ultDelta(), collecting a Bubble during an already-active ultimate must not extend that active ultimate’s 15-second duration.
 
-⸻
+Apply the reward equally to player, bot, and local-human collectors.
 
-28. Update initialization/reset/finish/wreck paths
+10. Rebalance normal boost duration and refill
 
-Every per-racer Saffron state field must exist for:
+The normal boost already provides the desired 1.5× multiplier. Preserve that value.
 
-* player one
-* bots
-* local human rivals
+A full normal boost bar must now last 5.5 seconds instead of ~2.5 seconds.
 
-Initialize it in both the global state and rival creation.
+A completely empty normal boost bar must now refill in 5.0 seconds instead of ~7 seconds.
 
-Add a clearSaffronState(who) or equivalent single cleanup path.
+Do not approximate these by eye.
 
-Use it during:
+The mathematically correct normalized rates are:
 
-* new race initialization
-* wreck cleanup where applicable
-* finish cleanup
-* race teardown/reset
-* any forced state reset
+drain = 1 / 5.5; // ≈ 0.1818181818 per second
+refill = 1 / 5;  // 0.2 per second
 
-Do not leave a dragon sprite, altitude value, drop timer, or landing flag alive after a racer has finished or a new race starts.
+Do not continue scattering those rates as duplicated magic numbers.
 
-Pausing the race must pause Saffron’s rise/drop clocks along with everything else.
+Create shared tuning constants in js/data.js, for example:
 
-⸻
+const BOOST_SPEED = 1.5;
+const BOOST_DRAIN_TIME = 5.5;
+const BOOST_REFILL_TIME = 5.0;
+const BOOST_DRAIN_RATE = 1 / BOOST_DRAIN_TIME;
+const BOOST_REFILL_RATE = 1 / BOOST_REFILL_TIME;
 
-29. AI behavior
+Then replace all relevant player and rival/local-human paths in js/race.js.
 
-Do not give bots a separate version of Saffron’s ultimate.
+The player’s existing:
 
-Bot Saffron uses the exact same:
+G.charge = clamp(G.charge - dt * 0.4, 0, 1);
+G.charge = clamp(G.charge + dt * 0.14, 0, 1);
 
-* transform
-* flight
-* altitude
-* collision isolation
-* meteor interception
-* Mind Control vulnerability
-* drop
-* landing kill
-* exhaust
+must use the new shared rates.
 
-as player Saffron.
+All corresponding rival paths using R.charge must use those exact same rates.
 
-Existing bot ultimate decision logic may decide when to activate it.
+The existing ×1.5 applications for player and rivals should use the shared BOOST_SPEED constant so the value cannot drift between implementations.
 
-Only add Saffron-specific AI valuation if necessary to prevent obviously invalid behavior; do not create a second gameplay implementation.
+Preserve the existing dry-bar lockout behavior: reaching zero locks boost, and boost becomes available again only after the bar returns to full.
 
-AI drivers must understand that an airborne Saffron is not physically occupying a road collision slot even though it still has a canonical lane for steering/race simulation.
+Do not alter bot decision-making simply to force them to burn the full 5.5 seconds. Their intelligence may still release boost early according to D.keep, hazards, or race strategy. The capacity of the boost system is what changes.
 
-Do not make bots try to block, ram, or avoid its airborne body as though it were road-level.
+Do not confuse normal boost with other speed effects.
 
-Mind Control targeting remains allowed.
+Leave the Mystery Bubble boost can alone:
 
-⸻
+CAN_TIME = 2.2
+CAN_SPEED = 1.55
 
-30. Documentation and translations
+Leave the rear-end shunt alone:
 
-Update the game documentation to describe the actual new behavior.
+SHUNT_TIME = 0.8
+SHUNT_BOOST = 1.35
 
-At minimum inspect/update:
+Leave the shared ultimate speed multiplier at 2.0.
 
-* README.md
-* docs/ARCHITECTURE.md
-* docs/ULTIMATE-QA.md
-* docs/FLANN-QA.md
-* docs/RHOSYN-QA.md
-* docs/TUNING.md where relevant
+11. Remove stale literal initialization values
 
-Add a dedicated docs/SAFFRON-QA.md if that fits the existing documentation pattern.
+js/runtime.js currently has:
 
-Update English and French i18n.
+tier: 0,
+speedT: 30,
 
-Saffron’s ultimate description should accurately describe:
+Do not leave 30 there after SPEED_SECONDS becomes 20.
 
-* 15 seconds at double pace
-* transformation into the metal dragon
-* flight over road-level racers/hazards
-* inability of ordinary things to reach it
-* Mind Control still working
-* falling meteor interception
-* transformation back and drop
-* destroying a racer directly underneath at touchdown
+Prefer:
 
-Keep the copy readable; the UI description does not need to expose implementation details such as phase names.
+speedT: SPEED_SECONDS,
 
-Update Rhosyn’s text if it currently describes Aero-Glow only as a mostly empty void and that no longer accurately represents the upgraded pink track world.
+since data.js is intentionally loaded before runtime.js.
 
-⸻
+Likewise, if there are other easy-to-remove duplicated literals directly representing named timing constants, use the canonical constants without broadly refactoring unrelated systems.
 
-31. Tests — do not merely update implementation
+startRace() already resets G.speedT = SPEED_SECONDS; preserve that.
 
-Extend the existing validators rather than relying on manual playtesting.
+12. Update documentation and comments
 
-Run all existing checks:
+Update every player-facing or maintainer-facing description that becomes false.
 
-node tools/check.mjs
+At minimum update README.md, docs/TUNING.md, comments in js/data.js, comments in js/race.js, comments in js/mechanics.js, and relevant test comments.
 
-node tools/menu-check.mjs
+The documentation should state that normal race speed begins at 1.00×, rises by 0.10× every 20 seconds, reaches 3.00× after 6 minutes 40 seconds, and then starts the closing-track sequence.
 
-node tools/ultimate-check.mjs
+Replace the old README race diagram:
 
-node tools/sprite-check.mjs
+0:00 → 5:00 → three tracks → +900m → finish
 
-node tools/hitbox-check.mjs
+with a diagram based on:
 
-All must pass.
+0:00 1.00×
+→ +0.10× every 20s
+→ 6:40 / 3.00×
+→ three-track closing sequence
+→ +900m
+→ finish
 
-Add regression coverage for the following.
+Document boost as 5.5 seconds of capacity, five seconds to refill, and 1.5× pace.
 
-Saffron identity and sprites
+Document ultimate charging as 85 seconds.
 
-Verify:
+Document the +10% perfect-dodge reward and +5% Mystery Bubble pickup reward.
 
-* CAR_IDS contains saffron
-* no siren
-* base model uses v_saffron.PNG
-* dragon uses vtm_saffron.PNG
-* menu/garage previews show base Saffron only
-* normal race shows base sprite
-* ultimate switches to dragon
-* end of ultimate switches back
-* base has exactly 2 exhaust anchors
-* dragon has exactly 6 exhaust anchors
-* no fallback procedural cruiser rendering is used
+Keep the existing explanation that active ultimates use their meter as remaining duration and ordinary charge deltas do not alter that duration.
 
-Saffron geometry
+13. Add regression coverage
 
-Verify:
+Do not rely solely on manual testing.
 
-* base hitbox is measured and not generic CAR_HIT_RECT
-* dragon hitbox is distinct and measured
-* rotated hitboxes rotate correctly
-* geometry exists before image loading
-* base rendering size and hitbox size stay locked together
-* dragon visual width is approximately two lanes at neutral scale
-* scaling remains proportional
+Extend the existing dependency-free test/validation tools. tools/check.mjs and tools/ultimate-check.mjs are natural places, but put tests wherever they best fit the existing organization.
 
-Saffron transformation
+The implementation is complete only when all of the following are verified:
 
-Verify:
+* SPEED_SECONDS === 20, MULT_STEP === 0.10, MAX_MULT === 3.00, and MAX_TIER === 20.
+* The speed progression is exactly 1.00× at start, 1.10× after 20 seconds, 2.00× after 200 seconds, and 3.00× after 400 seconds, with no value above 3.00×.
+* tracksLeft remains inactive before 3.00× even if raceT passes five minutes or any larger old threshold.
+* Reaching 3.00× in Bots or Local starts FINAL_TRACKS exactly once.
+* Reaching 3.00× in Endless does not create a finish.
+* finishAt is still created only through the existing final-track flow and still uses FINISH_STRETCH.
+* The world-scroll delta is derived from actual G.speed, and the 3.00× baseline visibly/physically scrolls faster than 2.00× and 1.00×.
+* A full held player boost lasts approximately 5.5 seconds before reaching zero.
+* A zero boost bar takes approximately five seconds to refill completely.
+* Rival/local-human boost uses the identical rates.
+* Normal boost remains exactly 1.5×.
+* ULT_CHARGE === 85.
+* One second of normal ultimate charging produces approximately 1/85 for both the player and a rival.
+* Perfect dodge awards exactly +0.10.
+* A normal early dodge, wide miss, passive miss, collision, or duplicate pass does not award perfect-dodge charge.
+* The perfect-dodge result is stable across reasonable frame rates and does not rely on one exact frame landing at the collision point.
+* A perfect dodge during an active ultimate does not extend the active ultimate.
+* Collecting a Mystery Bubble awards exactly +0.05.
+* Bubble +5 charge works while MYSTERY_ITEMS_ENABLED === false.
+* A disabled Mystery Bubble still gives no item.
+* If the item gate is enabled for a test, Bubble collection still awards only one +0.05 charge and then grants the normal item.
+* Player, bot, and local human reward paths behave consistently.
+* Existing trap penalties (ULT_ON_TRAP), wreck penalties, kill rewards, active-ultimate rules, finish protection, invulnerability, Saffron airborne behavior, Rhosyn Aero-Glow behavior, Neela/Flann/Verdant/Lolanthe interactions, item systems, and finish parking continue to pass their existing tests.
+* node tools/check.mjs, node tools/menu-check.mjs, node tools/ultimate-check.mjs, node tools/sprite-check.mjs, and node tools/hitbox-check.mjs all pass after the change.
 
-* owner receives the shared Neela-style whiteout
-* body receives the shared morph flash
-* other local views are not whited out
-* rise starts with transformation
-* canonical metres do not jump
-* canonical lane does not get replaced by a second flight lane
+Final implementation standard
 
-Saffron airborne isolation
+Treat this as a gameplay-system change, not a collection of isolated number edits.
 
-Verify an airborne Saffron:
+There must be one authoritative base race multiplier, one authoritative world-scroll speed, one shared ultimate charging clock, one shared normal-boost tuning set, and shared reward helpers for player/rivals wherever possible.
 
-* does not rear-end racers
-* cannot be rear-ended
-* cannot lane-barge racers
-* cannot be lane-barged
-* does not hit tumbleweeds
-* does not smash tumbleweeds
-* does not hit puddles
-* does not collect road bubbles
-* does not hit oil
-* is not killed by a ground meteor blast
-* remains in the shared race ordering/progress simulation
+Do not solve the player path and forget bots or local players.
 
-Saffron Mind Control
+Do not leave the old five-minute rule alive in HUD projections, documentation, or dead code.
 
-Verify:
+Do not reactivate Mystery Bubble item rewards.
 
-* Lolanthe can Mind Control airborne Saffron
-* mindT is applied
-* controls lock
-* active ultimate keeps ticking
-* Mind Control can force the canonical lane change where the aura normally would
-* Verdant’s separate immunity is unchanged
-* Rhosyn in Aero-Glow remains unreachable
+Do not change the 900 m finish stretch, three-track closing sequence, 15-second ultimate duration, 2× ultimate pace, 1.55× boost-can effect, 1.35× shunt, track duration, or unrelated car mechanics.
 
-Saffron meteor interception
+After implementation, review the diff specifically for stale literals 75, 30, 0.05, 2.00, RACE_MINUTES, dt * 0.4, and dt * 0.14 where they referred to the old systems. Do not blindly replace unrelated numeric occurrences.
 
-For player, bot, and local-human Saffron:
+The finished result should feel like one coherent progression:
 
-* place a falling meteor directly onto the dragon
-* verify meteor is removed
-* verify it does not detonate on the ground
-* verify Saffron remains alive
-* verify destruction FX occur
-* verify Saffron has not gained ordinary clearsSolidHazards() behavior
-
-Saffron drop
-
-Verify:
-
-* ultimate expiration begins return morph
-* model switches back to normal car
-* canonical race distance does not teleport
-* car drops from full visual altitude to road
-* directly overlapping racer is wrecked at touchdown
-* non-overlapping racer survives
-* invulnerable/finished/absent racers are not illegally wrecked
-* no duplicate collision occurs on the same frame
-* subsequent frames use ordinary road collision rules again
-
-Saffron exhaust
-
-At multiple scales and tilts:
-
-* base renders exactly two boost plumes
-* all roots coincide with measured base tailpipes
-* dragon renders exactly six
-* all six roots remain on measured dragon tailpipes
-* no extra fallback plume appears
-
-Flann directional ram
-
-Replace the old assertions that explicitly expected “wrecks whatever it rear-ends, and whatever rear-ends it.”
-
-Test:
-
-* Flann → racer rear-end = racer wrecked
-* racer → Flann rear-end = ordinary rear-end, racer not automatically wrecked
-* Flann → racer barge = racer wrecked
-* racer → Flann barge = ordinary barge, racer not automatically wrecked
-* two ulting Flanns = no special winner
-* ulting Flann vs ulting Verdant = mutual destruction in both directions
-* player, bot, and local-human Flann all use identical rules
-
-Flann fire
-
-Verify:
-
-* body fire appears only for active Flann ultimate
-* ordinary boost does not trigger body fire
-* boost-can speed does not trigger body fire
-* other cars never get Flann fire
-* reduced motion leaves a static but visible fire
-* fire roots/interior effect are positioned on/inside Flann’s measured body rather than being an unrelated screen-space halo
-
-Rhosyn sprite regression
-
-Update the old assumptions.
-
-Verify:
-
-* current v_rhosyn.PNG measurements are used
-* updated raceScale is honored
-* updated hull matches renderer dimensions
-* exhaust anchors use the new model
-* rotated geometry remains correct
-* menu and race use the same base model
-
-Aero-Glow/Ponu visuals
-
-Add renderer-level assertions that Aero-Glow includes the adapted concepts corresponding to:
-
-* lane highlight
-* three lanes
-* rungs
-* stronger periodic rungs
-* continuous dividers
-* moving divider dashes/dots
-* pink ambient motes
-* pink speed lines
-* edge shading
-* top/horizon fade
-
-The render must still exclude:
-
-* rivals
-* hazards
-* bubbles
-* oil
-* missiles
-* normal scenery
-
-Aero-Glow HUD
-
-Single-player:
-
-* track label becomes Aero-Glow
-* normal distance/place readout is hidden
-* right-side ladder/tracker is hidden
-* ultimate meter remains available
-* on return, actual current track label and HUD return
-
-Local multiplayer:
-
-* only Aero-Glow owner loses distance/place/tracker
-* other columns retain theirs
-* only owner’s view becomes Aero-Glow
-
-⸻
-
-32. Do not regress these existing mechanics
-
-Preserve:
-
-* Neela’s transformation, swap, trail, and hazard rules
-* Lolanthe’s aura and Mind Control duration
-* Verdant invisibility and directional defensive collision
-* Rhosyn’s exact canonical re-entry behavior
-* Rhosyn’s post-return Invulnerable behavior unless another current requirement has intentionally changed it
-* finish handling
-* local split-screen ownership
-* reduced-motion support
-* current pause semantics
-* shared ultimate meter behavior
-* current collision geometry infrastructure
-* existing sprite anchoring
-* ordinary boost behavior
-* all existing Conditions
-
-Do not “simplify” these systems while working on Saffron.
-
-⸻
-
-33. Implementation-quality requirements
-
-Do not solve this with scattered checks like:
-
-if (car === "saffron") ...
-
-in ten unrelated render/collision paths.
-
-Add clear predicates and shared state helpers.
-
-Examples of useful conceptual responsibilities include:
-
-* saffronCar(who)
-* saffronUltActive(who)
-* saffronDragonActive(who)
-* saffronAirborne(who)
-* beginSaffronFlight(who)
-* beginSaffronDrop(who)
-* tickSaffron(who, dt)
-* saffronTouchdown(who)
-* clearSaffronState(who)
-
-Exact names are flexible.
-
-Keep authoritative questions centralized.
-
-Likewise, physical unreachability and debuff immunity must not be treated as synonymous, because airborne Saffron is the explicit counterexample.
-
-⸻
-
-34. Final verification
-
-Before considering the work finished:
-
-1. Search the repository case-insensitively for siren. Remove all stale references.
-2. Confirm both Saffron assets are used by the correct models.
-3. Confirm dragon has six measured exhaust emitters.
-4. Confirm base Saffron has two.
-5. Confirm Rhosyn has been re-measured from the current PNG, rather than retaining stale coordinates.
-6. Confirm Rhosyn’s Ponu-inspired Aero-Glow visuals are driven from canonical race travel.
-7. Confirm Aero-Glow shows no race-position information to its owner.
-8. Confirm Flann only kills through offensive Flann-initiated collision, except the preserved mutual Verdant interaction.
-9. Confirm Saffron remains Mind Controllable in the air.
-10. Confirm ordinary road hazards cannot interact with flying Saffron.
-11. Confirm a falling meteor striking the dragon is destroyed.
-12. Confirm touchdown can destroy a racer directly underneath.
-13. Run every validator listed above and fix all regressions rather than weakening tests.
-
-The finished result should feel like these mechanics were designed as part of Seren’s existing architecture from the beginning, not patched onto it afterward.
+1.00× → +0.10× every 20 seconds → 3.00× → final three-track sequence → finish, with longer strategic boost capacity, faster boost recovery, an 85-second base ultimate charge, and meaningful precision rewards for last-second hazard avoidance and Mystery Bubble collection.
