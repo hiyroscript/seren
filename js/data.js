@@ -178,56 +178,37 @@ const CARS = {
               [-0.361,-0.215],[-0.280,-0.313],[-0.139,-0.410],[-0.063,-0.457]],
     flame:["#6BC46B","#E4FFD9"]
   },
-  /* ---- Rhosyn -----------------------------------------------------
-     The fifth sprite car, and the fifth ultimate that does more than run
-     fast. Its geometry is measured off v_rhosyn.PNG and off nothing else.
-
-     v_rhosyn.PNG is 1024x1536 with the body inside (75,33)-(948,1437), so the
-     visible artwork is 874 x 1405: the broadest car on the road against its
-     own length, broader even than Lolanthe. Sized into the shared car box it
-     is the width that runs out first rather than the height - the body fills
-     the box across and 86% of it down - so it already reads as a full car in
-     its lane and carries no race scale at all, for the same reason Lolanthe
-     carries none.
-
-     The two exhaust anchors are the centres of the measured stadium outlets
-     in the rear valance, (447,1320)-(500,1344) and (525,1322)-(577,1346).
-     They come out 39px either side of the sprite's own centre line, which is
-     where the artwork puts them.
-
-     The hull traces the forked nose - both prongs and the empty V between
-     them, which is real space a car can pass through and not body - then the
-     canard shoulders, the waist between them and the rear haunches, and stops
-     at the top of the diffuser blades trailing off the tail. */
+  /* Source-pixel measurements exclude low-alpha fringe and detached pixels.
+     Hulls follow the solid body; diffuser tips are decorative. */
   rhosyn: {
     key:"rhosyn", style:"sprite", sprite:"v_rhosyn.PNG", accent:"#FF4D93",
-    /* Normalized source pixels: visible body bounds (75,33)-(948,1437).
-       Keep the full PNG when drawing; bounds only control its scale and
-       centre. */
-    spriteBounds:[75/1024, 33/1536, 874/1024, 1405/1536],
-    /* The measured centre of each outlet, inside the rim. */
-    exhaust:[[473/1024, 1333/1536], [551/1024, 1333/1536]],
-    /* Inset body in logical car units, traced off the measured silhouette.
-       Excludes the transparent corners, the V between the two nose prongs and
-       the swept diffuser blades under the tail. */
-    hitShape:[[0,-0.211],[0.041,-0.256],[0.066,-0.422],[0.101,-0.420],
-              [0.183,-0.384],[0.220,-0.352],[0.293,-0.313],[0.362,-0.224],
-              [0.270,-0.107],[0.243,-0.053],[0.275,-0.003],[0.398,0.095],
-              [0.458,0.157],[0.490,0.230],[0.471,0.329],[0.389,0.389],
-              [0,0.392],[-0.389,0.389],[-0.471,0.329],[-0.490,0.230],
-              [-0.458,0.157],[-0.398,0.095],[-0.275,-0.003],[-0.243,-0.053],
-              [-0.270,-0.107],[-0.362,-0.224],[-0.293,-0.313],[-0.220,-0.352],
-              [-0.183,-0.384],[-0.101,-0.420],[-0.066,-0.422],[-0.041,-0.256]],
+    raceScale:1.14,
+    spriteBounds:[162/1024,73/1536,701/1024,1363/1536],
+    exhaust:[[483/1024,1366/1536],[544/1024,1366/1536]],
+    hitShape:[[-0.05527, -0.49633], [0.05254, -0.49633], [0.27634, -0.45304], [0.37323, -0.354], [0.39233, -0.23074], [0.30363, -0.12216], [0.31728, -0.02825], [0.44146, 0.2212], [0.44828, 0.34813], [0.3705, 0.45158], [0.06618, 0.46698], [-0.06346, 0.46698], [-0.37186, 0.45158], [-0.44965, 0.34813], [-0.44282, 0.2212], [-0.31864, -0.02825], [-0.305, -0.12216], [-0.3937, -0.23074], [-0.37459, -0.354], [-0.2777, -0.45304]],
     flame:["#FF2E9E","#FFD9F2"]
   },
-  siren: {
-    key:"siren", style:"cruiser", accent:"#4D8BFF", pip:"#FFFFFF",
-    body:"#F2F3F5", dark:"#101114", glass:"#5A6472", trim:"#101114",
-    flame:["#4D8BFF","#FFFFFF"]
+  saffron: {
+    key:"saffron", style:"sprite", sprite:"v_saffron.PNG", accent:"#FF941F",
+    raceScale:1.25,
+    spriteBounds:[194/1024,45/1536,634/1024,1390/1536],
+    exhaust:[[473/1024,1359/1536],[552/1024,1359/1536]],
+    hitShape:[[0.00134, -0.49568], [0.17262, -0.43381], [0.34256, -0.33957], [0.36531, -0.2554], [0.29974, -0.18993], [0.32115, -0.06619], [0.34658, 0.06043], [0.40679, 0.23741], [0.38538, 0.36331], [0.34524, 0.43022], [0.06155, 0.45396], [-0.05486, 0.45396], [-0.35327, 0.43022], [-0.39475, 0.36331], [-0.40679, 0.23741], [-0.34658, 0.06043], [-0.31847, -0.06619], [-0.29706, -0.18993], [-0.36263, -0.2554], [-0.34524, -0.33957], [-0.16994, -0.43381]],
+    flame:["#FF8A24","#FFF0BA"],
+    altForm:{
+      key:"saffronAlt", style:"sprite", sprite:"vtm_saffron.PNG", accent:"#FF941F",
+      laneSpan:2,
+      spriteBounds:[8/1199,10/1312,1183/1199,1282/1312],
+      exhaust:[[354/1199,577/1312],[843/1199,577/1312],
+               [582/1199,749/1312],[620/1199,749/1312],
+               [378/1199,871/1312],[820/1199,871/1312]],
+      hitShape:[[-0.00296, -0.2795], [0.04691, -0.20587], [0.03931, -0.15316], [0.10609, -0.13589], [0.21175, -0.18542], [0.45943, -0.16679], [0.49408, -0.0259], [0.41462, -0.06408], [0.27346, -0.08589], [0.18047, -0.08499], [0.15173, -0.05726], [0.21851, -0.04908], [0.23964, -0.01136], [0.16188, -0.02363], [0.11369, -0.03908], [0.08242, -0.00954], [0.15173, 0.0768], [0.21175, 0.10135], [0.18047, 0.12816], [0.11623, 0.10907], [0.06128, 0.06817], [0.0317, 0.14634], [0.04607, 0.22178], [0.00127, 0.28268], [-0.04269, 0.22178], [-0.03085, 0.14634], [-0.06128, 0.06817], [-0.11623, 0.10907], [-0.18047, 0.12816], [-0.21175, 0.10135], [-0.15173, 0.0768], [-0.08242, -0.00954], [-0.11369, -0.03908], [-0.16188, -0.02363], [-0.23964, -0.01136], [-0.21851, -0.04908], [-0.15173, -0.05726], [-0.18047, -0.08499], [-0.27346, -0.08589], [-0.41462, -0.06408], [-0.49408, -0.0259], [-0.45943, -0.16679], [-0.21175, -0.18542], [-0.10609, -0.13589], [-0.03931, -0.15316], [-0.04691, -0.20587]],
+      flame:["#FF8A24","#FFF0BA"]
+    }
   }
 };
 const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
-const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","siren"];
+const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","saffron"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -296,7 +277,7 @@ const TEMPERS = {
   lolanthe:  { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
   verdant:   { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
   rhosyn:    { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
-  siren:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
+  saffron:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
 };
 function makeTemper(car){
   const b = TEMPERS[car] || TEMPERS.flann;
@@ -401,7 +382,7 @@ const MIND_ORBIT = 0.42;                  /* turns a second the three notes make
 const MIND_NOTE_K = 0.30;                 /* one note's size, in car heights */
 /* The ring they turn on. Two radii rather than one, and both in the racer's
    own dimensions, so the three notes sit around a Lolanthe, a Neela, a Flann,
-   a Verdant, a Rhosyn and a Siren alike instead of around whichever of them
+   a Verdant, a Rhosyn and a Saffron alike instead of around whichever of them
    the number was tuned against. */
 const MIND_ORBIT_X = 0.72;                /* orbit half width, in car widths */
 const MIND_ORBIT_Y = 0.42;                /* orbit half height, in car heights */

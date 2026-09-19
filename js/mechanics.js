@@ -31,7 +31,7 @@ function invulnerableWho(who){ return who === "me" ? invulnerableMe() : invulner
    refusing to let the road have it. The fourth is not a protection at all -
    see rhosynElsewhere() below. There is no body at that position to reach,
    because the body is somewhere the race does not go. */
-function noContact(who){
+function refusesDebuffs(who){
   if(who === "me")
     return finishedMe() || G.dead > 0 || invulnerableMe() || rhosynElsewhere("me");
   return !who || finishedCar(who) || who.dead > 0 || invulnerableCar(who) ||
@@ -41,11 +41,9 @@ function noContact(who){
 function safeCar(R){ return !R || noContact(R); }
 function playerUntouchable(){ return noContact("me"); }
 
-/* Whatever cannot be reached cannot be debuffed either, so this is the same
-   answer under the name the callers actually mean: a car that is Invulnerable,
-   wrecked or finished refuses a new debuff and has any already applied cleared
-   by sweepDebuffs below. */
-function refusesDebuffs(who){ return noContact(who); }
+/* Road reachability also excludes flight. Mental reachability does not:
+   airborne Saffron still shares Lolanthe’s canonical road-distance aura. */
+function noContact(who){ return refusesDebuffs(who) || saffronAirborne(who); }
 function clearDebuffs(who){
   const o = who === "me" ? G : who;
   if(who === "me"){
@@ -64,6 +62,87 @@ function sweepDebuffs(){
     const R = G.rivals[i];
     if(invulnerableCar(R) || finishedCar(R)) clearDebuffs(R);
   }
+}
+
+/* Saffron's altitude is presentation, never a second race coordinate. */
+function saffronCar(who){ const o = who === "me" ? G : who; return !!o && o.car === "saffron"; }
+function saffronDragonActive(who){
+  const o = who === "me" ? G : who;
+  return saffronCar(who) && (o.saffronPhase === "rise" || o.saffronPhase === "air");
+}
+function saffronAirborne(who){
+  const o = who === "me" ? G : who;
+  return saffronCar(who) && ["rise","air","drop"].includes(o.saffronPhase);
+}
+function saffronAltitude(who){
+  const o = who === "me" ? G : who;
+  return (o && o.saffronLift || 0)*carH*1.15;
+}
+function clearSaffronState(who){
+  const o = who === "me" ? G : who;
+  if(o){ o.saffronPhase = "off"; o.saffronT = 0; o.saffronLift = 0; }
+}
+function beginSaffronFlight(who){
+  const o = who === "me" ? G : who;
+  o.saffronPhase = "rise"; o.saffronT = 0; o.saffronLift = 0;
+  startWhiteout(who); startMorph(who);
+}
+function beginSaffronDrop(who){
+  const o = who === "me" ? G : who;
+  o.saffronPhase = "drop"; o.saffronT = 0; o.saffronLift = 1;
+  startWhiteout(who); startMorph(who);
+}
+function saffronTouchdown(who){
+  const body = carHit(who); // already back in the measured normal-car model
+  for(const a of racers()){
+    const target = a.me ? "me" : a.obj;
+    if(target === who || noContact(target)) continue;
+    if(hitPolygonsOverlap(body.points, carHit(target).points)) wreckRacer(target, who);
+  }
+  const p = ultPos(who);
+  puffFx(p.x, p.y); noise(.18, .2);
+}
+function tickSaffron(who, dt){
+  const o = who === "me" ? G : who;
+  if(!saffronAirborne(who)) return;
+  if(o.dead > 0 || o.finished !== null ||
+     (G.finishAt > 0 && (who === "me" ? G.meters : metersOf(who)) >= G.finishAt)){
+    clearSaffronState(who); return;
+  }
+  if(o.saffronPhase === "rise"){
+    o.saffronT += dt;
+    o.saffronLift = clamp(o.saffronT/MORPH_TIME, 0, 1);
+    if(o.saffronLift === 1) o.saffronPhase = "air";
+  } else if(o.saffronPhase === "drop"){
+    o.saffronT += dt;
+    // First reveal the ordinary car aloft, then accelerate down rapidly.
+    const k = clamp((o.saffronT - MORPH_TIME*.45)/.26, 0, 1);
+    o.saffronLift = 1 - k*k;
+    if(k === 1){
+      saffronTouchdown(who);
+      clearSaffronState(who);
+      o.swapGuard = Math.max(o.swapGuard || 0, dt + 1e-6);
+    }
+  }
+}
+/* Falling rocks occupy the air; ground blast and ground hazards do not.
+   Sweep the rock through this frame's descent to avoid tunnelling at low FPS. */
+function interceptSaffronMeteor(rock, previousAlt){
+  for(const a of racers()){
+    const who = a.me ? "me" : a.obj;
+    if(!saffronDragonActive(who) || a.out) continue;
+    const altitude = saffronAltitude(who), alt = rockAlt(rock);
+    const depth = racerDims(who).h*.18;
+    if(alt > altitude + depth || previousAlt < altitude - depth) continue;
+    const y = racerY(who) - altitude;
+    const hull = carHit(who, undefined, y);
+    const ry = clamp(y, rock.y - previousAlt, rock.y - alt);
+    const p = nearestOnCar(hull, rock.x, ry);
+    if(Math.hypot(p.x-rock.x, p.y-ry) > rock.mr) continue;
+    smashFx(rock.x, ry, rock.mr, "#FF8A24", "saffron");
+    return true;
+  }
+  return false;
 }
 
 /* ---------------- Conditions -------------------------------------
@@ -153,7 +232,7 @@ function rearContact(who){
    Every car runs the same ultimate: seventy-five seconds to charge, fifteen
    seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
    below is shared by all six. Five of them add something on top of it, and
-   only while that shared lifecycle is running. Siren is the one left with the
+   only while that shared lifecycle is running. Saffron is the one left with the
    plain fifteen seconds and nothing else.
 
    These are the predicates that say which car is which, and they are the only
@@ -661,7 +740,7 @@ function tickMindControl(who, dt){
    lateral interpolation, so the model slides across rather than teleporting. */
 function mindShove(victim){
   const o = victim === "me" ? G : victim;
-  if(!o || noContact(victim)) return "none";
+  if(!o || refusesDebuffs(victim)) return "none";
   const lane = o.lane;
   const dir = lane === 0 ? 1 : (lane === 2 ? -1 : (o.mindSide || 1));
   const to = clamp(lane + dir, 0, 2);
@@ -956,10 +1035,8 @@ function emptyUlt(who){
 /* Which of two racers in contact wins it outright, or null for the ordinary
    rules. Two ulting Flanns cancel: neither can smash the other, so the contact
    falls back to the shunt and the barge like any other pair. */
-function ramWinner(a, b){
-  const ramA = flannUltActive(a), ramB = flannUltActive(b);
-  if(ramA === ramB) return null;
-  return ramA ? a : b;
+function offensiveRam(by, victim){
+  return flannUltActive(by) && !flannUltActive(victim);
 }
 /* One destruction call that does not care which kind of racer it is handed, so
    the ram uses the existing wreck lifecycle - blame, meter penalty and reward,
@@ -994,14 +1071,8 @@ function rearEnd(who, victim){
   const mover = swapMover(who, vWho);
   if(mover){ neelaSwap(mover, mover === who ? vWho : who); return; }
 
-  /* A ram settles it before the ordinary rules get a look in, and it does not
-     matter which of the two did the running into: the loser is wrecked where
-     it stands and Flann drives on with no slow, no shunt, no shove back down
-     the road and no rear-end cooldown to serve for it. Ahead of the cooldown
-     gate on purpose - a bump half a second ago must not let somebody sail
-     through an ulting Flann for free. */
-  const ram = ramWinner(who, vWho);
-  if(ram){ wreckRacer(ram === who ? vWho : who, ram); return; }
+  /* Directional ram, after Verdant priority and Neela exchange. */
+  if(offensiveRam(who, vWho)){ wreckRacer(vWho, who); return; }
 
   if((meB ? G.bumpCD : who.bumpCD) > 0) return;
   const vy = victim.y;
@@ -1057,12 +1128,10 @@ function bumpTarget(victim, dir, by){
   const mover = swapMover(by, vWho);
   if(mover){ neelaSwap(mover, mover === by ? vWho : by); return "swapped"; }
 
-  /* Flann's ultimate takes the lane by destroying whatever is in it, and a car
-     that barges into an ulting Flann destroys itself instead of moving it. */
-  const ram = ramWinner(by, vWho);
-  if(ram){
-    wreckRacer(ram === by ? vWho : by, ram);
-    return ram === by ? "rammed" : "stopped";
+  /* Only the arriving Flann can spend the offensive ram. */
+  if(offensiveRam(by, vWho)){
+    wreckRacer(vWho, by);
+    return "rammed";
   }
 
   const to = victim.lane + dir;
@@ -1155,6 +1224,7 @@ function startUlt(who){
      shared road. Verdant needs nothing: its fade is derived from the ultimate
      every frame rather than started here. */
   if(neelaCar(who)) beginNeelaForm(who);
+  if(saffronCar(who)) beginSaffronFlight(who);
   if(lolantheCar(who)){ o.queenPop = QUEEN_POP; o.queenOut = 0; }
   if(rhosynCar(who)) beginAeroGlow(who);
 }
@@ -1165,6 +1235,7 @@ function endUlt(who){
      wrecked or has finished is not, and those callers have already cleared the
      form before getting here, so there is nothing left for this to flash. */
   if(o.neelaForm) leaveNeelaForm(who);
+  if(saffronDragonActive(who)) beginSaffronDrop(who);
   o.neelaOrigin = null; o.neelaSwapped = false; o.swapGuard = 0;
   /* Lolanthe's note leaves the way it arrived. A wreck and a finish both clear
      the note state immediately after ending the ultimate, so neither of them
@@ -1242,6 +1313,7 @@ function wreckRival(R, by, force){
   ultDelta(R, ULT_ON_WRECK);
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
   R.dead = DEAD_TIME;
+  clearSaffronState(R);
   clearNeelaState(R);                          /* no alternate form on a wreck */
   clearVerdantState(R);                        /* nor a ghost dissolving through the wreck */
   clearAeroGlowState(R);                       /* nor a void to be wrecked inside */
@@ -1916,7 +1988,7 @@ function updateTraps(dt, d, st){
      hit, and a rock must not detonate because a car that is not there passed
      under it - so the departure is part of "is this car racing on this road
      right now?" rather than an extra clause bolted on to the damage test. */
-  const racing = st === "running" && G.dead <= 0 && !rhosynElsewhere("me");
+  const racing = st === "running" && G.dead <= 0 && !rhosynElsewhere("me") && !saffronAirborne("me");
   const live = racing && !invulnerableMe() && !finishedMe();
   const c = carHit();
   for(let i=G.traps.length-1;i>=0;i--){
@@ -1944,7 +2016,9 @@ function updateTraps(dt, d, st){
 
       o.y += d; o.t += dt;
       if(o.phase === 0){
+        const previousAlt = rockAlt(o);
         o.fall = Math.max(0, o.fall - dt);
+        if(st === "running" && interceptSaffronMeteor(o, previousAlt)){ G.traps.splice(i,1); continue; }
         if(o.fall <= 0) detonate(o, live);
         else if(racing && o.fall < rockLead(o)){
           const alt = rockAlt(o);
@@ -1998,7 +2072,7 @@ function detonate(o, live){
   /* The blast still happens and still looks like one; what a car with the
      solid-hazard privilege does not do is die in it. Everybody else inside the
      radius is destroyed on exactly the terms they always were. */
-  if(live && !clearsSolidHazards("me")){
+  if(live && !noContact("me") && !clearsSolidHazards("me")){
     const c2 = carHit();
     const p3 = nearestOnCar(c2, o.x, o.y);
     const dx = p3.x - o.x, dy = p3.y - o.y;
@@ -2042,6 +2116,7 @@ function clearMyUlt(){
   G.ult = 0;
 }
 function destroyCar(by){
+  clearSaffronState("me");
   clearNeelaState("me");                       /* no alternate form on a wreck */
   clearVerdantState("me");                     /* nor a ghost dissolving through the wreck */
   clearAeroGlowState("me");                    /* nor a void to be wrecked inside */

@@ -123,10 +123,10 @@ function racerTailPoint(who){
 let CAR_A = 1;
 function carAlpha(v){ ctx.globalAlpha = clamp(v, 0, 1)*CAR_A; }
 
-function drawSpriteCar(w, h, p, boosting, ulting){
+function drawSpriteCar(w, h, p, boosting, ulting, lifted){
   const fr = spriteFrame(p, w, h);
   if(!fr) return;
-  fillRR(-fr.vw/2 + w*0.04, -fr.vh/2 + h*0.04, fr.vw, fr.vh, fr.vw*0.26, "rgba(0,0,0,0.35)");
+  if(!lifted) fillRR(-fr.vw/2 + w*0.04, -fr.vh/2 + h*0.04, fr.vw, fr.vh, fr.vw*0.26, "rgba(0,0,0,0.35)");
   if(boosting) drawSpriteExhaust(p, fr);
   /* Full source rectangle: preserve padding and every tire/spoiler detail. */
   ctx.drawImage(fr.img, fr.left, fr.top, fr.sw, fr.sh);
@@ -148,10 +148,10 @@ function drawSpriteCar(w, h, p, boosting, ulting){
    leaving the middle of the body - the part that says which car it is -
    clear. */
 const FLANN_FIRE = [
-  [-0.49, -0.26, 0.30, 0.0], [-0.53, -0.02, 0.36, 1.1], [-0.50,  0.22, 0.34, 2.2],
-  [ 0.49, -0.26, 0.30, 0.6], [ 0.53, -0.02, 0.36, 1.7], [ 0.50,  0.22, 0.34, 2.8],
-  [-0.27,  0.44, 0.34, 3.3], [ 0.27,  0.44, 0.34, 4.0],
-  [-0.33, -0.42, 0.24, 4.6], [ 0.33, -0.42, 0.24, 5.2]
+  [-0.30, -0.26, 0.30, 0.0], [-0.32, -0.02, 0.36, 1.1], [-0.30,  0.22, 0.34, 2.2],
+  [ 0.30, -0.26, 0.30, 0.6], [ 0.32, -0.02, 0.36, 1.7], [ 0.30,  0.22, 0.34, 2.8],
+  [-0.27,  0.33, 0.34, 3.3], [ 0.27,  0.33, 0.34, 4.0],
+  [-0.18, -0.35, 0.24, 4.6], [ 0.18, -0.35, 0.24, 5.2]
 ];
 /* Drawn in the car's own translated and rotated space, so the whole fire leans
    with it through a lane change without a transform of its own.
@@ -167,6 +167,22 @@ function drawFlannUltFire(w, h, p){
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
+  // Internal engine pockets clipped to the measured collision body.
+  ctx.save();
+  ctx.beginPath();
+  p.hitShape.forEach(function(q,i){ if(i) ctx.lineTo(q[0]*w,q[1]*h); else ctx.moveTo(q[0]*w,q[1]*h); });
+  ctx.closePath(); ctx.clip();
+  for(let i=0;i<7;i++){
+    const x=(i%2 ? -.15 : .15)*w, y=(-.30+i*.10)*h;
+    const heat=.38+(reduced ? 0 : Math.sin(phase+i*1.7)*.07);
+    const core=ctx.createRadialGradient(x,y,0,x,y,w*.29);
+    core.addColorStop(0,"rgba(255,255,220,"+heat+")");
+    core.addColorStop(.22,"rgba(255,210,65,.32)");
+    core.addColorStop(.65,"rgba(255,75,10,.16)");
+    core.addColorStop(1,"rgba(225,30,0,0)");
+    ctx.fillStyle=core; ctx.fillRect(x-w*.29,y-w*.29,w*.58,w*.58);
+  }
+  ctx.restore();
   /* the heat the body sits in, so the tongues read as one fire and not ten */
   const halo = ctx.createRadialGradient(0, h*0.06, w*0.22, 0, h*0.06, w*1.05);
   halo.addColorStop(0,    withA(p.flame[1], 0.20));
@@ -364,7 +380,7 @@ function drawMorphFlash(w, h, p, k){
 
    Menus pass none of the three, so a preview is never on fire, never white,
    and always wearing its own car model. */
-function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white, alpha){
+function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white, alpha, lifted){
   const a = alpha === undefined ? 1 : clamp(alpha, 0, 1);
   if(a <= 0) return;
   const was = CAR_A;
@@ -373,70 +389,11 @@ function drawCar(x, y, w, h, p, tilt, isPlayer, boosting, ulting, white, alpha){
   ctx.globalAlpha = a;
   ctx.translate(x, y);
   if(tilt) ctx.rotate(tilt);
-  /* One car has a fire of its own; the other four sprites and Siren's shared
-     model have the ordinary pipes. */
-  if(p.style === "sprite") drawSpriteCar(w, h, p, boosting, !!ulting && p.key === "flann");
-  else if(p.style === "cruiser") drawCruiser(w, h, p, isPlayer, boosting);
+  /* Body fire belongs only to Flann; exhaust comes from each active model. */
+  if(p.style === "sprite") drawSpriteCar(w, h, p, boosting, !!ulting && p.key === "flann", lifted);
   if(white) drawMorphFlash(w, h, p, white);
   ctx.restore();
   CAR_A = was;
-}
-
-function flames(w, h, hot, cool){
-  carAlpha(0.75);
-  fillRR(-w*0.30, h*0.50, w*0.18, h*0.30, w*0.09, hot);
-  fillRR( w*0.12, h*0.50, w*0.18, h*0.30, w*0.09, hot);
-  carAlpha(0.5);
-  fillRR(-w*0.26, h*0.50, w*0.10, h*0.46, w*0.05, cool);
-  fillRR( w*0.16, h*0.50, w*0.10, h*0.46, w*0.05, cool);
-  carAlpha(1);
-}
-
-/* Siren: a big square patrol cruiser with a light bar across the roof */
-function drawCruiser(w, h, p, isPlayer, boosting){
-  /* Siren: a long, square patrol sedan - notched three-box shape, push bar
-     at the front, and a light bar across the roof. */
-  fillRR(-w/2+3, -h*0.54+7, w*1.02, h*1.08, w*0.08, "rgba(0,0,0,0.44)");
-
-  const ww = w*0.18, wh = h*0.16;
-  fillRR(-w/2-ww*0.30, -h*0.32, ww, wh, ww*0.3, "#0C0D10");
-  fillRR( w/2-ww*0.70, -h*0.32, ww, wh, ww*0.3, "#0C0D10");
-  fillRR(-w/2-ww*0.30,  h*0.16, ww, wh, ww*0.3, "#0C0D10");
-  fillRR( w/2-ww*0.70,  h*0.16, ww, wh, ww*0.3, "#0C0D10");
-
-  fillRR(-w*0.46, -h*0.54, w*0.92, h*1.08, w*0.07, p.body);   /* long square body */
-  rr(-w*0.46, -h*0.54, w*0.92, h*1.08, w*0.07);
-  ctx.strokeStyle = "rgba(0,0,0,0.42)"; ctx.lineWidth = Math.max(1, w*0.032); ctx.stroke();
-
-  ctx.save(); rr(-w*0.46, -h*0.54, w*0.92, h*1.08, w*0.07); ctx.clip();
-  ctx.fillStyle = p.dark;                                    /* black door panels */
-  ctx.fillRect(-w*0.46, -h*0.10, w*0.92, h*0.34);
-  ctx.fillStyle = p.body;
-  ctx.fillRect(-w*0.30, -h*0.06, w*0.60, h*0.10);            /* white shield block */
-  ctx.restore();
-
-  fillRR(-w*0.52, -h*0.58, w*1.04, h*0.055, w*0.02, p.dark);  /* push bar */
-  ctx.fillStyle = p.dark;
-  ctx.fillRect(-w*0.30, -h*0.60, w*0.045, h*0.10);
-  ctx.fillRect( w*0.26, -h*0.60, w*0.045, h*0.10);
-  fillRR(-w*0.36, -h*0.50, w*0.18, h*0.035, w*0.015, "#FFF3D0");
-  fillRR( w*0.18, -h*0.50, w*0.18, h*0.035, w*0.015, "#FFF3D0");
-
-  fillRR(-w*0.34, -h*0.30, w*0.68, h*0.20, w*0.05, p.dark);   /* three-box cabin */
-  fillRR(-w*0.29, -h*0.27, w*0.58, h*0.13, w*0.03, p.glass);
-  fillRR(-w*0.34,  h*0.18, w*0.68, h*0.18, w*0.05, p.dark);
-  fillRR(-w*0.29,  h*0.21, w*0.58, h*0.11, w*0.03, p.glass);
-
-  /* Static roof lights are part of Siren's body design. */
-  fillRR(-w*0.40, -h*0.08, w*0.80, h*0.075, w*0.02, p.dark);
-  fillRR(-w*0.37, -h*0.068, w*0.34, h*0.05, w*0.015, "#2B4E8C");
-  fillRR( w*0.03, -h*0.068, w*0.34, h*0.05, w*0.015, "#8C2B2F");
-
-  fillRR(-w*0.46, h*0.44, w*0.92, h*0.06, w*0.02, p.dark);
-  fillRR(-w*0.36, h*0.452, w*0.20, h*0.034, w*0.015, "#FF4A50");
-  fillRR( w*0.16, h*0.452, w*0.20, h*0.034, w*0.015, "#FF4A50");
-
-  if(boosting) flames(w, h, p.flame[0], p.flame[1]);
 }
 
 const ROOF = ["#22242A", "#1A1C21", "#2B2E35"];
@@ -1006,7 +963,7 @@ function drawQueenNote(who, cx, cy, alpha){
 }
 /* And the three around a Mind Controlled racer. A third of a turn apart on a
    ring measured off that racer's own box, so they surround a Lolanthe, a
-   Neela, a Flann, a Verdant, a Rhosyn and a Siren alike. No rise and fall: that
+   Neela, a Flann, a Verdant, a Rhosyn and a Saffron alike. No rise and fall: that
    belongs to the queen note and is what tells the two effects apart at a
    glance. */
 function drawMindNotes(who, cx, cy, alpha){
@@ -1061,7 +1018,7 @@ function drawRacerNotes(who, cx, cy, alpha){
 const AERO_VOID = "#04010A";              /* the black the whole world sits on */
 const AERO_PINK = "#FF2E9E";              /* the one colour in it */
 const AERO_PALE = "#FFA8DA";              /* and its highlight */
-const AERO_HORIZON = 0.30;                /* where the vanishing point sits, in view heights */
+const AERO_HORIZON = 0.13;                /* where the vanishing point sits, in view heights */
 const AERO_RIBBON = 190;                  /* px of travel between two route markers */
 const AERO_MOTES = 34;                    /* luminous specks adrift in the void */
 
@@ -1137,48 +1094,50 @@ function aeroTraces(top, height, horizon, travel){
 /* The route. Not a road - there is no tarmac in here - but the three lanes
    the racer is genuinely still steering between, drawn as glowing ribbons so
    the controls keep meaning what they mean on the shared road. */
+/* Adapted from Ponu js/14-rendering.js: 3.4m rungs, 2.2m divider rhythm.
+   Canonical metres drive every world mark; rendering never advances a clock. */
+const AERO_RUNG_M = 3.4, AERO_DASH_M = 2.2;
+function aeroEachRung(stepM, top, height, travel, draw){
+  const gap = stepM/.075, bottom = top+height;
+  const origin = racerY(VOWN) + travel;
+  const first = Math.floor((origin-bottom)/gap);
+  const last = Math.ceil((origin-top)/gap);
+  for(let k=first;k<=last;k++) draw(origin-k*gap, k);
+}
 function aeroRoute(top, height, horizon, travel){
-  const bot = top + height;
+  const lw = Math.max(1, SCENE*1.2);
+  const pace = clamp((aeroPace(VOWN)-260)/900,0,1);
+  const o = VOWN === "me" ? G : VOWN;
   ctx.save();
-  /* the darker corridor the route runs down, fading out at the horizon */
-  const body = ctx.createLinearGradient(0, horizon, 0, bot);
-  body.addColorStop(0,    withA(AERO_PINK, 0.10));
-  body.addColorStop(0.35, withA(AERO_PINK, 0.05));
-  body.addColorStop(1,    "rgba(0,0,0,0)");
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.moveTo(W/2 - roadW*0.04, horizon);
-  ctx.lineTo(W/2 + roadW*0.04, horizon);
-  ctx.lineTo(roadX + roadW, bot);
-  ctx.lineTo(roadX, bot);
-  ctx.closePath(); ctx.fill();
-
-  /* the two edges, and the two lane divisions between them */
-  const rails = [[roadX, 1], [roadX + roadW, 1],
-                 [roadX + laneW, 0], [roadX + laneW*2, 0]];
-  for(let i=0;i<rails.length;i++){
-    const x = rails[i][0], edge = rails[i][1];
-    const xv = W/2 + (x - W/2)*0.04;
-    ctx.strokeStyle = withA(edge ? AERO_PALE : AERO_PINK, edge ? 0.55 : 0.30);
-    ctx.lineWidth = Math.max(1, SCENE*(edge ? 2 : 1.2));
-    ctx.beginPath(); ctx.moveTo(xv, horizon); ctx.lineTo(x, bot); ctx.stroke();
+  ctx.beginPath(); ctx.rect(roadX,top,roadW,height); ctx.clip();
+  ctx.fillStyle = "#100610"; ctx.fillRect(roadX,top,roadW,height);
+  ctx.fillStyle = withA(AERO_PINK,.09);
+  ctx.fillRect(o.x-laneW/2,top,laneW,height);
+  aeroEachRung(AERO_RUNG_M,top,height,travel,function(y,k){
+    const strong = k%4 === 0;
+    ctx.fillStyle = withA(AERO_PALE,strong ? .30 : .11);
+    for(let c=0;c<3;c++) ctx.fillRect(roadX+c*laneW+laneW*.16,y,laneW*.68,strong ? lw*1.5 : lw);
+  });
+  ctx.strokeStyle = withA(AERO_PINK,.22); ctx.lineWidth = lw;
+  for(let c=1;c<3;c++){
+    const x=roadX+c*laneW;
+    ctx.beginPath(); ctx.moveTo(x,top); ctx.lineTo(x,top+height); ctx.stroke();
   }
-
-  /* and the markers running down it, spaced by travel so they arrive at
-     exactly the rate the racer is covering ground */
-  const gap = AERO_RIBBON;
-  const phase = ((travel % gap) + gap) % gap;
-  for(let m=0;m<12;m++){
-    const d = m*gap + phase;
-    const k = clamp(d/(gap*11), 0, 1);
-    /* pushed away from the horizon on a curve, so the spacing opens out */
-    const t = k*k;
-    const y = horizon + (bot - horizon)*t;
-    if(y < horizon || y > bot) continue;
-    const half = (roadW/2)*(0.04 + 0.96*t);
-    ctx.fillStyle = withA(AERO_PALE, 0.10 + 0.42*t);
-    ctx.fillRect(W/2 - half, y, half*2, Math.max(1, SCENE*1.6*t + 0.4));
+  aeroEachRung(AERO_DASH_M,top,height,travel,function(y){
+    ctx.fillStyle = withA(AERO_PALE,.70);
+    for(let c=1;c<3;c++) ctx.fillRect(roadX+c*laneW-lw/2,y,lw,AERO_DASH_M/.075*.55);
+  });
+  // Pink specks and speed streaks inherit world motion, with no random flicker.
+  aeroMotes(top,height,top,travel,motionReduced() ? 0 : pace*46*SCENE);
+  for(let side=0;side<2;side++){
+    const x=roadX+side*roadW, width=roadW*(.06+.05*pace);
+    const g=ctx.createLinearGradient(x,0,x+(side ? -width : width),0);
+    g.addColorStop(0,withA(AERO_PINK,.14+.18*pace)); g.addColorStop(1,withA(AERO_PINK,0));
+    ctx.fillStyle=g; ctx.fillRect(side ? x-width : x,top,width,height);
   }
+  const fade=ctx.createLinearGradient(0,top,0,top+height*.22);
+  fade.addColorStop(0,AERO_VOID); fade.addColorStop(.5,withA(AERO_PINK,.08)); fade.addColorStop(1,"rgba(4,1,10,0)");
+  ctx.fillStyle=fade; ctx.fillRect(roadX,top,roadW,height*.22);
   ctx.restore();
 }
 
@@ -1231,8 +1190,6 @@ function drawAeroGlowWorld(){
   const streak = clamp((aeroPace(who) - 260)/900, 0, 1)*46*SCENE;
 
   aeroBackdrop(top, height, horizon);
-  aeroTraces(top, height, horizon, travel);
-  aeroMotes(top, height, horizon, travel, streak);
   aeroRoute(top, height, horizon, travel);
   aeroName(top, horizon);
 
@@ -1311,6 +1268,27 @@ function render(){
   drawSplitEdges();
 }
 
+/* Draw flight after every road object. Shadows retain canonical lane position. */
+function drawAirborneRacers(){
+  for(const a of racers()){
+    const who = a.me ? "me" : a.obj, o = a.me ? G : a.obj;
+    if(!saffronAirborne(who) || o.dead > 0 || o.finished !== null) continue;
+    const d = racerDims(who), altitude = saffronAltitude(who);
+    const y = racerY(who), alpha = racerViewAlpha(who);
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0," + (.32-.12*o.saffronLift) + ")";
+    ctx.beginPath(); ctx.ellipse(o.x, y, d.w*.42, carH*.20, o.tilt || 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#FFBA62"; ctx.lineWidth = Math.max(1, SCENE);
+    ctx.beginPath(); ctx.ellipse(o.x, y, carW*.27, carH*.10, 0, 0, Math.PI*2); ctx.stroke();
+    drawCar(o.x, y-altitude, d.w, d.h, racerModel(who), o.tilt, true,
+            o.boosting || o.ultOn, false, morphFlash(who), alpha, true);
+    drawRacerNotes(who, o.x, y-altitude, alpha);
+    if(G.local && (a.me || o.human)) drawSeatMark(who, o.x, y-altitude, alpha);
+    if(VOWN !== who) drawConditionStack(who, o.x, y-altitude, alpha);
+    ctx.restore();
+  }
+}
+
 function renderView(dy){
   CAMDY = dy; CT = -dy; CB = -dy + H;
   ctx.save();
@@ -1356,7 +1334,7 @@ function renderView(dy){
      must not take its Invulnerable badge off the screen nine times a second. */
   for(let n=0;n<G.rivals.length;n++){
     const RV = G.rivals[n];
-    if(G.state === "idle" || RV.dead > 0) continue;
+    if(G.state === "idle" || RV.dead > 0 || saffronAirborne(RV)) continue;
     const rc = racerModel(RV);
     const rblink = RV.invuln > 0 && Math.floor(RV.invuln*9) % 2 === 0;
     /* How much of this car this particular view is allowed to see. It is 1 for
@@ -1378,7 +1356,7 @@ function renderView(dy){
 
   const blink = G.invuln > 0 && Math.floor(G.invuln*9) % 2 === 0;
   const meSeen = !G.local || (playerY >= CT - carH*2 && playerY <= CB + carH*2);
-  if(G.state !== "idle" && G.dead <= 0 && meSeen){
+  if(G.state !== "idle" && G.dead <= 0 && meSeen && !saffronAirborne("me")){
     const car = racerModel("me");
     const ma = racerViewAlpha("me");
     if(!blink && ma > 0.004){
@@ -1418,6 +1396,7 @@ function renderView(dy){
   drawSlicks();
   drawBubbles();
   drawMissiles();
+  drawAirborneRacers();
   ctx.restore();                 /* back to the screen this view is drawn on */
   drawGlassLayer();
   ctx.restore();

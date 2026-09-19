@@ -166,7 +166,7 @@ for(const lang of ['en','fr']){
     assert.equal(f.run('t("neela")'),'Neela');
     const power=f.run('t("neelaUlt")');
     assert.ok(power.length>40,'Neela has a description of its own, not the shared one');
-    assert.notEqual(power,f.run('t("sirenUlt")'));
+    assert.notEqual(power,f.run('t("saffronUlt")'));
     /* It says what the ultimate actually does, in the words the road uses. */
     for(const word of lang==='en'
         ? ['shape','tumbleweed','meteor','swap','Puddles']
@@ -235,7 +235,7 @@ test('every menu preview is the car model, never the alternate form',()=>{
 test('Lolanthe and Verdant hold the third and fourth slots',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
   assert.equal(ids.length,6);
-  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','siren']);
+  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron']);
   assert.equal(ids.includes('bolt'),false);
   assert.equal(ids.includes('timestamp'),false);
   for(const [id,btn] of [['lolanthe','#carLolanthe'],['verdant','#carVerdant']]){
@@ -260,7 +260,7 @@ for(const lang of ['en','fr']){
       assert.equal(name,id[0].toUpperCase()+id.slice(1));
       const power=f.run('t("'+id+'Ult")');
       assert.ok(power.length>40,id+' has a description of its own, not the shared one');
-      assert.notEqual(power,f.run('t("sirenUlt")'));
+      assert.notEqual(power,f.run('t("saffronUlt")'));
       f.run('previewCar("'+id+'");');
       assert.equal(f.$('#carHeroName').textContent,name);
       assert.equal(f.$('#carHeroPower').textContent,power);
@@ -343,7 +343,7 @@ for(const lang of ['en','fr']){
     assert.equal(f.run('t("rhosyn")'),'Rhosyn');
     const power=f.run('t("rhosynUlt")');
     assert.ok(power.length>40,'Rhosyn has a description of its own, not the shared one');
-    assert.notEqual(power,f.run('t("sirenUlt")'));
+    assert.notEqual(power,f.run('t("saffronUlt")'));
     /* It says what the fifteen seconds actually do. */
     for(const word of lang==='en'
         ? ['Aero-Glow','double pace','two seconds','Invulnerable']

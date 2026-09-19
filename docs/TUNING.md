@@ -90,11 +90,7 @@ All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
 
-Five of the six cars add something on top of that shared lifecycle, for exactly
-as long as it runs and never a frame longer. Siren adds nothing, which is what
-makes it the right car for a test that needs an ordinary ultimate — and the
-right car for a test that needs an ordinary rectangular body, now that the other
-five all carry a traced hull of their own.
+All six cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
 
 ### Flann's ram
 
@@ -105,7 +101,7 @@ new clock, no new constant.
 
 | While it runs | What happens |
 | --- | --- |
-| Contact with another racer | The other racer is wrecked, whichever of the two ran into the other. Flann takes no `BUMP_SLOW`, no `SHUNT_TIME` and no wreck. |
+| Contact with another racer | The victim is wrecked only if Flann initiated the contact. Flann takes no `BUMP_SLOW`, no `SHUNT_TIME` and no wreck. |
 | Two ulting Flanns | Neither can smash the other; the contact falls back to the ordinary shunt and barge. |
 | Tumbleweed | Destroyed on contact. No `SLOW_TIME`, no `ULT_ON_TRAP`. |
 | Meteor, falling rock or blast | Cannot wreck Flann, and does not end the ultimate. |
@@ -500,119 +496,25 @@ In `js/local.js`:
 
 ### Sprite artwork and race size
 
-A sprite car's `spriteBounds` fits its visible vehicle to the car box while
-preserving the PNG aspect ratio and padding, and `exhaust` stores its normalized
-source-image anchors. Both are measured off that car's own sheet and off nothing
-else. These are visual calibration only: never change `carW`, `carH`, collision
-rules or speed to tune artwork. Plumes pulse by about 7% in length and 5% in
-width; reduced motion disables that pulse but keeps the plume.
+All six base cars and both alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
 
-| Sheet | Visible body, source px | Emitters, source px |
-| --- | --- | --- |
-| `v_flann.PNG` | (173, 72)–(851, 1409) | (355, 1377), (669, 1377) |
-| `v_neela.PNG` | (220, 25)–(803, 1422) | (352, 1355), (671, 1355) |
-| `vtm_neela.PNG` | (228, 22)–(795, 1506) | (512, 1306) |
-| `v_lolanthe.PNG` | (90, 12)–(933, 1477) | (455, 1354), (568, 1354) |
-| `v_verdant.PNG` | (167, 36)–(856, 1508) | (738, 1314) |
-| `v_rhosyn.PNG` | (75, 33)–(948, 1437) | (473, 1333), (551, 1333) |
+| Car | Race scale | Visible bounds (x,y,width,height) | Exhaust source pixels |
+| --- | --- | --- | --- |
+| Flann | 1.12 | 173,72,678,1337 | 355,1377; 669,1377 |
+| Neela | 1.18 | 220,25,584,1398 | 352,1355; 671,1355 |
+| Lolanthe | 1 | 90,12,844,1466 | 455,1354; 568,1354 |
+| Verdant | 1.10 | 167,36,690,1473 | 738,1314 |
+| Rhosyn | 1.14 | 162,73,701,1363 | 483,1366; 544,1366 |
+| Saffron | 1.25 | 194,45,634,1390 | 473,1359; 552,1359 |
 
-Verdant has one anchor because its artwork has one outlet — the side-exit pipe,
-whose bore is measured at (723, 1307)–(754, 1321). The slatted box under its
-tail is a diffuser with no bore, so nothing is drawn out of it. Lolanthe's two
-are the centres of the oval outlets in its rear valance, (422, 1343)–(488, 1366)
-and (535, 1343)–(602, 1366). Rhosyn's two are the centres of the stadium outlets
-in its rear valance, (447, 1320)–(500, 1344) and (525, 1322)–(577, 1346), which
-puts them 39 source pixels either side of the sheet's own centre line — the
-artwork is symmetrical and the anchors say so. They are normalized the same way
-every other anchor is, `x/1024` and `y/1536`, so `spriteAnchor()` places them
-through the same transform the body is drawn with and the fire stays in the pipe
-at any size, any tilt and in any column.
-
-| Constant | Value | Means |
-| --- | --- | --- |
-| `CARS.flann.raceScale` | `1.12` | how large Flann is on the road, against the shared car box |
-| `CARS.neela.raceScale` | `1.18` | the same for Neela |
-| `CARS.verdant.raceScale` | `1.10` | and for Verdant |
-| `CARS.neela.altForm.scale` | `1.09` | the alternate body, against Neela's own racer box |
-
-These are the only per-car dimensions in the game, and they are race-only. Flann
-read undersized against its lane, so it gets a little over a tenth back and the
-body occupies about 71% of a lane instead of 64%. Neela's artwork is narrower
-and longer — at 1:1 its body covers barely half a lane — so it gets a shade
-under a fifth, which brings it to just under the shared car box while keeping
-the hull a car's. Verdant's is narrow too, at 0.871 of the box across at 1:1, so
-a tenth brings it to 0.958. **Lolanthe deliberately has none**, and that is a
-measurement rather than an omission: its body is wider against its own length
-than any other on the road and already fills the car box across at 1:1, so an
-adjustment would make it a different class of vehicle. **Rhosyn has none for the
-same reason**, and it is broader still: 874 × 1405 of visible artwork against
-Lolanthe's 844 × 1466, so sized into the shared box the width runs out first and
-the body fills the box across and 86% of it down. The alternate form's 1.09 is measured rather than chosen: it
-is what makes the craft's fuselage and fin span come out the size of the car it
-replaced, so transforming changes the shape on the road and not how much road it
-takes up. Every scale is uniform, so aspect ratios, the measured `spriteBounds`
-and the anchors are all unaffected. `raceScale()`, `carDims()`, `racerModel()`
-and `racerDims()` in `runtime.js` are the only readers; the sprite, the hull, the
-gap a rear-end leaves and the roof a meteor lands on all ask them rather than
-reaching for `carW`/`carH`.
-
-To resize a sprite car, change its number and nothing else — the hull follows it
-automatically. Do **not** raise `carW`/`carH`: that is the lane's car and it
-would resize all six. The garage and select-screen previews size their own
-canvas and are deliberately outside this, so they do not move either — and they
-paint from `CARS` directly, so a preview is always the car and never its
-alternate form.
-
-The ultimate fire is drawn by `drawFlannUltFire()` from the `FLANN_FIRE` table
-in `render.js` — each row is a tongue's position and length in fractions of the
-car's own width and height, plus a phase offset. It is enabled by `drawCar`'s
-separate `ulting` flag, never by `boosting`, so an ordinary boost and a boost
-can leave the paint alone.
-
-What comes out of a sprite car's pipes is `exhaustStyle`: `drawSpriteEnergy` for
-Neela's blue energy, and `drawSpriteFlame` — the default — for Flann, Lolanthe,
-Verdant and Rhosyn. All of them are the ordinary `boosting` flag, so a boost, a boost
-can and an ultimate's own speed all light them and none of them transforms
-anything. The transformation flash is `drawMorphFlash`, drawn from whichever
-model's own hull, which is why it works on any of the six without per-car code.
-
-Two world effects sit outside the model entirely: `queen_note.PNG` above an
-ulting Lolanthe, drawn upright so it does not lean with the steering, and three
-`pion_note.PNG` around every Mind Controlled racer, on a ring measured off that
-racer's own box so it is proportional to whichever of the six is wearing it.
-Both are cached once in `FX_SPRITES`, both read timers the update code advances,
-and neither touches collision geometry. Reduced motion keeps both and takes the
-movement out of them: the queen note stops rising and falling and the three stop
-turning.
+All base sheets are 1024×1536. Saffron’s dragon is 1199×1312; its bounds, six anchors and two-lane sizing are documented in [SAFFRON-QA.md](SAFFRON-QA.md). Neela’s alternate remains scale 1.09 with one energy emitter.
 
 ### Body hitboxes
 
-`CAR_HIT_RECT` retains the default body half-width 0.40 and half-height 0.42
-in logical car units, and Siren alone uses it. A sprite car's `hitShape`
-traces its own artwork to exclude empty corners and trailing decoration:
-`CARS.flann.hitShape` is eight points, `CARS.neela.hitShape` eighteen,
-`CARS.neela.altForm.hitShape` twenty, Lolanthe's and Verdant's twenty-four
-each and Rhosyn's thirty-two — Lolanthe's stopping short of the gold spikes
-trailing off its rear corners and the ornament above its crown, Verdant's at the
-root of its swept rear blades and clear of the side pipe, and Rhosyn's at the
-top of the diffuser blades under its tail.
+Each model has its own traced polygon in logical car units. `carHit()` rotates and scales it without consulting image readiness. Rhosyn’s current solid nose replaces the former fork; Saffron’s dragon preserves wing/limb concavities. Empty corners, low-alpha detached pixels and decorative diffuser tips do not collide. The generic rectangle remains available as a geometry fallback, but no playable car uses it.
 
-Rhosyn's is the one hull in the game that is not a simple convex blob. Its
-artwork has a forked nose, and the V between the two prongs is empty space a car
-can pass through rather than body, so the polygon traces it: the inner edge of
-the right prong up to its tip, across, down the outer edge, round the canard
-shoulder, in at the waist, out over the rear haunch to the widest point of the
-car, and back in to the tail — then the mirror of all of it, because the vehicle
-is symmetrical and the hull says so. `insideHitPolygon()` and
-`hitPolygonsOverlap()` already handle a concave outline correctly, so nothing in
-the contact pipeline needed changing for it. `carHit()` reads whichever
-belongs to the model `racerModel()` says the racer is wearing, rotates it with
-the vehicle and multiplies it up by that model's size out of `racerDims()` — so
-a hull always carries its own race scale, and Neela's swaps to the alternate
-shape on the same frame the sprite does and back on the same frame it does.
-None of them includes shadows, flames, trails or PNG padding. These are gameplay
-shapes, independent of asset loading and display scaling; change them only when
-intentionally tuning contact.
+Aero-Glow uses 3.4m rung spacing and 2.2m divider-dash spacing adapted from Ponu. Every fourth rung is stronger. Scrolling comes from canonical owner travel, while speed drives streak length and edge intensity. Reduced motion keeps world structure without flicker.
+
 
 ### Unused constants
 

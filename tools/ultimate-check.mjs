@@ -70,7 +70,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
      unreachable in both directions. It is still not the Invulnerable
      Condition, and it is still not a cleanse - the debuffs it was already
      wearing go on running down - which is what the split below is about. */
-  const away = car === 'rhosyn';
+  const away = car === 'rhosyn' || car === 'saffron';
   test(label + (away ? ' takes the car off the road without protecting it'
                      : ' no immunity, no cleanse and it is still reachable'),()=>{
     setup(car,kind,false);
@@ -80,7 +80,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     /* Nothing was cleansed and nobody was made Invulnerable, whichever car
        this is: the Condition has an owner and it is the respawn. */
     equal('invulnerableWho(who)',false);
-    equal('refusesDebuffs(who)',away);equal('noContact(who)',away);
+    equal('refusesDebuffs(who)',car === 'rhosyn');equal('noContact(who)',away);
     equal(`who === 'me' ? playerUntouchable() : safeCar(who)`,away);
     /* Four of the five car-specific ultimates are collision priority or
        visibility, changing who loses a contact or who can see it rather than
@@ -94,14 +94,14 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     equal('neelaFormActive(who)',car === 'neela');
     equal('lolantheUltActive(who)',car === 'lolanthe');
     equal('verdantUltActive(who)',car === 'verdant');
-    equal('rhosynUltActive(who)',away);
-    equal('rhosynElsewhere(who)',away);
+    equal('rhosynUltActive(who)',car === 'rhosyn');
+    equal('rhosynElsewhere(who)',car === 'rhosyn');
     /* Nothing reaches a car that is not there, so the solid-hazard privilege
        is neither given to Rhosyn nor needed by it. */
     equal('clearsSolidHazards(who)',
           ['flann','neela','lolanthe','verdant'].indexOf(car) >= 0);
     equal('neelaCanSwap(who)',car === 'neela');
-    equal('racerDetectable(who)',car !== 'verdant' && !away);
+    equal('racerDetectable(who)',car !== 'verdant' && car !== 'rhosyn');
     /* And none of them takes its own driver's controls away. */
     equal('controlsLocked(who)',false);
   });
@@ -134,12 +134,10 @@ for(const car of cars) for(const kind of ['player','bot','local']){
       equal(`again === 'moved' || again === 'wrecked'`,true);
       equal('o.neelaSwapped',true);
     } else if(car === 'flann'){
-      /* Barging into an ulting Flann wrecks the barger. Flann does not move
-         lane, is not slowed, and keeps its ultimate. */
-      equal('outcome','stopped');
-      equal('o.lane',1);equal('o.dead',0);equal('o.ultOn',true);
-      equal(`who === 'me' ? G.slowT : o.slow`,0);
-      equal('att.dead > 0',true);
+      equal('outcome','moved');
+      equal('o.lane',2);equal('o.dead',0);equal('o.ultOn',true);
+      equal(`(who === 'me' ? G.slowT : o.slow)>0`,true);
+      equal('att.dead',0);
       /* And the same again from the other side: Flann barging out wrecks
          whoever was in the lane it wanted, and takes the lane. */
       setup(car,kind);
@@ -172,7 +170,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
       equal('tgt.dead',0);
       equal('tgt.lane',2);
       equal('o.verdantRevealT',0,'an ordinary barge reveals nothing');
-    } else if(car === 'rhosyn'){
+    } else if(away){
       /* There is nothing at that position to barge. The car asking for the
          lane is not stopped and not hurt - it simply meets nobody, and takes
          the lane it wanted. */
@@ -282,7 +280,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
    destroyed and a swap still owed. */
 function pairOutcome(me, them){
   /* `me` is always the racer that did the running into. */
-  if(me === 'rhosyn' || them === 'rhosyn') return 'none';
+  if(['rhosyn','saffron'].includes(me) || ['rhosyn','saffron'].includes(them)) return 'none';
   const meV = me === 'verdant', themV = them === 'verdant';
   if(meV !== themV){
     const other = meV ? them : me;                 /* the one that is not hidden */
@@ -292,7 +290,6 @@ function pairOutcome(me, them){
   }
   if((me === 'neela') !== (them === 'neela')) return 'swap';
   if(me === 'flann' && them !== 'flann') return 'themDead';
-  if(them === 'flann' && me !== 'flann') return 'meDead';
   return 'shunt';
 }
 test('rear contact between every pair of ulting cars, priority in the documented order',()=>{
@@ -384,7 +381,7 @@ test('rear contact between every pair of ulting cars, priority in the documented
    whether the car is being driven by the person holding the controller, by a
    bot, or by a second person in a local seat. */
 function duel(kind, ulting = true){
-  run(`G.local = false; G.car = ${kind === 'player' ? '"flann"' : '"siren"'};
+  run(`G.local = false; G.car = ${kind === 'player' ? '"flann"' : '"saffron"'};
        G.rules = defaultRules(); G.rules.bots = 1; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); G.state = 'running';
        G.nextTrap = 1e9; G.nextRow = 1e9;
@@ -392,7 +389,7 @@ function duel(kind, ulting = true){
        G.dead = 0; G.invuln = 0; G.finished = null; G.slowT = 0; G.blind = 0;
        G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
        globalThis.rvl = G.rivals[0];
-       rvl.car = ${kind === 'player' ? '"siren"' : '"flann"'}; rvl.human = ${kind === 'local'};
+       rvl.car = ${kind === 'player' ? '"saffron"' : '"flann"'}; rvl.human = ${kind === 'local'};
        rvl.dead = 0; rvl.invuln = 0; rvl.finished = null; rvl.slow = 0; rvl.blind = 0;
        rvl.slip = 0; rvl.shuntT = 0; rvl.bumpCD = 0; rvl.changeT = 1e6;
        rvl.lane = 1; rvl.x = laneCX(1); rvl.y = playerY - carH*0.4;
@@ -464,19 +461,18 @@ for(const kind of ['player','bot','local']){
     equal(`activeConditions(F).indexOf('obscured') >= 0`,true);
   });
 
-  test(tag + ' wrecks whatever it rear-ends, and whatever rear-ends it',()=>{
+  test(tag + ' only wrecks racers it rear-ends',()=>{
     /* Flann into the back of somebody. */
     duel(kind);
     run(`rearEnd(F, asVictim(X));`);
     equal('xo.dead > 0',true);equal('fo.dead',0);equal('fo.ultOn',true);
     equal(`F==='me' ? G.slowT : F.slow`,0);          /* no rear-end Slow for the ram */
     equal(`X==='me' ? G.shuntT : X.shuntT`,0);       /* and nobody was shoved along */
-    /* Somebody into the back of Flann. */
     duel(kind);
     run(`rearEnd(X, asVictim(F));`);
-    equal('xo.dead > 0',true);equal('fo.dead',0);equal('fo.ultOn',true);
-    equal(`F==='me' ? G.shuntT : F.shuntT`,0);       /* Flann is not shunted */
-    equal(`X==='me' ? G.slowT : X.slow`,0);
+    equal('xo.dead',0);equal('fo.dead',0);equal('fo.ultOn',true);
+    equal(`(F==='me' ? G.shuntT : F.shuntT)>0`,true);
+    equal(`(X==='me' ? G.slowT : X.slow)>0`,true);
     /* Expired, both directions go straight back to the ordinary shunt. */
     duel(kind,false);
     run(`rearEnd(F, asVictim(X));`);
@@ -485,29 +481,15 @@ for(const kind of ['player','bot','local']){
     equal(`(X==='me' ? G.shuntT : X.shuntT) > 0`,true);
   });
 
-  test(tag + ' takes a lane by destroying what is in it, and cannot be barged out',()=>{
-    /* Flann barging out: the other car is destroyed rather than shoved. */
+  test(tag + ' offensive barge wrecks, incoming barge uses ordinary shove',()=>{
+    duel(kind); run('globalThis.outcome=bumpTarget(asVictim(X),1,F);');
+    equal('outcome','rammed');equal('xo.dead>0',true);equal('fo.dead',0);
+    duel(kind);run('globalThis.outcome=bumpTarget(asVictim(F),1,X);');
+    equal('outcome','moved');equal('fo.lane',2);equal('xo.dead',0);equal('fo.dead',0);
     duel(kind);
-    run(`globalThis.outcome = bumpTarget(asVictim(X), 1, F);`);
-    equal('outcome','rammed');
-    equal('xo.dead > 0',true);equal('xo.lane',1);    /* destroyed, not moved across */
-    equal('fo.dead',0);equal('fo.ultOn',true);
-    equal(`F==='me' ? G.slowT : F.slow`,0);
-    /* Somebody barging in: the barger is destroyed and Flann keeps its lane. */
-    duel(kind);
-    run(`globalThis.outcome = bumpTarget(asVictim(F), 1, X);`);
-    equal('outcome','stopped');
-    equal('fo.lane',1);equal('fo.dead',0);equal('fo.ultOn',true);
-    equal('xo.dead > 0',true);
-    /* And through the real lane-change entry points, which must not go on to
-       move a car they have just wrecked into the lane it was reaching for. */
-    duel(kind);
-    run(`xo.lane = 0; xo.x = laneCX(0); fo.lane = 1; fo.x = laneCX(1);
-         ${kind === 'player' ? 'rivalLaneTo(X, 1)' : 'move(1)'};`);
-    equal('xo.dead > 0',true);
-    equal('xo.lane',0);                              /* the lane change died with it */
-    equal('fo.lane',1);
-    equal('fo.dead',0);equal('fo.ultOn',true);
+    run(`xo.lane=0;xo.x=laneCX(0);fo.lane=1;fo.x=laneCX(1);
+         ${kind === 'player' ? 'rivalLaneTo(X,1)' : 'move(1)'};`);
+    equal('xo.dead',0);equal('xo.lane',1);equal('fo.lane',2);
   });
 
   test(tag + ' never reaches a respawning or a finished racer',()=>{
@@ -535,7 +517,7 @@ for(const kind of ['player','bot','local']){
 /* The falling rock is tested against the player's own car and always has been,
    so this half of the meteor rule is a player-side one. */
 test('flann/player ultimate smashes a falling rock instead of being crushed',()=>{
-  for(const car of ['flann','siren']){
+  for(const car of ['flann','saffron']){
     duel('player');
     run(`G.car = ${JSON.stringify(car)};
          globalThis.mo = {kind:'meteor', x:G.x, y:0, r:80, mr:18,
@@ -575,8 +557,8 @@ test('the ram works through the ordinary per-frame contact sweep',()=>{
 /* The one car with no power of its own keeps the ultimate it always had.
    Rhosyn used to be beside it here; it is not an ordinary ultimate any more,
    and has a section of its own further down. */
-for(const car of ['siren'])
-  test(car + ' gains no collision or hazard power from its ultimate',()=>{
+for(const car of ['saffron'])
+  test(car + ' gains no collision or hazard power from its ordinary car',()=>{
     run(`G.local=false;G.car=${JSON.stringify(car)};G.rules=defaultRules();
          G.rules.bots=1;G.rules.bubbles=false;G.mode='endless';startRace();
          G.state='running';G.nextTrap=1e9;G.nextRow=1e9;G.traps=[];
@@ -584,7 +566,7 @@ for(const car of ['siren'])
          globalThis.rvl=G.rivals[0];rvl.car=${JSON.stringify(car)};rvl.dead=0;rvl.invuln=0;
          rvl.slow=0;rvl.blind=0;rvl.shuntT=0;rvl.bumpCD=0;rvl.changeT=1e6;rvl.lane=1;
          rvl.x=G.x;rvl.y=playerY-carH*0.4;
-         G.ult=1;startUlt('me');rvl.ult=1;startUlt(rvl);`);
+         G.ult=1;rvl.ult=1;`);
     equal('flannUltActive("me")',false);equal('flannUltActive(rvl)',false);
     /* tumbleweed still slows it */
     weedOn('"me"');run(`updateTraps(0,0,'running');`);
@@ -594,8 +576,8 @@ for(const car of ['siren'])
     blastOn('"me"');run(`updateTraps(0,0,'running');`);
     equal('G.dead > 0',true);equal('rvl.dead > 0',true);
     /* puddle still blinds it */
-    run(`G.dead=0;G.invuln=0;G.slowT=0;G.ult=1;startUlt('me');
-         rvl.dead=0;rvl.invuln=0;rvl.slow=0;rvl.ult=1;startUlt(rvl);
+    run(`G.dead=0;G.invuln=0;G.slowT=0;G.ult=1;
+         rvl.dead=0;rvl.invuln=0;rvl.slow=0;rvl.ult=1;
          G.traps=[{kind:'puddle',x:G.x,y:playerY,rx:80,ry:50,s:0.5,hit:0,nm:0}];
          updateTraps(0,0,'running');`);
     equal('G.blind > 0',true);
@@ -622,7 +604,7 @@ test('HUD and render paths work for all cars and local columns',()=>{
        is the ordinary Obscured Condition rather than a badge of its own, so it
        shows up here, derived from the whiteout timer and not from `blind`.
        Run it off, and the rest of this is the shared path every car takes. */
-    if(car === 'neela' || car === 'rhosyn'){
+    if(car === 'neela' || car === 'rhosyn' || car === 'saffron'){
       equal(`activeConditions('me').indexOf('obscured') >= 0`,true);
       equal('G.blind',0);
       equal(`JSON.stringify(activeConditions('me'))`,JSON.stringify(['boosted','obscured']));
@@ -739,12 +721,12 @@ test('every Condition has one canonical colour, type and icon',()=>{
   assert.equal(run('typeof CONDITIONS.launched'),'undefined');
   assert.equal(run('typeof CONDITIONS.winner'),'undefined');
 });
-/* The generic normal-ultimate example. Siren is the only car left with
+/* The generic normal-ultimate example. Saffron is the only car left with
    nothing on top of the shared fifteen seconds, so it is what a test asking
    "does an ordinary ultimate disturb anything?" has to use - the other five
    all have a power that would be the answer instead. */
 test('an ordinary ultimate leaves meteor, weed and opponent simulation unchanged',()=>{
-  setup('siren','player');
+  setup('saffron','player');
   run(`globalThis.r=G.rivals[0];r.human=true;r.abs=BASE_SPEED;
        updateRival(r,0.1,'running');
        G.traps=[{kind:'meteor',x:roadX,y:-1000,r:20,mr:10,fall:1,max:1,phase:0,t:0},
@@ -872,7 +854,7 @@ function duo(nSide, vSide, ulting = true){
   const nExpr = nSide === 'me' ? '"me"' : 'G.rivals[0]';
   const vExpr = vSide === 'me' ? '"me"'
               : (nSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
-  run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"siren"'};
+  run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"saffron"'};
        G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
@@ -881,7 +863,7 @@ function duo(nSide, vSide, ulting = true){
        G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
        G.tilt = 0; G.whiteT = 0; G.morphT = 0; G.swapGuard = 0;
        G.rivals.forEach((r, i) => {
-         r.car = "siren"; r.human = false; r.dead = 0; r.invuln = 0;
+         r.car = "saffron"; r.human = false; r.dead = 0; r.invuln = 0;
          r.finished = null; r.slow = 0; r.blind = 0; r.slip = 0; r.shuntT = 0;
          r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.whiteT = 0; r.morphT = 0;
          r.swapGuard = 0; r.ult = 0; r.lane = 1; r.x = laneCX(1);
@@ -1170,7 +1152,7 @@ for(const [n, v] of SIDES){
     equal('no.ultOn',true);equal('no.ultT',run('meter'));
     equal('clearsSolidHazards(N)',true);
     /* Neela never gains the power to destroy a racer. */
-    equal('ramWinner(N, V)',null);
+    equal('offensiveRam(N, V)',false);
     /* Right up to the meter running out, at which point all of it goes. */
     run('tickUlt(N, ULT_TIME);');
     equal('no.ultOn',false);
@@ -1533,7 +1515,7 @@ function pair(aSide, bSide, aCar, bCar){
   assert.notEqual(aSide, bSide);
   const aExpr = aSide === 'me' ? '"me"' : 'G.rivals[0]';
   const bExpr = bSide === 'me' ? '"me"' : (aSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
-  run(`G.local = false; G.car = "siren";
+  run(`G.local = false; G.car = "saffron";
        G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
@@ -1542,7 +1524,7 @@ function pair(aSide, bSide, aCar, bCar){
        G.slipT = 0; G.shuntT = 0; G.bumpCD = 0; G.lane = 1; G.x = laneCX(1);
        G.tilt = 0; G.mindT = 0; G.mindPop = 0; G.mindOut = 0;
        G.rivals.forEach((r, i) => {
-         r.car = "siren"; r.human = false; r.dead = 0; r.invuln = 0;
+         r.car = "saffron"; r.human = false; r.dead = 0; r.invuln = 0;
          r.finished = null; r.slow = 0; r.blind = 0; r.slip = 0; r.shuntT = 0;
          r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.ult = 0;
          r.mindT = 0; r.mindPop = 0; r.mindOut = 0;
@@ -1574,7 +1556,7 @@ const PAIRS = [['me','bot'],['me','seat'],['bot','me'],['bot','seat'],
 /* ---- the aura ---------------------------------------------------- */
 test('an ulting Lolanthe controls every valid racer in range and nobody else',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'lolanthe', 'siren');
+    pair(a, b, 'lolanthe', 'saffron');
     /* Out of range, in a different lane, and untouched. */
     run(`putBeside(B, A, -mindRange()*2); if(B !== 'me') B.lane = 0, B.x = laneCX(0);
          ao.ult = 1; startUlt(A); update(1/60);`);
@@ -1604,7 +1586,7 @@ test('an ulting Lolanthe controls every valid racer in range and nobody else',()
 });
 test('the aura refuses a wrecked, finished, protected or invisible racer',()=>{
   for(const shield of ['dead','finished','invuln','verdant']){
-    pair('me','bot','lolanthe','siren');
+    pair('me','bot','lolanthe','saffron');
     run(`putBeside(B, A, -mindRange()*0.4); ao.ult = 1; startUlt(A);`);
     if(shield === 'verdant') run(`bo.car = "verdant"; bo.ult = 1; startUlt(B);`);
     else run(`bo.${shield} = ${shield === 'finished' ? '1' : '2'};`);
@@ -1622,7 +1604,7 @@ test('the aura refuses a wrecked, finished, protected or invisible racer',()=>{
   }
 });
 test('mind control resets to three seconds and never stacks',()=>{
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`putBeside(B, A, -mindRange()*0.4); ao.ult = 1; startUlt(A);`);
   run('update(1/60);');
   near('bo.mindT',run('MIND_CONTROL_TIME'));
@@ -1654,7 +1636,7 @@ test('mind control resets to three seconds and never stacks',()=>{
 });
 test('a racer sharing Lolanthe’s lane is forced out of it, occupied or not',()=>{
   for(const lane of [0, 1, 2]){
-    pair('me','bot','lolanthe','siren');
+    pair('me','bot','lolanthe','saffron');
     run(`if(A === 'me'){ G.lane = ${lane}; G.x = laneCX(${lane}); }
          else { A.lane = ${lane}; A.x = laneCX(${lane}); }
          putBeside(B, A, -mindRange()*0.3);
@@ -1675,7 +1657,7 @@ test('the forced move goes through the real barge and can wreck both cars',()=>{
      through the ordinary barge rather than passing through. Both occupants are
      against a barrier, so the shove wrecks whichever one it reaches: a chain
      reaction the collision system produced, not a Lolanthe rule. */
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`G.lane = 1; G.x = laneCX(1);
        putBeside(B, A, -mindRange()*0.2);
        B.lane = 1; B.x = laneCX(1);
@@ -1695,7 +1677,7 @@ test('the forced move goes through the real barge and can wreck both cars',()=>{
   /* With room on the far side, the occupant is shoved across instead and both
      cars survive - again the ordinary barge, applied to a move the victim
      never asked for. */
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`G.lane = 0; G.x = laneCX(0);
        putBeside(B, A, -mindRange()*0.2);
        B.lane = 0; B.x = laneCX(0);
@@ -1708,7 +1690,7 @@ test('the forced move goes through the real barge and can wreck both cars',()=>{
   equal('M0.slow > 0',true,'and left labouring, exactly as an ordinary barge leaves it');
 });
 test('a forced move ignores reversed steering and the control lock alike',()=>{
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`G.lane = 0; G.x = laneCX(0);
        putBeside(B, A, -mindRange()*0.3);
        B.slip = 5;                           /* Skidded: the driver's steering is reversed */
@@ -1721,7 +1703,7 @@ test('a forced move ignores reversed steering and the control lock alike',()=>{
 /* ---- the control lock -------------------------------------------- */
 test('a controlled driver can steer, boost, item or ultimate by no route at all',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'lolanthe', 'siren');
+    pair(a, b, 'lolanthe', 'saffron');
     run(`putBeside(B, A, -mindRange()*0.3);
          if(B === 'me'){ G.lane = 1; G.x = laneCX(1); } else { B.lane = 1; B.x = laneCX(1); }
          if(A === 'me'){ G.lane = 0; G.x = laneCX(0); } else { A.lane = 0; A.x = laneCX(0); }
@@ -1761,7 +1743,7 @@ test('a controlled driver can steer, boost, item or ultimate by no route at all'
   }
 });
 test('a bot under control makes no lane, item, boost or ultimate decision',()=>{
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`putBeside(B, A, -mindRange()*0.3);
        B.lane = 1; B.x = laneCX(1); G.lane = 0; G.x = laneCX(0);
        B.changeT = 0; B.blind = 0; B.useT = -1;
@@ -1785,7 +1767,7 @@ test('a bot under control makes no lane, item, boost or ultimate decision',()=>{
   equal('controlsLocked(B)',false);
 });
 test('control does not cancel an ultimate the victim was already running',()=>{
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`putBeside(B, A, -mindRange()*0.3);
        bo.ult = 1; startUlt(B); globalThis.wasT = bo.ultT;
        ao.ult = 1; startUlt(A); update(1/60);`);
@@ -1796,7 +1778,7 @@ test('control does not cancel an ultimate the victim was already running',()=>{
   equal('bo.ultOn',true);
 });
 test('protection clears mind control the way it clears every other debuff',()=>{
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`putBeside(B, A, -mindRange()*0.3); ao.ult = 1; startUlt(A); update(1/60);`);
   equal('bo.mindT > 0',true);
   run(`bo.invuln = INVULNERABLE_TIME; sweepDebuffs();`);
@@ -1818,7 +1800,7 @@ test('protection clears mind control the way it clears every other debuff',()=>{
 });
 test('Lolanthe destroys nobody merely by touching them',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'lolanthe', 'siren');
+    pair(a, b, 'lolanthe', 'saffron');
     run(`ao.ult = 1; startUlt(A); putBeside(B, A, -carH*0.4);
          rearEnd(B, {me:A === 'me', obj:A === 'me' ? null : A, lane:laneOf(A), y:yOf(A)});`);
     equal('ao.dead',0);
@@ -1831,7 +1813,7 @@ test('Lolanthe destroys nobody merely by touching them',()=>{
 /* ---- Verdant ----------------------------------------------------- */
 test('an invisible Verdant is physically present, in the race and reachable',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'verdant', 'siren');
+    pair(a, b, 'verdant', 'saffron');
     run(`globalThis.hullBefore = JSON.stringify(carHit(A).points.map(p => [p.x - (A === 'me' ? G.x : A.x), p.y - yOf(A)]));
          globalThis.placeBefore = A === 'me' ? G.meters : metersOf(A);
          ao.ult = 1; startUlt(A); for(let i=0;i<20;i++) update(1/60);`);
@@ -1859,7 +1841,7 @@ test('an invisible Verdant is physically present, in the race and reachable',()=
 test('Verdant destroys whoever runs into it and wins nothing by arriving',()=>{
   for(const [a, b] of PAIRS){
     /* Somebody runs into the back of it: they are destroyed and it reveals. */
-    pair(a, b, 'verdant', 'siren');
+    pair(a, b, 'verdant', 'saffron');
     run(`ao.ult = 1; startUlt(A); putBeside(B, A, carH*0.4);
          rearEnd(B, {me:A === 'me', obj:A === 'me' ? null : A, lane:laneOf(A), y:yOf(A)});`);
     equal('bo.dead > 0',true,'the racer that arrived survived');
@@ -1873,7 +1855,7 @@ test('Verdant destroys whoever runs into it and wins nothing by arriving',()=>{
     equal('ao.ultOn',true);
     /* And the other way: Verdant running into somebody is an ordinary
        rear-end, not a kill. */
-    pair(a, b, 'verdant', 'siren');
+    pair(a, b, 'verdant', 'saffron');
     run(`ao.ult = 1; startUlt(A); putBeside(A, B, -carH*0.4);
          rearEnd(A, {me:B === 'me', obj:B === 'me' ? null : B, lane:laneOf(B), y:yOf(B)});`);
     equal('bo.dead',0,'an ulting Verdant rammed somebody');
@@ -1885,7 +1867,7 @@ test('Verdant destroys whoever runs into it and wins nothing by arriving',()=>{
 test('the defence also runs through the ordinary per-frame contact sweep',()=>{
   /* The player drives up the back of a car it cannot see, on the frame loop
      rather than through a direct call. */
-  pair('me','bot','siren','verdant');
+  pair('me','bot','saffron','verdant');
   run(`bo.ult = 1; startUlt(B); B.lane = G.lane; B.x = G.x; B.y = playerY - carH*0.2;
        B.changeT = 1e6; B.abs = BASE_SPEED; update(1/60);`);
   equal('G.dead > 0',true,'the player drove into the hidden car and lived');
@@ -1893,7 +1875,7 @@ test('the defence also runs through the ordinary per-frame contact sweep',()=>{
   equal('B.verdantRevealT > 0',true);
   /* And the other way, from inside updateRival(): a bot running up the back of
      an invisible player is destroyed by it. */
-  pair('me','bot','verdant','siren');
+  pair('me','bot','verdant','saffron');
   run(`ao.ult = 1; startUlt(A); B.lane = G.lane; B.x = G.x; B.y = playerY + carH*0.2;
        B.changeT = 1e6; B.abs = BASE_SPEED; updateRival(B, 1/60, 'running');`);
   equal('B.dead > 0',true);
@@ -1967,7 +1949,7 @@ test('the Neela-versus-Flann priority is untouched where no Verdant is involved'
   equal('G.neelaSwapped',true);
 });
 test('bots do not aim at what they cannot see, and still collide with it',()=>{
-  pair('me','bot','verdant','siren');
+  pair('me','bot','verdant','saffron');
   run(`ao.ult = 1; startUlt(A); B.lane = 1; B.x = laneCX(1); B.y = playerY - carH*3;
        G.lane = 1; G.x = laneCX(1); B.human = false;
        /* Everybody else out of the bot's lane and far up the road, so what is
@@ -1994,7 +1976,7 @@ test('bots do not aim at what they cannot see, and still collide with it',()=>{
 });
 test('both new ultimates value themselves without claiming the other two do not',()=>{
   /* A crowd is worth something to Lolanthe and an empty road is not. */
-  pair('me','bot','lolanthe','siren');
+  pair('me','bot','lolanthe','saffron');
   run(`A === 'me'; globalThis.L = G.rivals[1]; L.car = "lolanthe"; L.human = false;
        L.lane = 1; L.x = laneCX(1); L.y = playerY - 2000; L.dead = 0; L.invuln = 0;
        G.rivals.forEach(r => { if(r !== L) r.y = playerY - 9000; });
@@ -2018,7 +2000,7 @@ test('both new ultimates value themselves without claiming the other two do not'
        globalThis.s = botSense(L);`);
   assert.equal(run('botUltExtra(L, s)'),0,'an empty road is worth nothing extra');
   /* And the other two are exactly as they were. */
-  run(`L.car = "siren"; globalThis.s = botSense(L);`);
+  run(`L.car = "saffron"; globalThis.s = botSense(L);`);
   assert.equal(run('botUltExtra(L, s)'),0);
 });
 test('both clear exactly the solid hazards Neela clears, and no more',()=>{
@@ -2052,7 +2034,7 @@ test('a wreck takes the note and the fade with it, leaving nothing over the car'
   equal('ao.queenPop',0);equal('ao.queenOut',0,'a wreck left the note behind');
   equal('ao.ultOn',false);
   /* And the same for the fade: no ghost dissolving through the wreck. */
-  pair('me','bot','verdant','siren');
+  pair('me','bot','verdant','saffron');
   run(`ao.ult = 1; startUlt(A); for(let i=0;i<20;i++) update(1/60);`);
   near('ao.verdantHide',1);
   run(`wreckRacer(A);`);
@@ -2108,7 +2090,7 @@ const CANON = w => `({m:${w} === 'me' ? G.meters : metersOf(${w}),` +
 
 test('the phase is a small explicit state, and the shared lifecycle is untouched',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'rhosyn', 'siren');
+    pair(a, b, 'rhosyn', 'saffron');
     equal('ao.aeroPhase','off');
     equal('rhosynElsewhere(A)',false);
     equal('aeroGlowViewActive(A)',false);
@@ -2160,7 +2142,7 @@ test('the phase is a small explicit state, and the shared lifecycle is untouched
   }
 });
 test('there is exactly one Rhosyn race position, and Aero-Glow never touches it',()=>{
-  pair('me','bot','rhosyn','siren');
+  pair('me','bot','rhosyn','saffron');
   /* Lay a seam a short way up the road so the canonical race genuinely
      changes biome while the owner is away. */
   run(`ao.ult = 1; startUlt(A); globalThis.at0 = ${CANON("A")};
@@ -2212,7 +2194,7 @@ test('there is exactly one Rhosyn race position, and Aero-Glow never touches it'
   equal('others().every(r => r.finished === null && r.dead === 0)',true);
 });
 test('G.biome, the seam and the track clock are never touched by Aero-Glow',()=>{
-  pair('me','bot','rhosyn','siren');
+  pair('me','bot','rhosyn','saffron');
   run(`globalThis.seen = new Set();
        ao.ult = 1; startUlt(A);
        for(let i=0;i<60*12;i++){ update(1/60); seen.add(G.biome); if(i===60) G.trackT = 0.2; }`);
@@ -2243,7 +2225,7 @@ function awayPair(other, theirUlt){
 }
 test('nothing on the shared road reaches a Rhosyn in Aero-Glow, and it reaches nothing',()=>{
   /* Every contact rule in the game, from both sides. */
-  for(const [other, ulting, name] of [['siren',false,'an ordinary racer'],
+  for(const [other, ulting, name] of [['saffron',false,'an ordinary racer'],
                                       ['flann',true,'an ulting Flann'],
                                       ['neela',true,'an alternate-form Neela'],
                                       ['verdant',true,'an ulting Verdant']]){
@@ -2289,7 +2271,7 @@ test("Lolanthe's aura cannot reach into Aero-Glow, and Mind Control is refused",
   equal('ao.aeroPhase','glow');
 });
 test('shared-road pickups and offensive systems all skip a departed Rhosyn',()=>{
-  awayPair('siren', false);
+  awayPair('saffron', false);
   /* A bubble row laid exactly on it is not swept up: it cannot see the row,
      and what it leaves is still there for whoever does reach it. */
   run(`G.boxes = [{ y: yOf(A), gone:0, s:0.5, life:BUBBLE_LIFE, blink:0, ph:0, doomed:false }];
@@ -2334,7 +2316,7 @@ test('shared-road pickups and offensive systems all skip a departed Rhosyn',()=>
 /* ---- the two seconds on the way back ----------------------------- */
 test('the return grants the existing Invulnerable Condition, and nothing else',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'rhosyn', 'siren');
+    pair(a, b, 'rhosyn', 'saffron');
     run(`ao.ult = 1; startUlt(A);
          for(let i=0;i<60*15 && ao.ultOn;i++) update(1/60);`);
     equal('ao.aeroPhase','out');
@@ -2370,7 +2352,7 @@ test('the return grants the existing Invulnerable Condition, and nothing else',(
   }
 });
 test('a longer protection already running is never shortened by coming home',()=>{
-  pair('me','bot','rhosyn','siren');
+  pair('me','bot','rhosyn','saffron');
   run(`ao.ult = 1; startUlt(A);
        for(let i=0;i<60*15 && ao.ultOn;i++) update(1/60);
        ao.invuln = 9;
@@ -2380,7 +2362,7 @@ test('a longer protection already running is never shortened by coming home',()=
 });
 /* ---- the lifecycle edges ----------------------------------------- */
 test('a pause stops the departure, the void and the return dead',()=>{
-  pair('me','bot','rhosyn','siren');
+  pair('me','bot','rhosyn','saffron');
   run(`ao.ult = 1; startUlt(A);
        globalThis.before = {phase:ao.aeroPhase, t:ao.aeroT, ult:ao.ultT,
                             m:A === 'me' ? G.meters : metersOf(A)};
@@ -2397,7 +2379,7 @@ test('a pause stops the departure, the void and the return dead',()=>{
 });
 test('crossing the line while away is a real finish, and nothing stays in the void',()=>{
   for(const [a, b] of PAIRS){
-    pair(a, b, 'rhosyn', 'siren');
+    pair(a, b, 'rhosyn', 'saffron');
     run(`ao.ult = 1; startUlt(A);
          for(let i=0;i<60;i++) update(1/60);`);
     equal('ao.aeroPhase','glow');
@@ -2422,7 +2404,7 @@ test('crossing the line while away is a real finish, and nothing stays in the vo
 test('a wreck cannot reach it, and a forced one still cleans up after itself',()=>{
   /* The ordinary destruction path refuses, because it asks the same question
      every contact asks: there is no body there to wreck. */
-  pair('bot','me','rhosyn','siren');
+  pair('bot','me','rhosyn','saffron');
   run(`ao.ult = 1; startUlt(A); for(let i=0;i<60;i++) update(1/60); wreckRacer(A);`);
   equal('ao.dead',0,'a wreck reached a car that was not on the road');
   equal('ao.aeroPhase','glow');
@@ -2439,7 +2421,7 @@ test('a wreck cannot reach it, and a forced one still cleans up after itself',()
   equal('racerViewAlpha(A, A)',1);
   /* Player one's own destruction is the forced path by construction, and
      clears exactly the same state. */
-  pair('me','bot','rhosyn','siren');
+  pair('me','bot','rhosyn','saffron');
   run(`ao.ult = 1; startUlt(A); for(let i=0;i<60;i++) update(1/60); destroyCar();`);
   equal('G.dead > 0',true);
   equal('G.aeroPhase','off');equal('G.aeroT',0);equal('G.aeroHide',0);
@@ -2447,7 +2429,7 @@ test('a wreck cannot reach it, and a forced one still cleans up after itself',()
   equal('aeroGlowViewActive("me")',false);
 });
 test('nothing of Aero-Glow survives a restart',()=>{
-  pair('me','bot','rhosyn','siren');
+  pair('me','bot','rhosyn','saffron');
   run(`ao.ult = 1; startUlt(A); for(let i=0;i<60;i++) update(1/60);`);
   equal('G.aeroPhase','glow');
   run(`G.local = false; G.car = "flann"; G.rules = defaultRules();
@@ -2463,6 +2445,88 @@ test('nothing of Aero-Glow survives a restart',()=>{
   run(`leave(); G.car = "rhosyn"; startRace(); clearTimers();`);
   equal('G.aeroPhase','off');
   equal('aeroGlowViewActive("me")',false);
+});
+
+/* Saffron uses the same state machine for all three driver types. */
+for(const kind of ['player','bot','local']){
+  test('saffron/'+kind+' flight, mind control, drop, geometry and cleanup',()=>{
+    setup('saffron',kind);
+    equal('racerModel(who).key','saffronAlt');equal('o.saffronPhase','rise');
+    equal('o.whiteT',run('WHITEOUT_TIME'));equal('o.morphT',run('MORPH_TIME'));
+    equal('clearsSolidHazards(who)',false);equal('refusesDebuffs(who)',false);
+    run('globalThis.pose=JSON.stringify(racerWorldPose(who));tickSaffron(who,MORPH_TIME);');
+    equal('o.saffronPhase','air');equal('o.saffronLift',1);
+    equal('JSON.stringify(racerWorldPose(who))===pose',true);
+    near('racerDims(who).w/laneW',2);
+    run(`o.lane=1;o.mindSide=1;o.boosting=true;
+         globalThis.target=who==='me'?G.rivals[0]:'me';
+         globalThis.tgt=target==='me'?G:target;
+         tgt.car='lolanthe';tgt.dead=0;tgt.invuln=0;tgt.finished=null;
+         applyMindControl(who);o.mindSide=1;mindShove(who);tickUlt(who,.25);`);
+    equal('mindTakes(target,who)',true);equal('o.mindT',3);
+    equal('controlsLocked(who)',true);equal('o.boosting',false);equal('o.lane',2);
+    near('o.ultT',14.75);
+    // Place the other racer under the canonical road footprint.
+    run(`tgt.x=o.x;tgt.lane=o.lane;if(target==='me') playerY=o.y;else tgt.y=playerY;
+         o.mindT=0;tickUlt(who,20);`);
+    equal('o.saffronPhase','drop');equal('racerModel(who).key','saffron');
+    equal('o.saffronLift',1);
+    run('globalThis.pose=JSON.stringify(racerWorldPose(who));tickSaffron(who,.05);');
+    equal('o.saffronLift',1);equal('tgt.dead',0);
+    run('tickSaffron(who,1);');
+    equal('tgt.dead>0',true);equal('o.dead',0);equal('o.saffronPhase','off');
+    equal('JSON.stringify(racerWorldPose(who))===pose',true);
+    equal('swapGuarded(who)',true);equal('noContact(who)',false);
+    setup('saffron',kind);run('o.finished=1;tickSaffron(who,1);');
+    equal('o.saffronPhase','off');equal('o.saffronLift',0);
+  });
+  test('saffron/'+kind+' intercepts descending meteor without a ground blast',()=>{
+    setup('saffron',kind);run(`tickSaffron(who,MORPH_TIME);
+      globalThis.mo={kind:'meteor',x:o.x,y:racerY(who),r:80,mr:18,max:1,phase:0,t:0};
+      mo.fall=(saffronAltitude(who)/METEOR_ALT)*rockLead(mo);
+      G.fx=[];G.traps=[mo];updateTraps(0,0,'running');`);
+    equal('G.traps.length',0);equal('mo.phase',0);equal('o.dead',0);equal('G.fx.length>0',true);
+    equal('clearsSolidHazards(who)',false);
+    setup('saffron',kind);run(`tickSaffron(who,MORPH_TIME);
+      globalThis.mo={kind:'meteor',x:o.x+roadW*3,y:racerY(who),r:80,mr:18,max:1,phase:0,t:0,fall:.02};
+      G.traps=[mo];updateTraps(.03,0,'running');`);
+    equal('mo.phase',1);equal('o.dead',0);
+  });
+}
+test('Saffron touchdown resolves every overlap and respects protection',()=>{
+  for(const state of ['ordinary','invuln','finished','aero','air','distant']){
+    setup('saffron','player');
+    run(`globalThis.v=G.rivals[0];v.car='rhosyn';v.x=G.x;v.y=playerY;v.lane=G.lane;
+      v.dead=0;v.invuln=0;v.finished=null;
+      ${state==='invuln'?'v.invuln=2;':state==='finished'?'v.finished=1;':state==='aero'?'startUlt(v);':state==='air'?"v.car='saffron';startUlt(v);":state==='distant'?'v.x+=roadW*2;':''}
+      endUlt('me');tickSaffron('me',1);`);
+    equal('v.dead>0',state==='ordinary');
+  }
+  setup('saffron','player');
+  run(`globalThis.v=G.rivals[0];v.car='flann';v.x=G.x;v.y=playerY;v.invuln=0;
+       globalThis.v2={...v};G.rivals.push(v2);endUlt('me');tickSaffron('me',1);`);
+  equal('v.dead>0 && v2.dead>0',true);
+});
+test('Saffron finish never triggers a delayed touchdown; paused flight clocks hold',()=>{
+  setup('saffron','player');run(`tickSaffron('me',MORPH_TIME);G.finishAt=G.meters+1;
+    G.meters+=2;checkFinish();tickSaffron('me',1);`);
+  equal('G.saffronPhase','off');equal('G.saffronLift',0);equal('G.ultOn',false);
+  setup('saffron','player');run(`G.state='paused';globalThis.before=G.saffronT;update(.1);`);
+  equal('G.saffronT===before',true);
+});
+test('Aero-Glow DOM and canvas distance HUD is private and restores current track',()=>{
+  setup('rhosyn','player');run(`tickAeroGlow('me',AERO_SHIFT+AERO_FADE);paintHUD(true);`);
+  equal('$("#trackName").textContent',run('t("aeroGlow")'));
+  equal('$(".readout").style.display','none');
+  run(`curTrackKey=TRACKS.desert.key;endUlt('me');tickAeroGlow('me',AERO_SHIFT+AERO_FADE);paintHUD(true);`);
+  equal('$("#trackName").textContent',run('t(curTrackKey)'));
+  equal('$(".readout").style.display','');
+});
+
+test('leaving the race clears every Saffron flight and transition',()=>{
+  setup('saffron','player');run(`startUlt(G.rivals[0]);leave();`);
+  equal('G.saffronPhase','off');equal('G.saffronLift',0);equal('G.whiteT',0);equal('G.morphT',0);
+  equal('G.rivals[0].saffronPhase','off');equal('G.rivals[0].ultOn',false);equal('G.ultOn',false);
 });
 
 console.log(`\n${checks} ultimate regression checks passed (DOM/Canvas doubles; no physical controller or visual QA).`);

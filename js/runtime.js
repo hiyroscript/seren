@@ -85,6 +85,7 @@ const G = {
      `morphT` is the white flash on the body itself, which any car can wear
      because any car can be the one teleported. `swapGuard` is a single step's
      worth of "this contact has already been dealt with". */
+  saffronPhase:"off", saffronT:0, saffronLift:0,
   neelaForm:false, neelaOrigin:null, neelaSwapped:false,
   whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
   /* ---- Lolanthe's and Verdant's ultimates, on the racer holding one ----
@@ -133,7 +134,6 @@ const G = {
   /* the short forward shove a rear-end hands its victim */
   shuntT:0, bumpCD:0,
   slipT:0, item:null, swapT:0, boxes:[], slicks:[], missiles:[], boxGap:0, nextRow:6000, canT:0, lastTap:-9, tapClock:0,
-  sirenOwner:null,
   raceT:0, tracksLeft:-1, finishAt:0, finished:null, results:[], raceDone:false,
   /* local play */
   local:false, players:1, picks:[], humans:[], padBoost:false,
@@ -191,25 +191,8 @@ function layout(){
 }
 function laneCX(i){ return roadX + laneW*(i+0.5); }
 
-/* ---- how big one racer is on the road ---------------------------
-   carW/carH above are the road's car: the size the lane, the grid and most of
-   the six racers are built around, and nothing here makes them bigger. What a
-   car may have is a race scale of its own - CARS.<id>.raceScale - and three of
-   the five sprite cars do, each measured off its own artwork: Flann is drawn
-   and collided a little over a tenth larger, Neela a shade under a fifth and
-   Verdant a tenth, so all of them read properly against the asphalt. Lolanthe
-   and Rhosyn already fill the box across at 1:1 and need none - both are broad
-   against their own length - and Siren is built around the shared box and has
-   none.
-
-   These two are the only readers of that number, and everything that genuinely
-   needs a racer's physical body - the sprite, the hull in carHit(), the gap a
-   rear-end leaves, the roof a meteor lands on - asks here instead of reaching
-   for carW/carH and guessing. Scaling is uniform, so aspect ratio is preserved
-   and a hull scales with the car it belongs to.
-
-   The garage and select-screen previews are not racers and do not come through
-   here: paintCarIcon() sizes its own canvas, so the menus are unaffected. */
+/* Race-only uniform size. Rendering and hulls use these same dimensions;
+   menus fit the measured base artwork independently. */
 function raceScale(carId){
   const c = CARS[carId];
   return c && c.raceScale > 0 ? c.raceScale : 1;
@@ -218,25 +201,14 @@ function carDims(carId){
   const k = raceScale(carId);
   return { w:carW*k, h:carH*k };
 }
-/* ---- which body a racer is wearing ------------------------------
-   Five cars and a normal Neela are their own entry in CARS - the five sprite
-   bodies and Siren's. A Neela in its
-   alternate form is the entry nested under Neela, which carries its own
-   sprite, its own measured bounds, its own emitter, its own hull and its own
-   size relative to the racer's box.
-
-   This is the single answer to "which model is this racer?", and the renderer,
-   the hull in carHit() and the size in racerDims() all ask it - so the body
-   being drawn and the body being collided can never be two different shapes.
-   The car itself is unchanged underneath: `car` is still "neela" throughout,
-   which is what the ultimate, the standings and the garage read. */
+/* Authoritative active model for body, hull, exhaust and dimensions. */
 function racerModel(who){
   const o = who === "me" || who === undefined ? G : who;
   const c = CARS[o && o.car];
   if(!c) return CARS.flann;
   /* Asked with the racer itself rather than the argument, so carHit() calling
      this with nothing at all still means player one. */
-  return c.altForm && neelaFormActive(o) ? c.altForm : c;
+  return c.altForm && (neelaFormActive(o) || saffronDragonActive(o)) ? c.altForm : c;
 }
 /* A model may be drawn larger or smaller than the racer's own box; only an
    alternate form uses it, and only to keep the shape it turns into the size
@@ -249,7 +221,9 @@ function modelScale(model){ return model && model.scale > 0 ? model.scale : 1; }
 function racerDims(who){
   const o = who === "me" || who === undefined ? G : who;
   const d = carDims(o && o.car);
-  const k = modelScale(racerModel(who));
+  const model = racerModel(who);
+  if(model.laneSpan) return {w:laneW*model.laneSpan, h:laneW*model.laneSpan*1.86};
+  const k = modelScale(model);
   return k === 1 ? d : { w:d.w*k, h:d.h*k };
 }
 

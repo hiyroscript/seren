@@ -131,7 +131,7 @@ else with those fifteen seconds as well.
 | **Lolanthe** | 15 seconds at 2× pace, **Mind Controlling** — see below |
 | **Verdant** | 15 seconds at 2× pace, **invisible** — see below |
 | **Rhosyn** | 15 seconds at 2× pace, **in Aero-Glow** — see below |
-| **Siren** | 15 seconds at 2× pace |
+| **Saffron** | 15 seconds at 2× pace as an airborne metal dragon; meteor interception and a final touchdown impact |
 
 ### Flann's ram
 
@@ -139,10 +139,8 @@ For the whole fifteen seconds, Flann visibly catches fire and turns into a
 battering ram. It keeps the ordinary speed boost and the ordinary charge clock;
 what it gains is priority in a collision.
 
-- **Racers.** Any contact with another racer wrecks that racer, whichever of the
-  two ran into the other — behind, alongside, into a lane it wanted or out of
-  one somebody else wanted. Flann takes no Slow, no shunt and no wreck for it.
-  Rear-end an ulting Flann and you are the one that gets wrecked.
+- **Racers.** Flann destroys racers it rear-ends or barges into. A racer hitting Flann receives the ordinary collision response. Two ulting Flanns cancel the special ram; Flann and ulting Verdant still mutually destroy each other regardless of initiator.
+
 - **Tumbleweed.** Smashed apart on contact. No Slow and no meter cost.
 - **Meteor.** Neither the falling rock nor the blast can destroy it, and the
   ultimate carries on.
@@ -292,14 +290,16 @@ over that one racer, plus the fact that the shared road cannot touch it.
   same badge, the same blink and the same protection a respawn gets, taken as
   `max(existing, 2)` so a longer protection is never shortened. There is no
   second shield and no Rhosyn-only immunity.
-- **Standings.** It is never removed from the race, the order or the ladder. Its
-  dot stays on the line; what it loses is the edge badge that would print the
-  lane and the gap, because a driver could not see it to read them.
+- **Standings.** Canonical race order continues. Other drivers keep their tracker; the Aero-Glow owner sees no distance, place rows or ladder until returning. Its ultimate meter remains visible, and its track label reads Aero-Glow.
 - **In local play.** Per column, like everything else: one player can be in
   Aero-Glow while the other two or three carry on racing the real world in the
   same frame. Only that player's column flashes white and only that player's
   column changes worlds. A bot Rhosyn has no screen, so it simply vanishes from
   every human view while its canonical simulation carries on.
+
+### Saffron’s dragon
+
+The orange base car uses two measured exhaust outlets. Its metal dragon uses six, spans two lanes, and rises above racers and hazards with a shadow at its canonical position. Steering, race distance, finish progress and Mind Control continue normally. Ground hazards and pickups are passed over without damage or collection. After the shared fifteen seconds, the normal car drops rapidly and resolves its measured-hull landing impact.
 
 ### The ultimate meter
 
@@ -313,15 +313,11 @@ over that one racer, plus the fact that the shared road cannot touch it.
 
 ### How ultimates interact
 
-For Siren, the ultimate does not change contact rules. An active racer simply
-moves at boosted pace and otherwise interacts normally: collisions, barges,
-wrecks, hazards, oil and seekers still apply. Flann, Neela, Lolanthe and Verdant
-change what a contact *does*, or who can see it, rather than whether it can
-happen at all. Rhosyn is the one that changes whether it can happen — see above.
+Saffron flies above road-level interactions, while remaining susceptible to Lolanthe’s Mind Control at canonical road distance. Falling meteors striking the dragon are intercepted without a ground explosion. At expiry Saffron transforms back in the air and drops onto its canonical position, wrecking each reachable racer overlapped by its normal-car hull. This never teleports its race distance.
 
 Where they meet, the priority is fixed and in this order:
 
-0. An ulting **Rhosyn** on either side: there is no contact. It is first because
+0. An airborne **Saffron** or absent **Rhosyn** on either side: there is no contact. It is first because
    it is not a priority at all — the other rules settle a contact between two
    bodies, and this one says one of the two bodies is not on this road.
 1. An ulting **Verdant** and an ulting **Flann** destroy each other, both meters
@@ -332,7 +328,7 @@ Where they meet, the priority is fixed and in this order:
 4. A **transformed Neela** exchanges places, ahead of Flann's ram — a Flann and
    a Neela meeting with no Verdant involved is the exchange rather than the
    kill, because the contact spends Neela's transformation either way.
-5. An ulting **Flann** wrecks whatever it meets.
+5. An ulting **Flann** wrecks a racer it initiates contact with.
 6. The ordinary shunt, barge, slow and lane-change consequences.
 
 Lolanthe is nowhere in that list, because Lolanthe wins no contacts. Its forced
@@ -801,7 +797,7 @@ biome continuing through it, the isolation in both directions against every
 contact rule, hazard, pickup and targeting system, the two seconds of
 Invulnerable granted at the frame the car is genuinely back, finishing from
 inside it, pause, a forced wreck and a restart;
-`node tools/sprite-check.mjs` covers race sizes, all five sprite cars' sheets
+`node tools/sprite-check.mjs` covers race sizes, all six sprite cars' sheets
 and measured emitters, the ultimate fire, the transformation flash, Verdant's
 per-view opacity and Rhosyn's disappearance from every other view in one to four
 columns, and both note effects;

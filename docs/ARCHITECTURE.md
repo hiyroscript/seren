@@ -372,8 +372,7 @@ them.
 **Flann is a ram** while `flannUltActive(who)` is true — the racer exists, its
 car is `flann`, and its ordinary `ultOn` is running.
 
-- `ramWinner(a, b)` says which of two racers in contact wins it outright, or
-  `null` for the ordinary rules. Two ulting Flanns cancel.
+- `offensiveRam(by, victim)` accepts only a Flann-initiated contact against a non-ulting-Flann victim. Incoming contacts use ordinary rules.
 - `rearEnd` and `bumpTarget` ask it. The loser is wrecked through the
   existing lifecycle (`wreckRacer` → `destroyCar` / `wreckRival`, so blame,
   meter penalty and reward, particles, shake and audio are all the usual ones)
@@ -520,7 +519,7 @@ stronger than a privilege over two of the hazards.
 lane change to finish, so `move()` and `rivalLaneTo()` never go on to move a car
 that has just been wrecked on an ulting Flann or traded away by a Neela.
 
-For Siren, for Flann the moment its ultimate expires, for Neela from
+For grounded Saffron, for Flann the moment its ultimate expires, for Neela from
 the exchange onwards, and for Lolanthe throughout — its power is the aura and
 the shove, never a contact it wins — `rearEnd` and `bumpTarget` apply ordinary
 contact rules regardless of ultimate state; the short forward shove a rear-end hands its
@@ -549,17 +548,11 @@ turns into a distance. So nothing may compare or copy positions directly:
 
 ### Which body a racer is wearing
 
-`racerModel(who)` is the single answer. Five cars and a normal Neela are their
-own entry in `CARS`; a Neela in its alternate form is `CARS.neela.altForm`,
-which carries its own sprite, measured bounds, emitter, hull and `scale`
-relative to the racer's box. `racerDims(who)` and `carHit(who)` both read it, so
-the body being drawn and the body being collided switch on the same frame and
-switch back on the same frame.
+`racerModel(who)` chooses the base entry, Neela’s alternate form or Saffron’s dragon. `racerDims()` and `carHit()` read that same model. Neela uses a relative model scale; Saffron uses `laneSpan:2`, measured against each view’s lane geometry. Saffron’s altitude is separate presentation state; no second race coordinate exists.
 
 Body contact is centralized in `carHit(who)`. Flann uses an inset eight-point
 `hitShape` in logical car units, Neela an eighteen-point one traced off
-`v_neela.PNG` and a twenty-point one traced off `vtm_neela.PNG`; the other four
-cars retain their existing inset body rectangle. All of them rotate with the
+`v_neela.PNG` and a twenty-point one traced off `vtm_neela.PNG`; the other four cars also carry measured polygons. All of them rotate with the
 rendered tilt. The shape is multiplied up by the racer's own size out of
 `racerDims()`, so a car drawn larger on the road is collided larger by exactly
 the same factor — a sprite car's hull scales with its sprite and there is never
@@ -605,18 +598,8 @@ writes none. Aero-Glow is deliberately not a `TRACKS` entry and its name is
 drawn inside the view rather than written into `#trackName`, which is the page's
 one HUD and in split-screen belongs to whoever is not in there.
 
-Flann, Neela, Lolanthe, Verdant and Rhosyn use the exact `v_flann.PNG`,
-`v_neela.PNG`, `v_lolanthe.PNG`, `v_verdant.PNG` and `v_rhosyn.PNG` through the
-`sprite` branch of `drawCar()`,
-and Neela's ultimate uses `vtm_neela.PNG`. All six sheets are loaded once each
-into `CAR_SPRITES` — a car with an `altForm` contributes both of its sheets, so
-the alternate body is decoded and cached at boot rather than the first time an
-ultimate is pressed. On load, the shared menu canvases repaint. `FX_SPRITES` is
-the same arrangement for the two world effects, `queen_note.PNG` and
-`pion_note.PNG`, which are not bodies anybody drives. Siren alone retains a
-procedural Canvas model; the models that belonged to the cars Lolanthe, Verdant
-and Rhosyn replaced are gone with them, `drawCoupe()` included — it had exactly
-one user and no longer has it.
+All six cars use their root `v_*.PNG` sprite assets. Neela and Saffron also register their `vtm_*.PNG` alternate sheets in the shared cache. All eight car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
+
 Showroom, garage, player, bot and local columns all use this same dispatch, and
 the menus paint from `CARS` directly, so a preview is always the car and never
 the shape it turns into.
@@ -638,18 +621,7 @@ a car it is allowed to see. All of it reads timers the update code advances and
 the wall clock, exactly as the exhaust pulse does, so drawing the same frame
 twice draws the same frame — and none of it is collision geometry.
 
-The shared `carW`/`carH` the road is built on are unchanged, and three of the six
-racers are drawn at exactly them. What a car may have is a race scale of its
-own — `CARS.<id>.raceScale` — and three of the four sprite cars do, each measured
-off its own artwork: Flann 1.12×, Neela 1.18× and Verdant 1.10×, so all three
-read properly against the lane. Lolanthe has none, and that is a measurement
-too: its body fills the car box across at 1:1, which is what makes it the one
-sprite car that needs no adjustment. An alternate form may also carry a `scale` against its racer's own box —
-Neela's is 1.09×, measured so the craft's fuselage and fin span come out the
-size of the car it replaced. `raceScale()`, `carDims()`, `racerModel()` and
-`racerDims()` in `runtime.js` are the only readers, and everything that needs a
-racer's physical body asks them. Menus are not racers and do not come through
-them, so `paintCarIcon()`'s previews are untouched.
+The shared `carW`/`carH` remain unchanged. Uniform race scales are Flann 1.12, Neela 1.18, Verdant 1.10, Rhosyn 1.14 and Saffron 1.25; Lolanthe uses 1. Neela’s alternate scale is 1.09. Saffron’s dragon spans two lanes through model metadata. Menus use the untransformed base models.
 
 `CARS.<id>.exhaust` holds the measured emitter anchors: Flann's two at source
 pixels (355, 1377) and (669, 1377), Neela's two at (352, 1355) and (671, 1355),
@@ -955,3 +927,11 @@ all fifteen scripts against small DOM/Canvas test doubles, drives the actual
 event handlers, and supplies simulated Gamepad snapshots. It does not validate
 CSS layout, browser rendering or real controller hardware. See
 [MENU-REDESIGN-QA.md](MENU-REDESIGN-QA.md) for the remaining visual test matrix.
+
+## Flight and private-world updates
+
+`refusesDebuffs()` contains lifecycle protection and Aero-Glow absence. `noContact()` adds Saffron flight without making it immune to Mind Control. `mindShove()` can change airborne canonical lanes while `carAt()` correctly finds no physical road contact. Meteor interception checks the falling trajectory against every active dragon before ground detonation.
+
+Saffron’s phase/lift clocks live on every racer, are reset with other form state and use the shared transition helpers. The airborne render pass follows road objects and carries body, exhaust and badges upward while retaining a canonical shadow. Touchdown uses the normal model’s polygon and existing wreck/credit functions.
+
+Aero-Glow adapts Ponu’s lane highlight, rungs and dash rhythm through `aeroEachRung()`, driven by owner travel. `hudReadout()` and `drawLadder()` suppress race-position information only for the private-world owner. The DOM HUD restores the current `curTrackKey` after return.

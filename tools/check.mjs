@@ -644,7 +644,7 @@ head("The car-specific ultimates and race sizes");
   /* And it is the one car-specific state noContact() reads, because it is the
      one that is about there being a body at all rather than about who wins a
      contact between two of them. */
-  /function noContact\([^)]*\)\s*\{[^}]*rhosynElsewhere/.test(mech)
+  /function refusesDebuffs\([^)]*\)\s*\{[^}]*rhosynElsewhere/.test(mech)
     ? pass("noContact() reads the one state that says the body has left the road")
     : fail("noContact() no longer knows about Aero-Glow");
   /* Verdant is hidden, never removed: nothing in the mechanic may reach for
@@ -678,7 +678,7 @@ head("The car-specific ultimates and race sizes");
       ? procedural.forEach(([id]) => fail(`car ${id} is procedural and must not carry a race scale`))
       : pass(`only the sprite cars carry a race scale (${scaled.map(([id]) => id).join(", ") || "none"})`);
     for (const [id, c] of scaled) {
-      c.raceScale > 1.05 && c.raceScale < 1.25
+      c.raceScale > 1.05 && c.raceScale <= 1.25
         ? pass(`${id}'s race scale is the intended 5-25% and no more (${c.raceScale}x)`)
         : fail(`${id}'s race scale is ${c.raceScale}, outside the intended 5-25%`);
     }

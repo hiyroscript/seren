@@ -123,6 +123,7 @@ function spawnRivals(){
       slow:0, blind:0, dead:0, invuln:0, shuntT:0, bumpCD:0, slip:0,
       /* Neela's ultimate, carried by every racer so nothing downstream has to
          ask which kind of object it is holding. See G in runtime.js. */
+      saffronPhase:"off", saffronT:0, saffronLift:0,
       neelaForm:false, neelaOrigin:null, neelaSwapped:false,
       whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
       /* Lolanthe's and Verdant's, carried by every racer for the same
@@ -192,6 +193,7 @@ function startRace(){
   G.dead = 0; G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
+  clearSaffronState("me");
   clearNeelaState("me"); G.trail = [];     /* nothing of the last race's ultimate */
   clearLolantheState("me"); clearVerdantState("me");
   clearAeroGlowState("me");                /* nor any of Aero-Glow's */
@@ -264,6 +266,11 @@ function pause(on){
 
 function leave(){
   clearTimers();
+  for(const a of racers()){
+    const who = a.me ? "me" : a.obj, o = a.me ? G : a.obj;
+    clearSaffronState(who);
+    if(saffronCar(who)){ endUlt(who); o.whiteT = 0; o.morphT = 0; }
+  }
   const bd = $("#ovBoard"); if(bd) bd.classList.remove("on");
   if(!G.local && (G.state === "running" || G.state === "paused") && Math.floor(G.meters) > best){
     best = Math.floor(G.meters);
@@ -338,6 +345,7 @@ function checkFinish(){
       G.results.push({ me:false, car:R.car, place:R.finished });
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
+      clearSaffronState(R);
       clearNeelaState(R);                        /* out of play: no alternate form */
       clearVerdantState(R);                      /* nor a fade half-finished */
       clearAeroGlowState(R);                     /* nor a void to be parked in */
@@ -351,6 +359,7 @@ function checkFinish(){
     G.finished = G.results.length + 1;
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
+    clearSaffronState("me");
     clearNeelaState("me");                      /* out of play: no alternate form */
     clearVerdantState("me");                    /* nor a fade half-finished */
     clearAeroGlowState("me");                   /* nor a renderer left in the void */
@@ -631,6 +640,7 @@ function update(dt){
      and the return with everything else, and the two seconds of protection
      that the return grants are handed out on the frame it actually lands. */
   tickAeroGlow("me", dt);
+  if(st === "running") tickSaffron("me", dt);
   updateTrail("me", dt, d);
   G.tapClock += dt;
   if(G.bumpCD > 0) G.bumpCD = Math.max(0, G.bumpCD - dt);
@@ -693,6 +703,7 @@ function updateRival(R, dt, st){
   if(R.queenOut > 0) R.queenOut = Math.max(0, R.queenOut - dt);
   tickVerdant(R, dt);
   tickAeroGlow(R, dt);
+  tickSaffron(R, dt);
   updateTrail(R, dt, G.speed*dt);
   if(R.bumpCD > 0) R.bumpCD = Math.max(0, R.bumpCD - dt);
   if(R.changeT > 0) R.changeT -= dt;
