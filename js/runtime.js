@@ -65,7 +65,7 @@ const G = {
   shake:0, timers:[], swipeLock:0,
   biome:"city", next:null, seam:null, trackT:60, seamPts:[], seamBits:[],
   traps:[], fx:[], trapGap:0, nextTrap:600,
-  tier:0, speedT:30, blind:0, blindPts:[], dead:0, invuln:0, slowT:0,
+  tier:0, speedT:SPEED_SECONDS, blind:0, blindPts:[], dead:0, invuln:0, slowT:0,
   car:"flann", ult:0, ultOn:false, ultKey:false, ultArmed:true,
   /* The active meter displays seconds remaining / the fixed duration. */
   ultT:0, ultMax:ULT_TIME,

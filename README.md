@@ -97,8 +97,8 @@ held trigger fires once and a held stick walks across the lanes at a readable pa
 getting faster. Drive as far as you can; leaving the race banks the distance as
 your personal best.
 
-**Race against bots** — pick a difficulty, then race the full distance: five
-minutes, then three track changes, then 900 metres to the flag. Six cars, every
+**Race against bots** — pick a difficulty, then race the full distance: reach
+3.00×, then three track changes, then 900 metres to the flag. Six cars, every
 trap, every pickup, and a finishing order at the end.
 
 **Local play** — two to four people on one screen, one controller each, on a
@@ -119,7 +119,7 @@ never inherit half a custom race by accident.
 
 ## The cars and their ultimates
 
-Every car has the same mechanical ultimate: a **75-second charge**, then
+Every car has the same mechanical ultimate: a **85-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
 boost, never its strength, duration or charge rate. Five of the six do something
 else with those fifteen seconds as well.
@@ -303,7 +303,7 @@ The orange base car uses two measured exhaust outlets. Its metal dragon uses six
 
 ### The ultimate meter
 
-- **75 seconds** from empty to ready, for every car in the field.
+- **85 seconds** from empty to ready, for every car in the field.
 - Hitting a **trap** costs 5%; being **wrecked** costs 10%; **wrecking somebody
   else** pays 10% of the charge meter.
 - During activation the meter counts down the fixed **15-second** duration.
@@ -359,7 +359,7 @@ same three-second timer the control lock is.
 other car has room it is shoved across and left labouring; if it is already
 against a barrier, the hit wrecks it. Either way the lane is yours.
 
-**Boost.** A full bar lasts about 2.5 seconds at 1.5× pace and takes about 7
+**Boost.** A full bar lasts 5.5 seconds at 1.5× pace and takes 5
 seconds to refill. Run it completely dry and it locks out until it is full again.
 It will not run while you are wrecked.
 
@@ -398,10 +398,21 @@ surface fades over a stretch rather than at a step.
 | **Desert** | Sand-coloured ground and layered rock, cacti and scrub on the shoulders. Sand drifts across a dark road under faded yellow markings. | Tumbleweed |
 | **Rainbow space** | A road of scrolling rainbow bands over near-black, edged with neon cyan rails. Nothing beside it but a drifting starfield. | Meteor |
 
-The road speeds up **5% every 30 seconds, up to double** — so it tops out ten
-minutes in.
+The road begins at **1.00×**, adds **0.10× every 20 seconds**, and reaches
+**3.00× at 6:40**. Actual road scrolling follows this pace, including scenery
+and hazards. The HUD shows the base multiplier to two decimal places.
 
 ### Hazards
+
+A **perfect dodge grants +10 percentage points of ultimate charge**: change
+steering with a real hull collision at most **120ms** away, then escape safely.
+Early lane changes, wide or passive misses, hits, and repeated passes do not
+qualify. The same geometry and reward apply to players and bots. Protected,
+finished, wrecked, airborne or off-road racers cannot earn this reward.
+
+Each collected **Mystery Bubble grants +5 percentage points of ultimate charge**,
+even while its item rewards remain disabled. Both rewards use the shared charge
+helper: they never extend an active ultimate’s remaining 15-second duration.
 
 | Hazard | Track | What it does | Ultimate cost |
 | --- | --- | --- | --- |
@@ -421,13 +432,14 @@ The seeker clears hazards it passes through.
 
 ### Mystery bubbles and items
 
-> **The rewards are switched off at the moment.** Bubbles still drift across the
+> **Item rewards are switched off at the moment.** Bubbles still drift across the
 > road and are still collected, but nobody — you, a bot or a local seat — comes
 > away holding a Boost can, Oily oil or a Seeker. Nothing has been removed: the
 > items below are the items that come back when `MYSTERY_ITEMS_ENABLED` in
 > `js/data.js` goes back to `true`, and everything in this section describes
 > them as they were and will be. The custom-race **mystery bubbles** switch is a
-> separate thing and still decides whether rows appear at all.
+> separate thing and still decides whether rows appear at all. Every collected
+> bubble still grants +5 percentage points of ultimate charge.
 
 Three bubbles drift across the road together, a row every 5,400–8,600 road units.
 Touch one for a random item and take as many of the three as you can reach — each
@@ -488,10 +500,10 @@ same circle you see on the road.
 
 **Race against bots** and **local play** run to a flag:
 
-```
-0:00 ─────────── 5:00 ──────── track ── track ── track ── +900m ── 🏁
-     five minutes           three track changes      the last stretch
-```
+At 0:00 the pace is 1.00×. Each 20 seconds adds 0.10× until 6:40 / 3.00×,
+which arms the three-track closing sequence, followed by the +900m finish stretch.
+Elapsed time alone never starts the closing sequence. The HUD keeps the speed
+visible alongside `T-3`, `T-2`, `T-1`, then the metres remaining.
 
 When the third track change lands, the flag is planted 900 metres ahead. Cars
 cross, are given a place, and roll out onto a staircase of marks past the line —

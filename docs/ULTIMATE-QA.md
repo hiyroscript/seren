@@ -2,7 +2,7 @@
 
 Run `node tools/ultimate-check.mjs`, together with `check.mjs`, `menu-check.mjs`, `sprite-check.mjs` and `hitbox-check.mjs` in `tools/`.
 
-All six cars retain the shared 75-second charge, 15-second duration and 2× pace. Player, bot and local human use the same lifecycle. Tests cover charging, activation, repeat presses, expiry, custom rules, debuffs, finish, wreck/reset and pause.
+All six cars retain the shared 85-second charge, 15-second duration and 2× pace. Player, bot and local human use the same lifecycle. Tests cover charging, activation, repeat presses, expiry, custom rules, debuffs, finish, wreck/reset and pause.
 
 ## Contact order
 

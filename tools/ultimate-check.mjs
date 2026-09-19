@@ -3,6 +3,7 @@
    are mocked: exercise the same update, input, collision and rendering paths. */
 import assert from 'node:assert/strict';
 import {fixture} from './game-fixture.mjs';
+import './progression-check.mjs';
 let checks = 0;
 const f = fixture(), {run} = f;
 f.images.forEach(image => image.load());
@@ -245,7 +246,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     setup(car,kind,false);run(`G.rules.ults=false;if(who==='me')fireUlt();else fireUltRival(who);startUlt(who);`);
     equal('o.ultOn',false);
     run(`o.ult=0;if(who==='me')update(0.1);else updateRival(o,0.1,'running');`);equal('o.ult',0);
-    run(`G.rules.ults=true;if(who==='me')update(0.1);else updateRival(o,0.1,'running');`);near('o.ult',0.1/75);
+    run(`G.rules.ults=true;if(who==='me')update(0.1);else updateRival(o,0.1,'running');`);near('o.ult',0.1/85);
     run(`o.invuln=2;startUlt(who);`);equal('refusesDebuffs(who)',true);equal('noContact(who)',true);
     equal('invulnerableWho(who)',true);
     equal(`activeConditions(who).indexOf('invulnerable')`,0);
@@ -750,10 +751,10 @@ test('four local seats activate through human input, render and expire independe
   }
 });
 /* ================================================================
-   MYSTERY BUBBLES  -  rewards temporarily switched off
+   MYSTERY BUBBLES  -  item rewards temporarily switched off
    ================================================================
    The rows, the roll, the artwork, the strings and every branch of useItem()
-   are all still here; what is off is the handing over. These checks are what
+   are all still here; what is off is the handing over of items. These checks are what
    says the gate is closed, and they are what will say it has been reopened
    correctly when MYSTERY_ITEMS_ENABLED goes back to true. */
 test('the Mystery reward gate is closed and is a switch, not a deletion',()=>{
@@ -773,7 +774,7 @@ test('the Mystery reward gate is closed and is a switch, not a deletion',()=>{
   /* The custom-race switch is a separate question and is untouched. */
   equal(`defaultRules().bubbles`,true);
 });
-test('collecting a bubble grants nothing to a player, a bot or a local seat',()=>{
+test('collecting a bubble grants charge but no item to a player, a bot or a local seat',()=>{
   run(`G.local=false;G.car='flann';G.rules=defaultRules();G.rules.bots=2;
        G.mode='endless';startRace();G.state='running';
        G.nextTrap=1e9;G.nextRow=1e9;G.traps=[];G.slicks=[];G.missiles=[];
@@ -801,9 +802,10 @@ test('collecting a bubble grants nothing to a player, a bot or a local seat',()=
   equal('bot.useT',0);                       /* no bot fuse was armed */
   equal('G.canT',0);equal('bot.canT',0);equal('seat.canT',0);
   equal('G.slicks.length',0);equal('G.missiles.length',0);
-  /* Repeating it changes nothing: there is no run of bubbles that eventually
-     pays out, and no second bubble that trades for a first. */
+  near('G.ult',0.05);near('bot.ult',0.05);near('seat.ult',0.05);
+  /* Repeating it grants charge, but never items or trades. */
   for(let i=0;i<8;i++) run('row();');
+  near('G.ult',0.45);near('bot.ult',0.45);near('seat.ult',0.45);
   equal('G.item',null);equal('bot.item',null);equal('seat.item',null);
   equal('G.canT',0);equal('G.slicks.length',0);equal('G.missiles.length',0);
   equal('bot.useT',0);
@@ -2095,7 +2097,7 @@ test('the phase is a small explicit state, and the shared lifecycle is untouched
     equal('rhosynElsewhere(A)',false);
     equal('aeroGlowViewActive(A)',false);
     /* The shared clock, the shared duration and the shared pace, unchanged. */
-    equal('ULT_CHARGE',75);equal('ULT_TIME',15);equal('ULT_SPEED',2);
+    equal('ULT_CHARGE',85);equal('ULT_TIME',15);equal('ULT_SPEED',2);
     run(`ao.ult = 1; if(A === 'me') fireUlt(); else fireUltRival(A);`);
     equal('ao.ultOn',true);equal('ao.ultT',15);equal('ao.ultMax',15);
     /* Departing: unreachable already, still on everybody else's screen. */
@@ -2138,7 +2140,7 @@ test('the phase is a small explicit state, and the shared lifecycle is untouched
     equal('ao.invuln > 0',true);
     /* The meter charges again off exactly the shared clock. */
     run(`globalThis.was = ao.ult; for(let i=0;i<60;i++) update(1/60);`);
-    near('ao.ult - was',1/75);
+    near('ao.ult - was',1/85);
   }
 });
 test('there is exactly one Rhosyn race position, and Aero-Glow never touches it',()=>{

@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const base = new URL('../', import.meta.url);
 const read = path => fs.readFileSync(new URL(path, base), 'utf8');
-export function fixture(desktop = true) {
+export function fixture(desktop = true, transformSource = source => source) {
   let document;
   const ctx = new Proxy({}, {get(o, k) {
     if(k in o) return o[k];
@@ -99,7 +99,7 @@ export function fixture(desktop = true) {
   sandbox.window={matchMedia:q=>({matches:q.includes('hover') && desktop}),innerWidth:1000,innerHeight:800,devicePixelRatio:1,addEventListener(){}};
   const context=vm.createContext(sandbox);
   const run=code=>vm.runInContext(code,context);
-  for(const file of ['core','i18n','data','audio','runtime','ui','settings','local','ai','mechanics','race','render','hud','input','main'])run(read('js/'+file+'.js'));
+  for(const file of ['core','i18n','data','audio','runtime','ui','settings','local','ai','mechanics','race','render','hud','input','main'])run(transformSource(read('js/'+file+'.js'), file));
   const $=s=>document.querySelector(s);
   const click=id=>{assert.ok($('#'+id),'missing '+id);$('#'+id).click();};
   const boot=()=>{timers.shift()();};

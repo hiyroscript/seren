@@ -662,7 +662,7 @@ head("The car-specific ultimates and race sizes");
     ? pass(`the swap guard is ${guard}s: one step, not a shield`)
     : fail(`NEELA_SWAP_GUARD is ${guard}, which is long enough to be protection`);
   /* The shared lifecycle is untouched: same clock, same duration, same pace. */
-  for (const [k, v] of [["ULT_CHARGE", "75"], ["ULT_TIME", "15"], ["ULT_SPEED", "2.0"]]) {
+  for (const [k, v] of [["ULT_CHARGE", "85"], ["ULT_TIME", "15"], ["ULT_SPEED", "2.0"]]) {
     new RegExp(`const\\s+${k}\\s*=\\s*${v.replace(".", "\\.")}\\b`).test(data)
       ? pass(`${k} is still ${v} for every car`)
       : fail(`${k} is no longer ${v}`);

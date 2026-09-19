@@ -100,7 +100,7 @@ All five pass. What they add for these two cars:
   tuning constant is declared in `js/data.js`; `applyMindControl()` sets `mindT`
   to `MIND_CONTROL_TIME` and **no file anywhere adds to a mind timer**;
   `racerDetectable()` is demonstrably built on `verdantUltActive()` rather than
-  on contact; the shared 75 / 15 / 2× lifecycle is untouched; only sprite cars
+  on contact; the shared 85 / 15 / 2× lifecycle is untouched; only sprite cars
   carry a race scale and only within the measured band.
 - **`menu-check.mjs`** — the six slots were, at the time of this record,
   exactly `flann, neela, lolanthe, verdant, rose, saffron`; the fifth is Rhosyn

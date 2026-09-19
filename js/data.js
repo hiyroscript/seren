@@ -327,7 +327,7 @@ const CONDITION_IDS = Object.keys(CONDITIONS);
 function conditionsOfType(type){
   return CONDITION_IDS.filter(function(id){ return CONDITIONS[id].type === type; });
 }
-const ULT_CHARGE = 75;                    /* seconds from empty to ready */
+const ULT_CHARGE = 85;                    /* seconds from empty to ready */
 const ULT_TIME = 15;                       /* seconds it lasts */
 const ULT_SPEED = 2.0;                    /* what every ultimate is worth in pace */
 /* ---- the shared white transition --------------------------------
@@ -409,7 +409,7 @@ const VERDANT_FADE = 0.25;                /* seconds to fade into and out of hid
 const VERDANT_OWN_ALPHA = 0.5;            /* what its own driver still sees */
 const VERDANT_REVEAL = 0.18;              /* seconds of full visibility after a hit */
 /* ---- Rhosyn's ultimate ------------------------------------------
-   Again the shared lifecycle and nothing else: seventy-five seconds to charge,
+   Again the shared lifecycle and nothing else: eighty-five seconds to charge,
    fifteen seconds long, double pace. What changes is which world the car's own
    driver is shown while those fifteen seconds run - and, because it has gone
    somewhere the race cannot follow, whether the shared road may touch it.
@@ -452,7 +452,7 @@ const ITEMS = {
   seeker: { key:"itemSeeker", rarity:"legendary" }
 };
 const ITEM_IDS = ["can", "oil", "seeker"];
-/* ---- the rewards, temporarily switched off ----------------------
+/* ---- the item rewards, temporarily switched off ----------------------
    Mystery Bubbles still spawn on the road, are still swept up and still pop,
    but the Can, the Oil and the Seeker they used to hand over are off while the
    mechanic is reconsidered. Nothing has been taken out to do it: the roll, the
@@ -462,7 +462,7 @@ const ITEM_IDS = ["can", "oil", "seeker"];
 
    It is deliberately not the same switch as rules.bubbles. That one says
    whether rows appear on the road at all and belongs to a custom race; this one
-   says whether a row that was collected is worth anything, and belongs to the
+   says whether a collected bubble grants an item, and belongs to the
    game as it is being played right now. */
 const MYSTERY_ITEMS_ENABLED = false;
 /* Every id a Mystery Bubble can hand out, which is what the gate above covers.
@@ -537,9 +537,9 @@ const FIELD_SIZE = 6;       /* six cars on the road, however they are driven */
 
 /* ---------------- tracks ----------------------------------------- */
 const TRACK_SECONDS = 60;
-const SPEED_SECONDS = 30;                 /* the road speeds up on this clock */
+const SPEED_SECONDS = 20;                 /* the road speeds up on this clock */
 const BASE_SPEED = 420;                   /* 1.00x */
-const MULT_STEP = 0.05, MAX_MULT = 2.00;  /* +5% every SPEED_SECONDS, up to double */
+const MULT_STEP = 0.10, MAX_MULT = 3.00;  /* +0.10x every 20s, up to triple */
 const MAX_TIER = Math.round((MAX_MULT - 1)/MULT_STEP);
 const BLIND_TIME = 2.6;                   /* puddle: how long the view stays fouled */
 const DEAD_TIME = 3, INVULNERABLE_TIME = 2;   /* destroy: wreck, then respawn untouchable */
@@ -584,6 +584,14 @@ const BUMP_SLOW = 1.3;
 const ULT_ON_WRECK = -0.10;               /* what each event does to the meter */
 const ULT_ON_TRAP  = -0.05;
 const ULT_ON_KILL  =  0.10;
+const ULT_ON_PERFECT_DODGE = 0.10;
+const PERFECT_DODGE_WINDOW = 0.12;        /* seconds until a genuine collision */
+const ULT_ON_BUBBLE = 0.05;
+
+const BOOST_SPEED = 1.5;
+const BOOST_DRAIN_TIME = 5.5, BOOST_REFILL_TIME = 5.0;
+const BOOST_DRAIN_RATE = 1 / BOOST_DRAIN_TIME;
+const BOOST_REFILL_RATE = 1 / BOOST_REFILL_TIME;
 /* ---- the rear-contact shunt -------------------------------------
    Running into the back of somebody shoves them along for a moment while the
    car that hit them labours. It is a push down the same tarmac and nothing
@@ -591,8 +599,7 @@ const ULT_ON_KILL  =  0.10;
    the bump. */
 const SHUNT_TIME = 0.8, SHUNT_BOOST = 1.35;
 
-const RACE_MINUTES = 5;                   /* bots mode: then three tracks to the flag */
-const FINAL_TRACKS = 3;
+const FINAL_TRACKS = 3;                  /* armed once MAX_TIER is reached */
 const FINISH_STRETCH = 900;               /* metres of the last track before the line */
 /* Where each finisher comes to rest, measured past the flag in car lengths.
    The winner rolls furthest and every place behind it stops one step earlier,
