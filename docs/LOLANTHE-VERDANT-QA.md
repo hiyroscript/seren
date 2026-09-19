@@ -103,7 +103,7 @@ All five pass. What they add for these two cars:
   on contact; the shared 75 / 15 / 2× lifecycle is untouched; only sprite cars
   carry a race scale and only within the measured band.
 - **`menu-check.mjs`** — the six slots were, at the time of this record,
-  exactly `flann, neela, lolanthe, verdant, rose, siren`; the fifth is Rhosyn
+  exactly `flann, neela, lolanthe, verdant, rose, saffron`; the fifth is Rhosyn
   now, and the assertion moved with it. Both new buttons exist, carry
   the right `data-car`, and are reached by the generic `carEl()` path; both
   temperaments moved across with the right numbers and no `TEMPERS.bolt` or

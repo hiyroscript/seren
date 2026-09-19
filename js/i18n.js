@@ -40,10 +40,9 @@ const STR = {
   chooseCar:    {en:"Choose your car",             fr:"Choisissez votre voiture"},
   ultimate:     {en:"Ultimate",                    fr:"Ultime"},
   flann:         {en:"Flann",                        fr:"Flann"},
-  /* The only car whose ultimate is not just the shared speed boost, so it is
-     the only one whose description says more than the other five. */
-  flannUlt: {en:"Fifteen seconds at double pace, and on fire: it wrecks any racer it touches and smashes straight through tumbleweeds and meteors. Puddles still get you.",
-             fr:"Quinze secondes à double allure, et en feu : elle détruit tout concurrent qu'elle touche et fracasse virevoltants et météores. Les flaques vous atteignent toujours."},
+  /* Offensive ram: the initiator matters. */
+  flannUlt: {en:"Fifteen seconds at double pace, and on fire: it wrecks racers it rams and smashes straight through tumbleweeds and meteors. Puddles still get you.",
+             fr:"Quinze secondes à double allure, et en feu : elle détruit les concurrents qu'elle percute et fracasse virevoltants et météores. Les flaques vous atteignent toujours."},
   neela:        {en:"Neela",                       fr:"Neela"},
   /* The second car whose ultimate is more than the shared speed boost. It says
      what the fifteen seconds do, in the words the road uses: the change of
@@ -91,14 +90,14 @@ const STR = {
      road can reach it while it is gone, and that where it comes back is
      wherever it had got to by then rather than where it left. */
   rhosyn:       {en:"Rhosyn",                      fr:"Rhosyn"},
-  rhosynUlt: {en:"Fifteen seconds at double pace, spent in Aero-Glow: a black and pink void only Rhosyn's own driver sees. The race carries on without it — Rhosyn keeps covering ground at the same double pace, keeps steering, keeps crossing into new tracks and keeps its place in the order — but nothing on the road can touch it and it can touch nothing. When the fifteen seconds are up it reappears exactly where it had got to, in whatever track the race has reached by then, and is Invulnerable for two seconds.",
-             fr:"Quinze secondes \u00e0 double allure, pass\u00e9es dans Aero-Glow : un vide noir et rose que seul le pilote de Rhosyn voit. La course continue sans elle \u2014 Rhosyn avale toujours la route \u00e0 la m\u00eame double allure, continue de se diriger, de passer d'un circuit \u00e0 l'autre et de tenir son rang \u2014 mais rien sur la route ne peut l'atteindre et elle ne peut atteindre personne. Les quinze secondes \u00e9coul\u00e9es, elle reparait exactement o\u00f9 elle en \u00e9tait rendue, sur le circuit que la course a atteint entre-temps, et reste Invuln\u00e9rable deux secondes."},
+  rhosynUlt: {en:"Fifteen seconds at double pace, spent in Aero-Glow: a black and pink three-lane world only Rhosyn's own driver sees. The race carries on without it — Rhosyn keeps covering ground at the same double pace, keeps steering, keeps crossing into new tracks and keeps its place in the order — but nothing on the road can touch it and it can touch nothing. When the fifteen seconds are up it reappears exactly where it had got to, in whatever track the race has reached by then, and is Invulnerable for two seconds.",
+             fr:"Quinze secondes \u00e0 double allure, pass\u00e9es dans Aero-Glow : un monde à trois voies noir et rose que seul le pilote de Rhosyn voit. La course continue sans elle \u2014 Rhosyn avale toujours la route \u00e0 la m\u00eame double allure, continue de se diriger, de passer d'un circuit \u00e0 l'autre et de tenir son rang \u2014 mais rien sur la route ne peut l'atteindre et elle ne peut atteindre personne. Les quinze secondes \u00e9coul\u00e9es, elle reparait exactement o\u00f9 elle en \u00e9tait rendue, sur le circuit que la course a atteint entre-temps, et reste Invuln\u00e9rable deux secondes."},
   /* The private world's own name, drawn inside the view it belongs to. It is
      deliberately not a TRACKS entry: Aero-Glow is never a track the race is
      on, so it has no place in the track list the garage and the HUD read. */
   aeroGlow:     {en:"Aero-Glow",                   fr:"Aero-Glow"},
-  siren:        {en:"Siren",                       fr:"Siren"},
-  sirenUlt: {en:"Fifteen seconds at double pace.", fr:"Quinze secondes à double allure."},
+  saffron:        {en:"Saffron",                       fr:"Saffron"},
+  saffronUlt: {en:"Fifteen seconds at double pace as a metal dragon, flying above racers and road hazards. Mind Control still reaches you; falling meteors break against the dragon. Transform back, drop, and wreck racers directly underneath at touchdown.", fr:"Quinze secondes à double allure en dragon de métal, au-dessus des pilotes et des obstacles au sol. Le contrôle mental peut toujours vous atteindre ; les météores qui vous frappent en vol se brisent. Redevenez une voiture, puis chutez : les pilotes directement sous vous à l’atterrissage sont détruits."},
   /* ---- conditions ----
      The six names, the two pages the garage splits them across, and the
      paragraph each one gets on its reference card. The garage is the only

@@ -472,6 +472,7 @@ function readHeight(rows){
    alike. In a column it also carries the seat, because four people reading
    four identical panels have to be able to find their own. */
 function hudReadout(who, o){
+  if(aeroGlowViewActive(who)) return;
   const board = [{ me:true, m:G.meters, car:G.car, who:"me" }].concat(
     G.rivals.map(function(R){ return { me:false, m:metersOf(R), car:R.car, who:R }; }));
   board.sort(function(a, b){ return b.m - a.m; });
@@ -653,6 +654,7 @@ function ladderY(m, g, span){
 }
 
 function drawLadder(){
+  if(aeroGlowViewActive(VOWN)) return;
   if(G.state === "idle") return;
   const g = ladderGeom();
 
@@ -999,6 +1001,9 @@ function paintItemBox(){
 /* ---------------- HUD -------------------------------------------- */
 let lastM = -1;
 function paintHUD(force){
+  const aero = !G.local && aeroGlowViewActive("me");
+  $(".readout").style.display = aero ? "none" : "";
+  $("#trackName").textContent = t(aero ? "aeroGlow" : curTrackKey);
   /* On one screen the instruments are in the page, over the canvas, so a white
      rectangle drawn into the canvas would leave them floating on top of it.
      The shell takes the whole HUD layer out of sight for exactly as long as
