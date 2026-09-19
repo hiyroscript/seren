@@ -1,6 +1,6 @@
 # Flann QA
 
-Flann’s active ultimate retains the shared 75-second charge, 15-second duration and 2× pace. Its sprite, race scale, exhaust and measured hull are unchanged.
+Flann’s active ultimate retains the shared 85-second charge, 15-second duration and 2× pace. Its sprite, race scale, exhaust and measured hull are unchanged.
 
 `offensiveRam(by, victim)` only succeeds when the initiator is an ulting Flann and the victim is not another ulting Flann. Both `rearEnd(who, victim)` and `bumpTarget(victim, dir, by)` supply that initiator. Incoming contacts use ordinary shunt/barge rules. Existing Verdant priority runs first: an ulting Flann and ulting Verdant mutually wreck in either direction. Protection, Neela exchanges and two-Flann cancellation remain intact.
 

@@ -113,7 +113,7 @@ function spawnRivals(){
     const lane = grid[i];
     const back = rows[i]*carH*1.6;
     return {
-      car:id, lane:lane, x:laneCX(lane), y:playerY + back, tilt:0,
+      car:id, lane:lane, dodgeLane:lane, x:laneCX(lane), y:playerY + back, tilt:0,
       /* a person on the controls, or the bot mind */
       human:i < seats.length, seat:i + 1, pad:i + 1,
       padId:(G.padIds && G.padIds[i + 1] !== undefined ? G.padIds[i + 1] : null),
@@ -181,7 +181,7 @@ function startRace(){
   document.body.classList.toggle("local", !!G.local);
   G.humans = [];
   resize();
-  G.lane = 1; G.x = laneCX(1); G.tilt = 0;
+  G.lane = 1; G.dodgeLane = 1; G.x = laneCX(1); G.tilt = 0;
   G.scroll = 0; G.speed = 0; G.meters = 0; G.dist = 0;      /* standing start */
   G.biome = "city"; G.next = null; G.seam = null; G.trackT = TRACK_SECONDS;
   curTrackKey = TRACKS.city.key;
@@ -487,6 +487,8 @@ function update(dt){
   if(G.swipeLock > 0) G.swipeLock = Math.max(0, G.swipeLock - dt);
   if(st === "paused" || st === "idle") return;
 
+  const dodgeFrame = st === "running" ? beginPerfectDodges() : null;
+
   /* speed */
   let target, braking = false;
   if(st === "countdown") target = 0;          /* the car holds still on the line */
@@ -517,7 +519,7 @@ function update(dt){
     target = BASE_SPEED*speedMult();
     if(G.ultOn) target *= ULT_SPEED;
     if(G.slowT > 0) target *= 0.5;
-    if(G.boosting) target *= 1.5;
+    if(G.boosting) target *= BOOST_SPEED;
     if(G.canT > 0) target *= CAN_SPEED;          /* the can is free speed */
     if(G.shuntT > 0) target *= SHUNT_BOOST;      /* shoved along by a rear-ender */
   }
@@ -532,17 +534,17 @@ function update(dt){
      keep counting through it - the mark is a distance, and it can only be
      reached if the meter that measures it is still running. */
   if(st === "running" || G.finished !== null) G.meters += G.speed*dt*0.075;
-  if(st === "running") engineSet(clamp((G.speed-300)/900, 0, 1));
+  if(st === "running") engineSet(clamp((G.speed - BASE_SPEED)/(BASE_SPEED*(MAX_MULT - 1)), 0, 1));
 
   /* boost charge */
   if(G.boosting){
-    G.charge = clamp(G.charge - dt*0.4, 0, 1);
+    G.charge = clamp(G.charge - dt*BOOST_DRAIN_RATE, 0, 1);
     if(G.charge <= 0.001){                       /* run it dry and it locks out */
       G.charge = 0; G.boostLock = true;
       G.ptrBoost = G.keyBoost = false;
     }
   } else if(st === "running"){
-    G.charge = clamp(G.charge + dt*0.14, 0, 1);
+    G.charge = clamp(G.charge + dt*BOOST_REFILL_RATE, 0, 1);
     if(G.charge >= 1) G.boostLock = false;       /* only back once it is full */
   }
   setBoost();
@@ -588,20 +590,23 @@ function update(dt){
     G.walks.push(makeFeature(topBiome(), topWalk));
   }
 
-  /* the race clock in bots mode: five minutes, then three tracks to the flag */
-  if(st === "running" && toFlag() && G.finished === null){
-    G.raceT += dt;
-    if(G.tracksLeft < 0 && G.raceT >= RACE_MINUTES*60) G.tracksLeft = FINAL_TRACKS;
-  }
+  /* Elapsed time is informational; only reaching maximum pace arms the flag. */
+  if(st === "running" && toFlag() && G.finished === null) G.raceT += dt;
 
-  /* clocks only run while the car is actually racing */
+  /* Clocks only run while racing. Carry the remainder so tier boundaries do
+     not drift by a frame every twenty seconds. Arm before a simultaneous
+     track transition, so that transition counts as the first closing track. */
   if(st === "running"){
-    G.trackT -= dt;
-    if(G.trackT <= 0 && G.seam === null && G.finishAt === 0) switchTrack();
     if(G.tier < MAX_TIER){
       G.speedT -= dt;
-      if(G.speedT <= 0){ G.speedT = SPEED_SECONDS; G.tier++; G.stepFlash = 1.2; }
+      while(G.speedT <= 1e-9 && G.tier < MAX_TIER){
+        G.speedT += SPEED_SECONDS; G.tier++; G.stepFlash = 1.2;
+      }
     } else G.speedT = SPEED_SECONDS;
+    if(toFlag() && G.finished === null && G.tracksLeft < 0 && G.tier >= MAX_TIER)
+      G.tracksLeft = FINAL_TRACKS;
+    G.trackT -= dt;
+    if(G.trackT <= 0 && G.seam === null && G.finishAt === 0) switchTrack();
     G.trapGap += d;
     if(G.trapGap >= G.nextTrap){ G.trapGap = 0; spawnTrap(); G.nextTrap = rand(430, 900); }
   }
@@ -666,6 +671,7 @@ function update(dt){
      happens to sit in the rivals list. */
   if(st === "running") lolantheAuras();
   checkFinish();
+  if(dodgeFrame) finishPerfectDodges(dodgeFrame);
   updateFx(dt, d);
   if(G.seam !== null){
     G.seam += d;
@@ -777,14 +783,14 @@ function updateRival(R, dt, st){
                  !!R.wantBoost && !R.boostLock && R.charge > 0 &&
                  G.state === "running" && R.dead <= 0 && R.finished === null;
     if(R.boosting){
-      R.charge = clamp(R.charge - dt*0.4, 0, 1);
+      R.charge = clamp(R.charge - dt*BOOST_DRAIN_RATE, 0, 1);
       if(R.charge <= 0.001){ R.charge = 0; R.boostLock = true; R.wantBoost = false; R.boosting = false; }
     } else {
-      R.charge = clamp(R.charge + dt*0.14, 0, 1);
+      R.charge = clamp(R.charge + dt*BOOST_REFILL_RATE, 0, 1);
       if(R.charge >= 1) R.boostLock = false;
     }
   } else if(R.boosting){
-    R.charge = clamp(R.charge - dt*0.4, 0, 1);
+    R.charge = clamp(R.charge - dt*BOOST_DRAIN_RATE, 0, 1);
     if(R.charge <= 0.001){ R.charge = 0; R.boostLock = true; R.boosting = false; }
     else if(R.charge < D.keep) R.boosting = false;     /* good drivers never run it dry */
     if(controlsLocked(R)) R.boosting = false;          /* and none of them keep it under control */
@@ -792,10 +798,10 @@ function updateRival(R, dt, st){
   } else if(controlsLocked(R)){
     /* The charge still refills - that is the car, not the driver - but nothing
        here decides to spend it. */
-    R.charge = clamp(R.charge + dt*0.14, 0, 1);
+    R.charge = clamp(R.charge + dt*BOOST_REFILL_RATE, 0, 1);
     if(R.charge >= 1) R.boostLock = false;
   } else {
-    R.charge = clamp(R.charge + dt*0.14, 0, 1);
+    R.charge = clamp(R.charge + dt*BOOST_REFILL_RATE, 0, 1);
     if(R.charge >= 1) R.boostLock = false;
     const gapM = s.mine - G.meters;
     /* Chasing the field rather than chasing you: what it wants is the car it
@@ -810,7 +816,7 @@ function updateRival(R, dt, st){
   let want = BASE_SPEED*speedMult();
   if(R.ultOn) want *= ULT_SPEED;
   if(R.slow > 0) want *= 0.5;
-  if(R.boosting) want *= 1.5;
+  if(R.boosting) want *= BOOST_SPEED;
   if(R.canT > 0) want *= CAN_SPEED;
   if(R.shuntT > 0) want *= SHUNT_BOOST;                   /* shoved along by a rear-ender */
   R.abs = lerp(R.abs, want, 1 - Math.pow(0.001, dt));     /* same throttle response as you */

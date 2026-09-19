@@ -625,13 +625,14 @@ function raceSpan(){
   if(!toFlag()) return null;
   if(G.finishAt) return { from:0, to:G.finishAt };
   const cruise = BASE_SPEED*0.075;                 /* metres a second at 1.00x */
-  const pace = G.raceT > 4 ? clamp(G.meters/G.raceT, cruise*0.5, cruise*3) : cruise;
+  const pace = G.raceT > 4 ? clamp(G.meters/G.raceT, cruise*0.5, cruise*MAX_MULT) : cruise;
   let secs;
   if(G.tracksLeft < 0){
-    /* Still on the clock. Run the track timer forward to the five minute mark
+    /* Run the track timer forward to the maximum-speed milestone
        so the count picks up exactly where this branch leaves off - otherwise
        the scale lurches the moment the closing tracks start counting. */
-    const mark = Math.max(0, RACE_MINUTES*60 - G.raceT);
+    const tiers = Math.max(0, MAX_TIER - G.tier);
+    const mark = tiers ? G.speedT + (tiers - 1)*SPEED_SECONDS : 0;
     const skip = Math.max(0, Math.ceil((mark - G.trackT)/TRACK_SECONDS));  /* switches before the mark */
     const t2 = G.trackT + skip*TRACK_SECONDS - mark;   /* what the track timer reads at the mark */
     secs = mark + t2 + (FINAL_TRACKS - 1)*TRACK_SECONDS;
@@ -1034,19 +1035,13 @@ function paintHUD(force){
     row.classList.toggle("mine", board[i].me);        /* which one is you */
   }
   const clock = $("#raceClock");
-  clock.classList.toggle("on", toFlag());
-  if(toFlag()){
-    if(G.tracksLeft < 0){
-      const left = Math.max(0, RACE_MINUTES*60 - G.raceT);
-      clock.textContent = Math.floor(left/60) + ":" + String(Math.floor(left % 60)).padStart(2, "0");
-      clock.classList.remove("final");
-    } else {
-      clock.textContent = G.finishAt
-        ? Math.max(0, Math.round(G.finishAt - G.meters)) + "m"
-        : "T-" + G.tracksLeft;
-      clock.classList.add("final");
-    }
-  }
+  clock.classList.add("on");
+  const final = toFlag() && G.tracksLeft >= 0;
+  clock.textContent = speedMult().toFixed(2) + "×";
+  if(final) clock.textContent += " · " + (G.finishAt
+    ? Math.max(0, Math.round(G.finishAt - G.meters)) + "m"
+    : "T-" + G.tracksLeft);
+  clock.classList.toggle("final", final);
   /* The charge is read twice over: the square fills from the foot, which is
      what you catch out of the corner of your eye, and the figure on top is
      there when you want to know exactly. */

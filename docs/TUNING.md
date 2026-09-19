@@ -17,10 +17,10 @@ Change a number, reload the page. There is nothing to rebuild.
 | Constant | Value | Means |
 | --- | --- | --- |
 | `BASE_SPEED` | `420` | road speed at 1.00×, in design px/s |
-| `SPEED_SECONDS` | `30` | how often the road steps up a tier |
-| `MULT_STEP` | `0.05` | how much each tier adds |
-| `MAX_MULT` | `2.00` | the ceiling |
-| `MAX_TIER` | derived | `(MAX_MULT − 1) / MULT_STEP` = 20 tiers, so 10 minutes to top speed |
+| `SPEED_SECONDS` | `20` | how often the road steps up a tier |
+| `MULT_STEP` | `0.10` | how much each tier adds |
+| `MAX_MULT` | `3.00` | the ceiling |
+| `MAX_TIER` | derived | `(MAX_MULT − 1) / MULT_STEP` = 20 tiers, so 6 minutes 40 seconds to top speed |
 | `TRACK_SECONDS` | `60` | seconds on a track before it hands over to the next |
 
 Distance is `speed × dt × 0.075`, so 1.00× ≈ 31.5 m/s. That `0.075` is inline in
@@ -28,10 +28,13 @@ Distance is `speed × dt × 0.075`, so 1.00× ≈ 31.5 m/s. That `0.075` is inli
 
 ## Race structure
 
+Bots and Local arm the final tracks once `MAX_TIER` is reached (3.00×), never
+from elapsed time alone. Endless has no finish. `raceSpan()` projects the time
+to that tier from `G.tier` and `G.speedT`, then the remaining track transitions.
+
 | Constant | Value | Means |
 | --- | --- | --- |
-| `RACE_MINUTES` | `5` | bots/local: minutes before the run to the flag begins |
-| `FINAL_TRACKS` | `3` | track changes after that, then the flag is planted |
+| `FINAL_TRACKS` | `3` | track changes after reaching 3.00×, then the flag is planted |
 | `FINISH_STRETCH` | `900` | metres of the last track before the line |
 | `FIELD_SIZE` | `6` | cars on the road, however they are driven |
 | `LOCAL_MAX` | `4` | most people on one screen |
@@ -46,16 +49,34 @@ bottom of the screen when you win.
 
 ## Boost
 
-Not constants — these are inline in `race.js`, in `update()` for you and
-`updateRival()` for everyone else. Both sides use the same numbers on purpose.
+Shared constants in `data.js` drive `update()` and `updateRival()` equally.
 
 | Number | Value | Means |
 | --- | --- | --- |
-| drain | `dt × 0.4` | 2.5 seconds from full to empty |
-| refill | `dt × 0.14` | ~7.1 seconds back to full |
-| speed | `× 1.5` | while boosting |
+| `BOOST_DRAIN_TIME` | `5.5` | seconds from full to empty |
+| `BOOST_REFILL_TIME` | `5.0` | seconds back to full |
+| `BOOST_DRAIN_RATE` | `1 / 5.5` | normalized charge spent per second |
+| `BOOST_REFILL_RATE` | `1 / 5` | normalized charge restored per second |
+| `BOOST_SPEED` | `1.5` | pace multiplier while boosting |
 
 Run it completely dry and it locks out until the bar is full again.
+
+## Precision rewards
+
+| Constant | Value | Means |
+| --- | --- | --- |
+| `ULT_ON_PERFECT_DODGE` | `0.10` | charge for a safe last-second lateral escape |
+| `PERFECT_DODGE_WINDOW` | `0.12` | maximum seconds to predicted impact when steering changes |
+| `ULT_ON_BUBBLE` | `0.05` | charge per collected Mystery Bubble, independent of the item gate |
+
+`beginPerfectDodges()` snapshots the field before movement; `finishPerfectDodges()`
+settles rewards after all collisions and finishes. It predicts the interrupted
+steering trajectory against measured hulls and actual hazard geometry using
+substeps of at most one pixel / 1/240s. Per-hazard racer masks prevent duplicate
+rewards. A road hazard must fully clear the hull, or a meteor must resolve,
+without a hit. Early steering, passive misses, immunity and absent racers do
+not qualify. Charge deltas are ignored during an active ultimate; no duration
+is added or removed. Mystery item rolls remain disabled.
 
 ## Contact
 
@@ -76,7 +97,7 @@ a car go faster.
 
 | Constant | Value | Means |
 | --- | --- | --- |
-| `ULT_CHARGE` | `75` | seconds from empty to ready — the same clock for every car |
+| `ULT_CHARGE` | `85` | seconds from empty to ready — the same clock for every car |
 | `ULT_TIME` | `15` | seconds an ultimate lasts |
 | `ULT_SPEED` | `2.0` | pace multiplier while one is running |
 | `ULT_ON_WRECK` | `−0.10` | meter cost of being destroyed |
@@ -359,12 +380,13 @@ none while a track seam is crossing.
 
 ## Mystery bubbles and items
 
-> **Rewards are temporarily off.** `MYSTERY_ITEMS_ENABLED` in `data.js` is
+> **Item rewards are temporarily off.** `MYSTERY_ITEMS_ENABLED` in `data.js` is
 > `false`, so a collected bubble grants no Can, Oil or Seeker to anybody —
 > player, bot or local seat. Nothing below has been removed or retuned; the
 > numbers are what they will be again the moment the gate goes back to `true`.
 > The gate is not `rules.bubbles`, which is the custom-race switch for whether
-> rows spawn at all and still works.
+> rows spawn at all and still works. The +0.05 ultimate-charge reward runs
+> before this gate and remains enabled.
 
 | Constant | Value | Means |
 | --- | --- | --- |

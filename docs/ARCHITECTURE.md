@@ -828,14 +828,15 @@ and road branches in `render.js` (`drawSide`, `drawProps`, `drawRoad`,
 and a branch in `botItemWorth` in `ai.js`. The garage odds table and the drop roll
 both read `RARITY`, so they cannot disagree.
 
-**Mystery Bubble rewards are temporarily switched off.**
+**Mystery Bubble item rewards are temporarily switched off.**
 `MYSTERY_ITEMS_ENABLED` in `data.js` is `false`, and while it is, `takeBubble`
-hands nothing over — no item, no trade, no bot fuse — and pops the bubble in a
+grants +0.05 through `ultDelta` before the item gate — no item, no trade,
+no bot fuse — and pops the bubble in a
 plain colour rather than a rarity one. `useItem` refuses a Mystery item as
 defence in depth, so stale state cannot go off later. Nothing is deleted: the
 roll, the rarities, the artwork, the strings, the bot valuation, oil and seeker
 rendering and every branch of `useItem` are all intact, and setting the gate
-back to `true` restores the mechanic exactly as it was. It is a separate
+back to `true` restores items alongside the single +0.05 charge reward. It is a separate
 question from `rules.bubbles`, which decides whether rows spawn on the road at
 all.
 

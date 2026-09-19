@@ -229,7 +229,7 @@ function rearContact(who){
 }
 
 /* ---------------- the five car-specific ultimates ----------------
-   Every car runs the same ultimate: seventy-five seconds to charge, fifteen
+   Every car runs the same ultimate: eighty-five seconds to charge, fifteen
    seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
    below is shared by all six. Five of them add something on top of it, and
    only while that shared lifecycle is running. Saffron is the one left with the
@@ -1503,8 +1503,9 @@ function updateBubbles(dt, d, st){
 function takeBubble(who, bx, by){
   const me = who === "me";
   const holder = me ? G : who;
-  /* Rewards are switched off - see MYSTERY_ITEMS_ENABLED. The bubble is still
-     swept up and still pops, but nothing is handed over: no item, no trade of
+  ultDelta(who, ULT_ON_BUBBLE);
+  /* Item rewards are switched off - see MYSTERY_ITEMS_ENABLED. The bubble is still
+     swept up and still pops, but only charge is handed over: no item, no trade of
      the one already held, and no bot fuse to fire one with. The pop is drawn
      in a plain colour rather than a rarity colour, because a rarity colour
      would be claiming a reward that was never granted. */
@@ -1962,14 +1963,112 @@ function ultDelta(who, amount){
     who.ult = clamp(who.ult + amount, 0, 1);
   }
 }
-/* did this hazard slip past close enough to count as a dodge? */
-/* Credit for getting out of the way at the last moment: either you squeezed
-   past it, or you swerved out of the lane it was about to take you in. */
 /* Record that a hazard has passed this car. */
 function markPassed(o, box, bit){
   if(o.nm & bit) return;
   if(o.y < box.y) return;                        /* not past us yet */
   o.nm |= bit;
+}
+
+/* Perfect dodges observe the existing simulation, never resolve collisions.
+   Capture before movement, settle after every racer's hazards and finish check.
+   A new steering target must interrupt a path with <=120ms to real impact;
+   continuing an early lane change cannot arm a later, artificial near miss. */
+function beginPerfectDodges(){
+  const field = ["me"].concat(G.rivals);
+  return {
+    speed:G.speed,
+    traps:G.traps.map(function(o){ return { live:o, before:Object.assign({}, o) }; }),
+    racers:field.map(function(who, i){
+      const o = who === "me" ? G : who;
+      return { who:who, bit:1 << i, x:o.x, y:who === "me" ? playerY : o.y,
+        tilt:o.tilt || 0, lane:o.dodgeLane === undefined ? o.lane : o.dodgeLane,
+        speed:who === "me" ? G.speed : o.abs,
+        eligible:!noContact(who) && !controlsLocked(who) && !(o.swapGuard > 0) };
+    })
+  };
+}
+
+function dodgeCircleHits(box, x, y, radius){
+  const p = nearestOnCar(box, x, y);
+  return (p.x-x)*(p.x-x) + (p.y-y)*(p.y-y) <= radius*radius;
+}
+
+/* Predict the interrupted trajectory with the same lateral easing, measured
+   hull, irregular puddle outline, weed radius and meteor clocks as gameplay.
+   Substeps cover at most one logical pixel (and at most 1/240s), independently
+   of rendering FPS. Only a new steering decision runs this short prediction. */
+function perfectDodgeThreat(o, a, worldSpeed){
+  if(o.kind === "meteor" && o.phase !== 0) return false;
+  if(o.kind !== "meteor" && o.y > a.y) return false;
+  const easing = a.who === "me" ? 0.00004 : 0.00006;
+  const lateral = Math.abs(laneCX(a.lane) - a.x)*-Math.log(easing);
+  const vertical = o.kind === "meteor" ? METEOR_ALT/rockLead(o) : 0;
+  const n = Math.ceil(PERFECT_DODGE_WINDOW*Math.max(240,
+    Math.abs(a.speed) + Math.abs(o.vx || 0) + lateral + vertical));
+  for(let i=0;i<=n;i++){
+    const t = PERFECT_DODGE_WINDOW*i/n;
+    const x = lerp(a.x, laneCX(a.lane), 1 - Math.pow(easing, t));
+    const y = a.y + (worldSpeed - a.speed)*t;
+    const box = carHit(a.who, x, y, a.tilt);
+    const hx = o.x + (o.kind === "weed" ? o.vx*t : 0);
+    const hy = o.y + worldSpeed*t*(o.kind === "weed" ? o.fall : 1);
+    if(o.kind === "puddle"){
+      if(puddleHits(o, box, hy)) return true;
+    } else if(o.kind === "weed"){
+      if(dodgeCircleHits(box, hx, hy, o.r*Math.sqrt(0.86))) return true;
+    } else if(o.kind === "meteor"){
+      const fall = Math.max(0, o.fall - t);
+      if(fall <= 0){
+        // The blast exists at impact, not throughout the remaining prediction.
+        const impactY = o.y + worldSpeed*o.fall;
+        const impactBox = carHit(a.who,
+          lerp(a.x, laneCX(a.lane), 1 - Math.pow(easing, o.fall)),
+          a.y + (worldSpeed-a.speed)*o.fall, a.tilt);
+        return dodgeCircleHits(impactBox, o.x, impactY, o.r);
+      }
+      const alt = rockAlt(Object.assign({}, o, {fall:fall}));
+      // updateTraps' early roof detonation is driven by the camera racer.
+      if(a.who === "me" && fall < rockLead(o) && alt < racerDims(a.who).h*0.55 &&
+         dodgeCircleHits(box, hx, hy-alt, o.mr)) return true;
+    }
+  }
+  return false;
+}
+
+function finishPerfectDodges(frame){
+  for(const a of frame.racers){
+    const who = a.who, racer = who === "me" ? G : who;
+    const turned = racer.lane !== a.lane;
+    racer.dodgeLane = racer.lane;
+    const eligible = a.eligible && !noContact(who) && !controlsLocked(who) &&
+                     !(racer.swapGuard > 0);
+    for(const entry of frame.traps){
+      const o = entry.live, bit = a.bit;
+      if(!G.traps.includes(o) || (o.pdDone & bit)) continue;
+      if(!eligible || (o.hit & bit) || (o.kind !== "puddle" && clearsSolidHazards(who))){
+        // Protection cancels a pending dodge, not a future encounter after it ends.
+        if((o.pdThreat & bit) || (o.hit & bit)) o.pdDone = (o.pdDone || 0) | bit;
+        o.pdThreat = (o.pdThreat || 0) & ~bit;
+        continue;
+      }
+      if(turned && !(o.pdThreat & bit) && perfectDodgeThreat(entry.before, a, frame.speed)){
+        o.pdThreat = (o.pdThreat || 0) | bit;
+        if(!o.pdOrigin) o.pdOrigin = {};
+        o.pdOrigin[bit] = a.x;
+      }
+      if(!(o.pdThreat & bit)) continue;
+      const box = carHit(who);
+      const rear = Math.max.apply(null, box.points.map(function(p){ return p.y; }));
+      const radius = o.kind === "puddle" ? o.ry*1.24 : o.r;
+      const resolved = o.kind === "meteor" ? o.phase > 0 : o.y - radius > rear;
+      if(!resolved) continue;                   /* still capable of hitting us */
+      o.pdDone = (o.pdDone || 0) | bit;
+      o.pdThreat &= ~bit;
+      if(Math.abs(racer.x - o.pdOrigin[bit]) > Math.max(1, racerDims(who).w*0.05))
+        ultDelta(who, ULT_ON_PERFECT_DODGE);
+    }
+  }
 }
 
 function nearestOnCar(c, px, py){

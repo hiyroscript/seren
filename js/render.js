@@ -1381,7 +1381,7 @@ function renderView(dy){
   /* the faster the road, the harder it streaks - and it flares for a moment
      each time the pace steps up, so the change is felt as well as measured */
   const flare = clamp(G.stepFlash, 0, 1);
-  const sr = clamp((G.speed - 330)/620, 0, 1) + flare*0.5;
+  const sr = clamp((G.speed - BASE_SPEED)/(BASE_SPEED*(MAX_MULT - 1)), 0, 1) + flare*0.5;
   if(sr > 0.02){
     ctx.strokeStyle = "rgba(255,255,255," + Math.min(0.42, 0.05 + sr*0.2).toFixed(3) + ")";
     ctx.lineWidth = 2;
