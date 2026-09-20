@@ -24,18 +24,31 @@ function tick(dt){run(`if(who==='me')update(${dt});else updateRival(o,${dt},'run
 for(const kind of ['player','bot','local']){
   test(kind+': mixed six-hit progression, debuffs, penalties and actual respawn',()=>{
     setup(kind);run('o.ult=1;');
-    const fills=[[1,1,1],[.5,1,1],[0,1,1],[0,.5,1],[0,0,1],[0,0,.5],[0,0,0]];
+    const fills=[[1,1,1],[1,1,.5],[1,1,0],[1,.5,0],[1,0,0],[.5,0,0],[0,0,0]];
     for(let i=0;i<=6;i++){
       if(i)collide(i%2?'puddle':'weed');
-      eq('o.shield',6-i);eq('o.dead',i===6?3:0);
+      eq('o.shield',6-i);eq('o.dead',i===6?3:0);eq('o.shieldHitT',i>0&&i<6?1:0);
       assert.deepEqual(Array.from(run('[0,1,2].map(i=>shieldBarFill(o.shield,i))')),fills[i]);
       if(i>0 && i<6)eq(i%2?'o.blind>0':"(who==='me'?o.slowT:o.slow)>0",true);
     }
     eq('o.blind',0);eq("who==='me'?o.slowT:o.slow",0);
     assert.ok(Math.abs(run('o.ult')-.65)<1e-9,'five trap penalties and one wreck penalty');
     run('G.traps=[];');tick(2.9);eq('o.shield',0);eq('o.dead>0',true);
-    tick(.11);eq('o.shield',6);eq('o.invuln',run('INVULNERABLE_TIME'));
+    tick(.11);eq('o.shield',6);eq('o.shieldHitT',0);eq('o.invuln',run('INVULNERABLE_TIME'));
     collide('puddle');eq('o.shield',6);
+  });
+  test(kind+': active ultimate preserves full and partial shields, with puddle effects and feedback',()=>{
+    for(const car of ['flann','neela','lolanthe','verdant','rhosyn','saffron']){
+      for(const halves of [6,3]){
+        setup(kind,car);run(`o.shield=${halves};o.ult=1;startUlt(who);`);
+        // Flight/absence have no road contact. Other ultimates retain Obscured.
+        if(run('noContact(who)')){collide('puddle');eq('o.shieldHitT',0);continue;}
+        collide('puddle');eq('o.shield',halves);eq('o.blind',run('BLIND_TIME'));eq('o.shieldHitT',1);
+        run('G.traps=[];');tick(.4);assert.ok(run('o.shieldHitT')<1);
+        collide('puddle');eq('o.shieldHitT',1);eq('o.shield',halves);
+        run('G.traps=[];');tick(1.01);eq('o.shieldHitT',0);
+      }
+    }
   });
   test(kind+': one overlapping puddle, misses and protected contacts',()=>{
     setup(kind);collide('puddle');
@@ -57,40 +70,66 @@ for(const kind of ['player','bot','local']){
   for(const car of ['flann','neela','lolanthe','verdant'])test(kind+'/'+car+': cleared hazards cost no shield',()=>{
     for(const type of ['weed','meteor']){
       setup(kind,car);run('o.ult=1;startUlt(who);');collide(type);
-      eq('o.shield',6);eq('o.dead',0);if(type==='weed')eq('G.traps.length',0);
+      eq('o.shield',6);eq('o.dead',0);eq('o.shieldHitT',1);if(type==='weed')eq('G.traps.length',0);
     }
   });
   test(kind+': airborne and off-road protection',()=>{
     for(const car of ['saffron','rhosyn']){
       setup(kind,car);run('o.ult=1;startUlt(who);');
       if(car==='rhosyn')run('tickAeroGlow(who,1);');
-      eq('noContact(who)',true);collide('puddle');eq('o.shield',6);
+      eq('noContact(who)',true);collide('puddle');eq('o.shield',6);eq('o.shieldHitT',0);
     }
   });
 }
 test('all four local seats own independent durability and Canvas fills',()=>{
   run(`G.local=true;G.players=4;G.picks=CAR_IDS.slice(0,4);G.rules=defaultRules();startRace();G.state='running';`);
-  const widths=[];const original=f.ctx.fillRect;
-  f.ctx.fillRect=(x,y,w,h)=>{if(['#FF8CE1','#FFEB96','#78EBFF'].includes(f.ctx.fillStyle))widths.push(w);};
+  const widths=[], gradients=[]; let tracks=0, strokes=0;
+  const original={fillRect:f.ctx.fillRect,createLinearGradient:f.ctx.createLinearGradient,fill:f.ctx.fill,stroke:f.ctx.stroke};
+  f.ctx.createLinearGradient=()=>{const g={stops:[],addColorStop(p,c){this.stops.push([p,c]);}};gradients.push(g);return g;};
+  f.ctx.fill=()=>tracks++;
+  f.ctx.stroke=()=>strokes++;
+  f.ctx.fillRect=(x,y,w,h)=>{assert.ok(gradients.includes(f.ctx.fillStyle));widths.push(w);};
   for(let seat=0;seat<4;seat++){
     run(`globalThis.who=${seat?'G.rivals['+(seat-1)+']':'"me"'};globalThis.o=who==='me'?G:who;`);
     for(let hit=0;hit<seat;hit++)collide('puddle');
     run(`hudShield(o);`);
   }
-  f.ctx.fillRect=original;
-  assert.equal(widths.length,12);assert.ok(widths[0]>widths[3]);assert.equal(widths[6],0);assert.equal(widths[9],0);
-  assert.ok(widths[7]>widths[10]);
+  Object.assign(f.ctx,original);
+  assert.equal(tracks,12);assert.equal(strokes,0);assert.equal(gradients.length,12);
+  assert.deepEqual(widths.map(w=>w/widths[0]),[1,1,1,1,1,.5,1,1,0,1,.5,0]);
+  gradients.forEach((g,i)=>assert.deepEqual(g.stops,JSON.parse(run(`JSON.stringify(SHIELD_GRADIENTS[${i%3}])`))));
   eq('G.shield',6);eq('G.rivals[0].shield',5);eq('G.rivals[1].shield',4);eq('G.rivals[2].shield',3);
   run('startRace();');eq('[G,...G.rivals].every(o=>o.shield===6)',true);
 });
 test('DOM fractions and localized accessible meter',()=>{
   setup();run('G.shield=3;paintShield();lang="fr";applyLang();');
-  eq('$("#shieldPink").style.width','0%');eq('$("#shieldYellow").style.width','50%');eq('$("#shieldCyan").style.width','100%');
+  eq('$("#shieldPink").style.width','100%');eq('$("#shieldYellow").style.width','50%');eq('$("#shieldCyan").style.width','0%');
   eq('$("#shieldHud").getAttribute("aria-valuenow")','3');
   eq('$("#shieldHud").getAttribute("aria-label")','Bouclier (demi-barres restantes)');
 });
 test('hazards off, boost off and bubbles off keep durability and HUD stable',()=>{
   setup();run('G.rules.traps=false;G.nextTrap=0;for(let i=0;i<100;i++)update(.05);paintHUD(true);');
   eq('G.shield',6);eq('G.traps.length',0);eq('$("#shieldHud").getAttribute("aria-valuenow")','6');
+});
+test('current stage mapping and per-view feedback suppression',()=>{
+  for(let n=0;n<=6;n++){
+    const stage=JSON.parse(run(`JSON.stringify(shieldStage(${n}))`));
+    assert.deepEqual(stage,n?{bar:Math.ceil(n/2)-1,fill:n%2?.5:1}:null);
+  }
+  setup('local');run('o.shieldHitT=1;');
+  const original=f.ctx.fillRect;let draws=0;f.ctx.fillRect=()=>draws++;
+  run('VOWN=R;drawShieldHit(R,W/2,H/2,1);');assert.equal(draws,0);
+  run('VOWN="me";drawShieldHit("me",W/2,H/2,1);drawShieldHit(R,W/2,H/2,0);');assert.equal(draws,0);
+  run('drawShieldHit(R,W/2,H/2,1);');assert.equal(draws,1);
+  run('o.dead=1;drawShieldHit(R,W/2,H/2,1);o.dead=0;o.finished=1;drawShieldHit(R,W/2,H/2,1);');assert.equal(draws,1);
+  f.ctx.fillRect=original;
+});
+test('DOM gradients use the shared palette',()=>{
+  setup();run('paintShield();');
+  for(const [i,id] of ['Pink','Yellow','Cyan'].entries()){
+    const bg=run(`$("#shield${id}").style.background`);
+    assert.ok(bg.startsWith('linear-gradient('));
+    for(const [,color] of JSON.parse(run(`JSON.stringify(SHIELD_GRADIENTS[${i}])`)))assert.ok(bg.includes(color));
+  }
 });
 console.log(`\n${checks} shield regression checks passed.`);

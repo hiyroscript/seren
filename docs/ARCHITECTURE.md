@@ -936,3 +936,23 @@ CSS layout, browser rendering or real controller hardware. See
 Saffron’s phase/lift clocks live on every racer, are reset with other form state and use the shared transition helpers. The airborne render pass follows road objects and carries body, exhaust and badges upward while retaining a canonical shadow. Touchdown uses the normal model’s polygon and existing wreck/credit functions.
 
 Aero-Glow adapts Ponu’s lane highlight, rungs and dash rhythm through `aeroEachRung()`, driven by owner travel. `hudReadout()` and `drawLadder()` suppress race-position information only for the private-world owner. The DOM HUD restores the current `curTrackKey` after return.
+
+### Shield presentation and contact feedback
+
+Shield bars remain ordered pink → yellow → cyan, but lose durability cyan →
+yellow → pink. `shieldBarFill()` supplies both HUDs; `SHIELD_GRADIENTS` supplies
+matching borderless, dividerless gradient fills without changing bubble colors.
+`SHIELD_MAX` remains six halves. Respawn restores them after the existing wreck delay.
+
+`hitShield()` preserves the current half count while `ultOn` is active. This
+neither regenerates shield nor grants universal invulnerability: surviving
+Obscured/Slow effects and car-specific solid-hazard behavior remain intact,
+and meteors still bypass durability under their existing destruction rules.
+
+Accepted surviving hazard contacts refresh cosmetic `shieldHitT` to
+`SHIELD_HIT_TIME` (1 second). Frame updates count it down; wreck, respawn, finish
+and race reset clear it. `shieldStage()` selects the current color and half-state.
+`drawShieldHit()` shows one compact bar above the measured car silhouette,
+including the airborne render pass, suppresses the current viewport owner and
+uses the car's per-view alpha so invisible racers stay hidden. No-contact states
+and dodges produce no feedback. This timer has no gameplay effect.

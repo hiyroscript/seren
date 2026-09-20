@@ -1049,17 +1049,31 @@ function wreckRacer(who, by){
 /* Per-life durability. Only accepted ordinary hazard contacts call this;
    meteor and combat wrecks leave it untouched until the actual respawn. */
 function shieldOf(who){ return (who === "me" ? G : who).shield; }
-function resetShield(who){ (who === "me" ? G : who).shield = SHIELD_MAX; }
+function resetShield(who){
+  const o = who === "me" ? G : who;
+  o.shield = SHIELD_MAX; o.shieldHitT = 0;
+}
+function shieldStage(halves){
+  if(halves <= 0) return null;
+  const bar = Math.min(SHIELD_BARS - 1, Math.ceil(halves/SHIELD_HALVES_PER_BAR) - 1);
+  return {bar, fill:shieldBarFill(halves, bar)};
+}
+function showShieldHit(who){
+  if(noContact(who)) return;
+  const o = who === "me" ? G : who;
+  if(o.shield > 0) o.shieldHitT = SHIELD_HIT_TIME;
+}
 function shieldBarFill(halves, bar){
-  return clamp((halves - (SHIELD_BARS - 1 - bar)*SHIELD_HALVES_PER_BAR)/SHIELD_HALVES_PER_BAR, 0, 1);
+  return clamp((halves - bar*SHIELD_HALVES_PER_BAR)/SHIELD_HALVES_PER_BAR, 0, 1);
 }
 /* True means this hit wrecked the racer; callers skip the debuff and trap
    penalty, since the shared wreck lifecycle already applies its own penalty. */
 function hitShield(who){
   if(noContact(who)) return false;
   const o = who === "me" ? G : who;
+  if(o.ultOn){ showShieldHit(who); return false; }
   o.shield = Math.max(0, shieldOf(who) - 1);
-  if(o.shield > 0) return false;
+  if(o.shield > 0){ showShieldHit(who); return false; }
   wreckRacer(who);
   return true;
 }
@@ -1330,7 +1344,7 @@ function wreckRival(R, by, force){
   botBlame(R, by);
   ultDelta(R, ULT_ON_WRECK);
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
-  R.dead = DEAD_TIME;
+  R.dead = DEAD_TIME; R.shieldHitT = 0;
   clearSaffronState(R);
   clearNeelaState(R);                          /* no alternate form on a wreck */
   clearVerdantState(R);                        /* nor a ghost dissolving through the wreck */
@@ -2149,6 +2163,7 @@ function updateTraps(dt, d, st){
                  now, so it never reaches the ground and never detonates. The
                  ultimate itself is untouched. */
               if(clearsSolidHazards("me")){
+                showShieldHit("me");
                 smashFx(o.x, my, o.mr, "#C6482A", G.car);
                 G.traps.splice(i,1); continue;
               }
@@ -2189,19 +2204,23 @@ function detonate(o, live){
   /* The blast still happens and still looks like one; what a car with the
      solid-hazard privilege does not do is die in it. Everybody else inside the
      radius is destroyed on exactly the terms they always were. */
-  if(live && !noContact("me") && !clearsSolidHazards("me")){
+  if(live && !noContact("me")){
     const c2 = carHit();
     const p3 = nearestOnCar(c2, o.x, o.y);
     const dx = p3.x - o.x, dy = p3.y - o.y;
-    if(dx*dx + dy*dy <= o.r*o.r) destroyCar();
+    if(dx*dx + dy*dy <= o.r*o.r){
+      if(clearsSolidHazards("me")) showShieldHit("me"); else destroyCar();
+    }
   }
   for(let n=0;n<G.rivals.length;n++){
     const R = G.rivals[n];
-    if(safeCar(R) || clearsSolidHazards(R)) continue;
+    if(safeCar(R)) continue;
     const rc = carHit(R);
     const p4 = nearestOnCar(rc, o.x, o.y);
     const rx = p4.x - o.x, ry = p4.y - o.y;
-    if(rx*rx + ry*ry <= o.r*o.r) wreckRival(R);
+    if(rx*rx + ry*ry <= o.r*o.r){
+      if(clearsSolidHazards(R)) showShieldHit(R); else wreckRival(R);
+    }
   }
 }
 
@@ -2243,7 +2262,7 @@ function destroyCar(by){
   clearDebuffs("me");
   ultDelta("me", ULT_ON_WRECK);
   if(by) ultDelta(by, ULT_ON_KILL);
-  G.dead = DEAD_TIME;
+  G.dead = DEAD_TIME; G.shieldHitT = 0;
   G.shake = 22;
   for(let i=0;i<30;i++){
     const a = rand(0, 6.2832), sp = rand(70, 340);
@@ -2260,7 +2279,7 @@ function hitWeed(o){
      Slow, no meter penalty, and the weed comes apart on the bonnet rather than
      being politely missed - the caller removes it either way. */
   if(noContact("me")) return;
-  if(clearsSolidHazards("me")){ smashWeed(o, G.car); return; }
+  if(clearsSolidHazards("me")){ showShieldHit("me"); smashWeed(o, G.car); return; }
   if(hitShield("me")) return;
   ultDelta("me", ULT_ON_TRAP);
   G.slowT = SLOW_TIME;
