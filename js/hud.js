@@ -21,6 +21,7 @@
    chevrons, an arrow brought down onto a floor, a crossed-out eye, and two
    skid marks. Colour is never the only difference between two of them. */
 const COND_PATHS = {
+  cleanse:  ["M12 3 14.5 9.5 21 12 14.5 14.5 12 21 9.5 14.5 3 12 9.5 9.5Z", "M18 3v4M16 5h4"],
   shield:   ["M12 3.4 18.6 6v5c0 4.2-2.6 7.6-6.6 9-4-1.4-6.6-4.8-6.6-9V6L12 3.4Z"],
   chevrons: ["M5.8 13.4 12 7.6l6.2 5.8", "M5.8 19 12 13.2l6.2 5.8"],
   slow:     ["M12 3.6v9.6", "M7.4 9 12 13.6 16.6 9", "M6.4 18.6h11.2"],
@@ -857,7 +858,7 @@ function drawLadder(){
    badge cannot use, and where a badge can go is a question about the page
    rather than about this file. Carrying a copy of the stylesheet's numbers here
    would be wrong the moment a notch inset shifted the block down, the mode
-   dropped the race clock or the seven place rows, or the mono font rendered a
+   dropped the race clock or the eight place rows, or the mono font rendered a
    line taller than assumed - and being wrong means a badge printed under the
    standings, which is a badge nobody can read.
 

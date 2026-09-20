@@ -31,7 +31,7 @@ function invulnerableWho(who){ return who === "me" ? invulnerableMe() : invulner
    refusing to let the road have it. The fourth is not a protection at all -
    see rhosynElsewhere() below. There is no body at that position to reach,
    because the body is somewhere the race does not go. */
-function refusesDebuffs(who){
+function physicallyProtected(who){
   if(who === "me")
     return finishedMe() || G.dead > 0 || invulnerableMe() || rhosynElsewhere("me");
   return !who || finishedCar(who) || who.dead > 0 || invulnerableCar(who) ||
@@ -43,7 +43,77 @@ function playerUntouchable(){ return noContact("me"); }
 
 /* Road reachability also excludes flight. Mental reachability does not:
    airborne Saffron still shares Lolanthe’s canonical road-distance aura. */
-function noContact(who){ return refusesDebuffs(who) || saffronAirborne(who); }
+function noContact(who){ return physicallyProtected(who) || saffronAirborne(who); }
+/* Every debuff uses this gate; cleansing never changes physical reachability. */
+function refusesDebuffs(who){ return physicallyProtected(who) || cleansedWho(who); }
+function cleansedWho(who){ const o = who === "me" ? G : who; return !!o && o.cleanseT > 0; }
+function applyCleansed(who){
+  const o = who === "me" ? G : who;
+  if(!o || physicallyProtected(who)) return false;
+  clearDebuffs(who);
+  o.cleanseT = CLEANSED_TIME;
+  return true;
+}
+
+/* Dhaval shares the ordinary ultimate clock; only its aura is specialized. */
+function dhavalCar(who){ const o = who === "me" ? G : who; return !!o && o.car === "dhaval"; }
+function dhavalUltActive(who){ const o = who === "me" ? G : who; return dhavalCar(who) && !!o.ultOn; }
+function dhavalObscured(who){ const o = who === "me" ? G : who; return !!o && o.dhavalObscureT > 0; }
+function dhavalObscureLevel(who){
+  const o = who === "me" ? G : who;
+  return dhavalObscured(who) ? clamp(o.dhavalObscureLevel || 1, 1, 5) : 0;
+}
+function clearDhavalObscure(who){
+  const o = who === "me" ? G : who;
+  if(o){ o.dhavalObscureT = 0; o.dhavalObscureLevel = 0; o.dhavalObscureAge = 0; }
+}
+function dhavalRange(){ return carH*DHAVAL_AURA_LENGTHS; }
+/* Lolanthe is reachable, but converts the attempted debuff before the ordinary
+   refusal gate. This lets continued exposure refresh an existing cleanse. */
+function dhavalReaches(source, target){
+  return !!target && target !== source && !physicallyProtected(target) &&
+         !rhosynUltActive(target) && !verdantUltActive(target);
+}
+function dhavalTakes(source, target){
+  return dhavalReaches(source, target) && !refusesDebuffs(target) && !lolantheUltActive(target);
+}
+function applyDhavalObscure(target, source){
+  if(!dhavalReaches(source, target)) return false;
+  if(lolantheUltActive(target)){ applyCleansed(target); return false; }
+  if(refusesDebuffs(target)) return false;
+  const o = target === "me" ? G : target;
+  if(!dhavalObscured(target)){ o.dhavalObscureLevel = 1; o.dhavalObscureAge = 0; o.senseT = 0; }
+  o.dhavalObscureT = DHAVAL_OBSCURE_TIME;
+  return true;
+}
+/* Only accepted physical hazard contacts call this, before shield absorption.
+   Trap hit masks/removal make a contact unique; rendering never escalates it. */
+function increaseDhavalObscure(who){
+  if(!dhavalObscured(who) || refusesDebuffs(who)) return;
+  const o = who === "me" ? G : who;
+  o.dhavalObscureLevel = Math.min(5, dhavalObscureLevel(who) + 1);
+  o.senseT = 0;
+}
+function tickDhavalConditions(who, dt){
+  const o = who === "me" ? G : who;
+  o.cleanseT = Math.max(0, (o.cleanseT || 0) - dt);
+  if(dhavalObscured(who)){
+    o.dhavalObscureAge += dt;
+    o.dhavalObscureT = Math.max(0, o.dhavalObscureT - dt);
+    if(!o.dhavalObscureT) clearDhavalObscure(who);
+  }
+}
+function dhavalAuras(){
+  const all = racers();
+  for(const a of all){
+    const source = a.me ? "me" : a.obj;
+    if(a.out || !dhavalUltActive(source)) continue;
+    for(const b of all){
+      if(b.out || Math.abs(a.y - b.y) > dhavalRange()) continue;
+      applyDhavalObscure(b.me ? "me" : b.obj, source);
+    }
+  }
+}
 function clearDebuffs(who){
   const o = who === "me" ? G : who;
   if(who === "me"){
@@ -54,13 +124,14 @@ function clearDebuffs(who){
   /* Mind Control is a debuff like the other three, so protection takes it
      away with them - and the three notes go with it rather than being left
      orbiting a car that is no longer controlled. */
-  if(o){ o.mindT = 0; o.mindPop = 0; o.mindOut = 0; }
+  if(o){ o.mindT = 0; o.mindPop = 0; o.mindOut = 0; o.blindPts = []; }
+  clearDhavalObscure(who);
 }
 function sweepDebuffs(){
-  if(invulnerableMe() || finishedMe()) clearDebuffs("me");
+  if(invulnerableMe() || finishedMe() || cleansedWho("me")) clearDebuffs("me");
   for(let i=0;i<G.rivals.length;i++){
     const R = G.rivals[i];
-    if(invulnerableCar(R) || finishedCar(R)) clearDebuffs(R);
+    if(invulnerableCar(R) || finishedCar(R) || cleansedWho(R)) clearDebuffs(R);
   }
 }
 
@@ -195,6 +266,7 @@ function conditionOn(who, id){
   const me = who === "me";
   const o = me ? G : who;
   if(!o) return false;
+  if(id === "cleansed") return cleansedWho(who);
   if(id === "invulnerable") return invulnerableWho(who);
   if(id === "boosted"){
     /* Anything that makes this car faster, whatever put it there: the boost
@@ -207,7 +279,7 @@ function conditionOn(who, id){
      Condition either way: puddle water on the glass, or the white a Neela
      transformation or teleport puts over the view it belongs to. Derived from
      both timers rather than from a flag somebody has to remember to set. */
-  if(id === "obscured") return (o.blind || 0) > 0 || (o.whiteT || 0) > 0;
+  if(id === "obscured") return (o.blind || 0) > 0 || (o.whiteT || 0) > 0 || dhavalObscured(who);
   if(id === "skidded") return (me ? G.slipT : o.slip || 0) > 0;
   /* The badge and the lock are the same question asked twice, so they are
      answered in one place: a Condition that has lapsed cannot leave a driver
@@ -268,7 +340,7 @@ function rearContact(who){
 /* ---------------- shared ultimate predicates --------------------
    Every car runs the same ultimate: eighty-five seconds to charge, fifteen
    seconds long, and the lifecycle in startUlt/tickUlt/endUlt below is shared
-   by all seven. Individual powers use the same clock. racerPace() applies
+   by all eight. Individual powers use the same clock. racerPace() applies
    double pace, or Cole’s motorcycle multiplier, without another lifecycle.
 
    These are the predicates that say which car is which, and they are the only
@@ -402,7 +474,7 @@ function aeroHideK(who){
    hazards in this file and the rivals' in race.js. */
 function clearsSolidHazards(who){
   return flannUltActive(who) || neelaUltActive(who) ||
-         lolantheUltActive(who) || verdantUltActive(who) || coleUltActive(who);
+         lolantheUltActive(who) || verdantUltActive(who) || coleUltActive(who) || dhavalUltActive(who);
 }
 /* And whether this racer is a Neela that still has its one exchange to spend.
    The form has to be up, the swap has to be unspent, and the contact must not
@@ -713,7 +785,7 @@ function mindTakes(by, target){
    that is merely being reset does not replay it. */
 function applyMindControl(target){
   const o = target === "me" ? G : target;
-  if(!o) return false;
+  if(!o || refusesDebuffs(target) || verdantUltActive(target)) return false;
   const fresh = !((o.mindT || 0) > 0);
   o.mindT = MIND_CONTROL_TIME;
   if(fresh){
@@ -994,7 +1066,7 @@ function racerDetectable(who){
 function carSeenAt(lane, y, skip){
   const a = carAt(lane, y, skip);
   if(!a) return null;
-  return racerDetectable(a.me ? "me" : a.obj) ? a : null;
+  return botSeesRacer(skip, a.me ? "me" : a.obj) ? a : null;
 }
 
 /* ---- the contact priority ----
@@ -1137,8 +1209,10 @@ function rearEnd(who, victim){
   const gap = (racerDims(who).h + racerDims(vWho).h)/2*0.98;
   if(meB) G.bumpCD = 0.5; else { who.bumpCD = 0.5; who.m = G.meters + (playerY - (vy + gap))*0.075; }
 
-  if(meB) G.slowT = Math.max(G.slowT, BUMP_SLOW*0.7);
-  else who.slow = Math.max(who.slow, BUMP_SLOW*0.7);
+  if(!refusesDebuffs(who)){
+    if(meB) G.slowT = Math.max(G.slowT, BUMP_SLOW*0.7);
+    else who.slow = Math.max(who.slow, BUMP_SLOW*0.7);
+  }
   if(victim.me) G.shuntT = SHUNT_TIME;                 /* they get shoved along */
   else victim.obj.shuntT = SHUNT_TIME;
   for(let i=0;i<12;i++){
@@ -1195,13 +1269,13 @@ function bumpTarget(victim, dir, by){
   let out = "moved";
   if(victim.me){
     if(to < 0 || to > 2){ destroyCar(by); out = "wrecked"; }
-    else { G.lane = to; G.slowT = Math.max(G.slowT, BUMP_SLOW); }
+    else { G.lane = to; if(!refusesDebuffs("me")) G.slowT = Math.max(G.slowT, BUMP_SLOW); }
   } else {
     if(to < 0 || to > 2){ wreckRival(victim.obj, by); out = "wrecked"; }
     else {
       victim.obj.lane = to;
       victim.obj.x = lerp(victim.obj.x, laneCX(to), 0.35);
-      victim.obj.slow = Math.max(victim.obj.slow, BUMP_SLOW);
+      if(!refusesDebuffs(victim.obj)) victim.obj.slow = Math.max(victim.obj.slow, BUMP_SLOW);
       victim.obj.changeT = 0.7;
       botBlame(victim.obj, by);
     }
@@ -1283,6 +1357,7 @@ function startUlt(who){
   if(neelaCar(who)) beginNeelaForm(who);
   if(saffronCar(who)) beginSaffronFlight(who);
   if(lolantheCar(who)){ o.queenPop = QUEEN_POP; o.queenOut = 0; }
+  if(rhosynCar(who) || verdantCar(who)) clearDhavalObscure(who);
   if(rhosynCar(who)) beginAeroGlow(who);
 }
 function endUlt(who){
@@ -1383,6 +1458,7 @@ function wreckRival(R, by, force){
      four times as many charged ultimates to a rule the player never met. */
   R.boosting = false;
   clearDebuffs(R);
+  R.cleanseT = 0;
   for(let i=0;i<30;i++){
     const a = rand(0, 6.2832), sp = rand(70, 340);
     addFx(R.x, R.y, Math.cos(a)*sp, Math.sin(a)*sp, rand(.45,1.0), rand(2,7),
@@ -1432,7 +1508,7 @@ function leaderOf(who){
    whole bubble world was an eighty metre band strapped to your car: anyone
    further ahead than that was already past the row before it existed and never
    met a bubble in their life, and anyone dropped behind lost every row before it
-   reached them. The road has to be the same road for all seven, so a row is now
+   reached them. The road has to be the same road for all eight, so a row is now
    planted the same distance ahead of whoever leads and kept until whoever trails
    is through it. When you are the one in front both come out exactly where they
    always did. */
@@ -2102,7 +2178,7 @@ function finishPerfectDodges(frame){
     for(const entry of frame.traps){
       const o = entry.live, bit = a.bit;
       if(!G.traps.includes(o) || (o.pdDone & bit)) continue;
-      if(!eligible || (o.hit & bit) || (o.kind !== "puddle" && clearsSolidHazards(who))){
+      if(!eligible || (o.hit & bit) || ((o.kind !== "puddle" && clearsSolidHazards(who)) || dhavalUltActive(who))){
         // Protection cancels a pending dodge, not a future encounter after it ends.
         if((o.pdThreat & bit) || (o.hit & bit)) o.pdDone = (o.pdDone || 0) | bit;
         o.pdThreat = (o.pdThreat || 0) & ~bit;
@@ -2136,6 +2212,24 @@ function nearestOnCar(c, px, py){
     if(d<best){best=d;nearest=p;}
   }
   return nearest;
+}
+
+/* Same swept falling-body test for either driver. Intercept before the blast;
+   spent craters are never targeted. Does not change any other car's privilege. */
+function interceptDhavalMeteor(rock, previousAlt){
+  for(const a of racers()){
+    const who = a.me ? "me" : a.obj;
+    if(a.out || noContact(who) || !dhavalUltActive(who)) continue;
+    const alt = rockAlt(rock), dim = racerDims(who);
+    if(alt >= dim.h*.55) continue;
+    const hull = carHit(who);
+    const y = clamp(hull.y, rock.y - previousAlt, rock.y - alt);
+    const p = nearestOnCar(hull, rock.x, y);
+    if(Math.hypot(p.x-rock.x, p.y-y) > rock.mr) continue;
+    smashFx(rock.x, y, rock.mr, CARS.dhaval.accent, ultOwnerCar(who));
+    return true;
+  }
+  return false;
 }
 
 function updateTraps(dt, d, st){
@@ -2174,6 +2268,7 @@ function updateTraps(dt, d, st){
         const previousAlt = rockAlt(o);
         o.fall = Math.max(0, o.fall - dt);
         if(st === "running" && interceptSaffronMeteor(o, previousAlt)){ G.traps.splice(i,1); continue; }
+        if(st === "running" && interceptDhavalMeteor(o, previousAlt)){ G.traps.splice(i,1); continue; }
         if(o.fall <= 0) detonate(o, live);
         else if(racing && o.fall < rockLead(o)){
           const alt = rockAlt(o);
@@ -2207,6 +2302,10 @@ function updateTraps(dt, d, st){
     if(!live || (o.hit & 1)) continue;
     if(puddleHits(o, c, sweptY(o, d, c.y))){
       o.hit |= 1;
+      if(dhavalUltActive("me")){
+        smashFx(o.x, o.y, o.rx, CARS.dhaval.accent, G.car);
+        G.traps.splice(i,1); continue;
+      }
       hitPuddle();
     }
     markPassed(o, c, 1);
@@ -2233,7 +2332,7 @@ function detonate(o, live){
     const p3 = nearestOnCar(c2, o.x, o.y);
     const dx = p3.x - o.x, dy = p3.y - o.y;
     if(dx*dx + dy*dy <= o.r*o.r){
-      if(clearsSolidHazards("me")) showShieldHit("me"); else destroyCar();
+      if(clearsSolidHazards("me")) showShieldHit("me"); else { increaseDhavalObscure("me"); destroyCar(); }
     }
   }
   for(let n=0;n<G.rivals.length;n++){
@@ -2243,7 +2342,7 @@ function detonate(o, live){
     const p4 = nearestOnCar(rc, o.x, o.y);
     const rx = p4.x - o.x, ry = p4.y - o.y;
     if(rx*rx + ry*ry <= o.r*o.r){
-      if(clearsSolidHazards(R)) showShieldHit(R); else wreckRival(R);
+      if(clearsSolidHazards(R)) showShieldHit(R); else { increaseDhavalObscure(R); wreckRival(R); }
     }
   }
 }
@@ -2257,8 +2356,10 @@ function blindSpray(){
   return out;
 }
 function hitPuddle(){
-  if(noContact("me")) return;
+  if(noContact("me") || dhavalUltActive("me")) return;
+  increaseDhavalObscure("me");
   if(hitShield("me")) return;
+  if(refusesDebuffs("me")) return;
   ultDelta("me", ULT_ON_TRAP);
   G.blind = BLIND_TIME;
   G.blindPts = blindSpray();
@@ -2284,6 +2385,7 @@ function destroyCar(by){
   if(G.ultOn) clearMyUlt();                    /* a running ultimate is lost outright */
   clearLolantheState("me");                    /* and no note popping out over it */
   clearDebuffs("me");
+  G.cleanseT = 0;
   ultDelta("me", ULT_ON_WRECK);
   if(by) ultDelta(by, ULT_ON_KILL);
   G.dead = DEAD_TIME; G.shieldHitT = 0;
@@ -2304,7 +2406,9 @@ function hitWeed(o){
      being politely missed - the caller removes it either way. */
   if(noContact("me")) return;
   if(clearsSolidHazards("me")){ showShieldHit("me"); smashWeed(o, G.car); return; }
+  increaseDhavalObscure("me");
   if(hitShield("me")) return;
+  if(refusesDebuffs("me")) return;
   ultDelta("me", ULT_ON_TRAP);
   G.slowT = SLOW_TIME;
   G.shake = 8;

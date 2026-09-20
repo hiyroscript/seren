@@ -278,7 +278,7 @@ elsewhere.
 - `setupSummary()` reads the mode, player count, style, bots and difficulty from
   `G`. It is presentation only. `paintCustom()` still writes through the original
   rules and restores focus after rebuilding controls.
-- `paintPicks()` keeps the seven direct-pick buttons, taken states and player roster
+- `paintPicks()` keeps the eight direct-pick buttons, taken states and player roster
   current. `previewCar()` renders the focused/hovered vehicle at showroom size
   using the same `paintCarIcon()` / `drawCar()` path as the other car artwork.
   Previewing never commits a pick. The board remains three columns for gamepads.
@@ -357,7 +357,7 @@ of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
 `startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
-for every driver, and that lifecycle is shared by all seven cars. Five cars add a
+for every driver, and that lifecycle is shared by all eight cars. Five cars add a
 power on top of it. Four of those five are applied at the consequence or at the
 view rather than through `noContact()`: an ulting Flann, Neela or Lolanthe still
 has to physically meet a racer or a hazard for anything to happen, an ulting
@@ -606,7 +606,7 @@ writes none. Aero-Glow is deliberately not a `TRACKS` entry and its name is
 drawn inside the view rather than written into `#trackName`, which is the page's
 one HUD and in split-screen belongs to whoever is not in there.
 
-All seven cars use their root `v_*.PNG` sprite assets. Neela and Saffron also register their `vtm_*.PNG` alternate sheets in the shared cache. All eight car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
+All eight cars use their root `v_*.PNG` sprite assets. Neela, Saffron and Cole also register their `vtm_*.PNG` alternate sheets in the shared cache. All eleven car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
 
 Showroom, garage, player, bot and local columns all use this same dispatch, and
 the menus paint from `CARS` directly, so a preview is always the car and never
@@ -817,9 +817,9 @@ somewhere else, it goes through `racerWorldPose` and `teleportRacerToPose` and
 never through raw `x`/`y`; if it needs a second body, it goes in an `altForm`
 and comes out through `racerModel()`.
 
-`FIELD_SIZE` is 7. Standard races include all seven identities; custom rules
-can request fewer bots. Two, three and four local humans leave five, four and
-three bot slots respectively. Cole’s permanent alternate form is selected by
+`FIELD_SIZE` is 8. Standard races include all eight identities; custom rules
+can request fewer bots. Two, three and four local humans leave six, five and
+four bot slots respectively. Cole’s permanent alternate form is selected by
 `racerModel()`; `switchColeForm()` handles input eligibility and `racerPace()`
 centralizes form-aware speed for players and bots.
 
@@ -940,7 +940,7 @@ CSS layout, browser rendering or real controller hardware. See
 
 ## Flight and private-world updates
 
-`refusesDebuffs()` contains lifecycle protection and Aero-Glow absence. `noContact()` adds Saffron flight without making it immune to Mind Control. `mindShove()` can change airborne canonical lanes while `carAt()` correctly finds no physical road contact. Meteor interception checks the falling trajectory against every active dragon before ground detonation.
+`physicallyProtected()` contains lifecycle protection and Aero-Glow absence. `refusesDebuffs()` adds Cleansed; `noContact()` separately adds Saffron flight without making it immune to Mind Control. `mindShove()` can change airborne canonical lanes while `carAt()` correctly finds no physical road contact. Meteor interception checks the falling trajectory against every active dragon before ground detonation.
 
 Saffron’s phase/lift clocks live on every racer, are reset with other form state and use the shared transition helpers. The airborne render pass follows road objects and carries body, exhaust and badges upward while retaining a canonical shadow. Touchdown uses the normal model’s polygon and existing wreck/credit functions.
 
@@ -965,3 +965,29 @@ and race reset clear it. `shieldStage()` selects the current color and half-stat
 including the airborne render pass, suppresses the current viewport owner and
 uses the car's per-view alpha so invisible racers stay hidden. No-contact states
 and dodges produce no feedback. This timer has no gameplay effect.
+
+
+## Dhaval and Cleansed
+
+`CAR_IDS` contains eight racers; `FIELD_SIZE` is eight and spawn geometry includes
+seven rival slots. All UI selection handlers derive from `CAR_IDS`.
+`dhavalAuras()` runs after movement and before `lolantheAuras()`, so Cleansed is
+established before hostile Mind Control is considered. The aura uses canonical
+road coordinates and four shared car lengths, following Lolanthe’s range model.
+
+Per racer, `dhavalObscureT`, `dhavalObscureLevel`, `dhavalObscureAge` and `cleanseT`
+are initialized at race creation. Only simulation mutates them. Accepted trap
+contacts escalate before shield handling; destruction by an ultimate takes the
+prior branch. Puddle hit masks and removed weeds prevent duplicate escalation.
+Dhaval’s falling-meteor interception runs for the whole field before detonation.
+
+`physicallyProtected()` and `refusesDebuffs()` have separate meanings: Cleansed
+only extends the latter. All slow/contact, oil, water, mental and Dhaval debuff
+writers consult this gate. `clearDebuffs()` clears both visibility effects and
+Mind Control. Cosmetic transformation flashes remain part of the transformation.
+
+`drawDhavalObscurity(VOWN)` runs inside each clipped glass layer before the
+ladder and seat HUD. It reads simulation age and severity. `dhavalLight()` is a
+pure, shared geometry calculation; reduced motion selects one stable time.
+AI sight, hazard lookahead, pickup assessment and observation/reaction cadence
+read severity without changing physics. See [Dhaval QA](DHAVAL-QA.md).

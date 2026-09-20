@@ -352,6 +352,10 @@ else {
     if (!new RegExp(`data-car="${id}"`).test(html)) fail(`car ${id} has no select-screen canvas`);
   }
   pass(`${carIds.length} cars: models, strings, buttons and ultimates all wired`);
+  const expectedRoster = "flann,neela,lolanthe,verdant,rhosyn,saffron,cole,dhaval";
+  carIds.join() === expectedRoster && /const FIELD_SIZE = 8;/.test(sources.data)
+    ? pass("exact eight-car roster and field size")
+    : fail("roster or field size no longer matches the eight racers");
 }
 
 /* One CONDITIONS table, six entries, and every renderer reading it. The
@@ -361,7 +365,7 @@ const COND_PATHS = objectLiteral(sources.hud || "", "COND_PATHS");
 if (!CONDITIONS) fail("could not read CONDITIONS out of js/data.js");
 else {
   const ids = Object.keys(CONDITIONS);
-  const want = ["invulnerable", "boosted", "slowed", "obscured", "skidded",
+  const want = ["cleansed", "invulnerable", "boosted", "slowed", "obscured", "skidded",
                 "mindControlled"];
   ids.join() === want.join()
     ? pass(`conditions are exactly ${want.join(", ")}, in priority order`)
@@ -371,8 +375,8 @@ else {
   }
   const buffs = ids.filter((id) => CONDITIONS[id].type === "buff");
   const debuffs = ids.filter((id) => CONDITIONS[id].type === "debuff");
-  buffs.join() === "invulnerable,boosted"
-    ? pass("Buff holds Invulnerable and Boosted")
+  buffs.join() === "cleansed,invulnerable,boosted"
+    ? pass("Buff holds Cleansed, Invulnerable and Boosted")
     : fail(`Buff holds ${buffs.join(", ")}`);
   debuffs.join() === "slowed,obscured,skidded,mindControlled"
     ? pass("Debuff holds Slowed, Obscured, Skidded and Mind Controlled")
@@ -543,10 +547,10 @@ head("The car-specific ultimates and race sizes");
   const adhoc = [];
   for (const n of ORDER) {
     if (!sources[n]) continue;
-    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant|rhosyn|saffron|cole)["']/g)) {
+    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant|rhosyn|saffron|cole|dhaval)["']/g)) {
       const before = sources[n].slice(0, m.index);
       const inPredicate =
-        /function (flannCar|neelaCar|lolantheCar|verdantCar|rhosynCar|saffronCar|coleCar)\([^)]*\)\s*\{[^}]*$/.test(before);
+        /function (flannCar|neelaCar|lolantheCar|verdantCar|rhosynCar|saffronCar|coleCar|dhavalCar)\([^)]*\)\s*\{[^}]*$/.test(before);
       if (!inPredicate) adhoc.push(`js/${n}.js`);
     }
   }
@@ -644,7 +648,7 @@ head("The car-specific ultimates and race sizes");
   /* And it is the one car-specific state noContact() reads, because it is the
      one that is about there being a body at all rather than about who wins a
      contact between two of them. */
-  /function refusesDebuffs\([^)]*\)\s*\{[^}]*rhosynElsewhere/.test(mech)
+  /function physicallyProtected\([^)]*\)\s*\{[^}]*rhosynElsewhere/.test(mech)
     ? pass("noContact() reads the one state that says the body has left the road")
     : fail("noContact() no longer knows about Aero-Glow");
   /* Verdant is hidden, never removed: nothing in the mechanic may reach for

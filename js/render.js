@@ -1411,12 +1411,68 @@ function renderView(dy){
    water on the screen are facts about the driver rather than about which world
    that driver is being shown, and the ultimate meter counting Aero-Glow down is
    the clearest of them. */
+/* One deterministic light, computed from simulation age and a fixed spatial sequence.
+   Earlier circles keep their trajectory at higher severity: count, radius and
+   opacity can then increase coverage without rearranging the whole effect.
+   No persistent allocation, wall clock, random draws or gameplay writes. */
+function dhavalLight(who, i, level, width, height, reduced){
+  const o = who === "me" ? G : who;
+  const spec = DHAVAL_LIGHT_LEVELS[level - 1];
+  const seed = .137; // identical coverage for every car; age belongs to the victim
+  const time = reduced ? 3 : (o.dhavalObscureAge || 0);
+  const phase = i*2.399963 + seed*6.2832;
+  const bx = ((i*.618034 + seed) % 1), by = ((i*.754878 + seed*.7) % 1);
+  const drift = .065;
+  const cycle = .5 + .5*Math.sin(time*.85 + phase);
+  let pop = .90 + .10*Math.pow(cycle, 3);
+  /* One in four lights actually appears and retires. Staggered multi-second
+     lives, eased growth and a gentle exit avoid a synchronized flash. */
+  if(i%4 === 3){
+    const life = 6 + (i%3), age = (time + i*.83)%life;
+    const enter = clamp(age/.45, 0, 1), leave = clamp((life-age)/.8, 0, 1);
+    pop *= enter*enter*(3-2*enter)*leave*leave*(3-2*leave);
+  }
+  return {
+    x:(bx + Math.sin(time*.28 + phase)*drift)*width,
+    y:(by + Math.cos(time*.24 + phase)*drift)*height,
+    r:Math.sqrt(width*height)*spec.radius*(.88 + .24*((i*.414214)%1))*pop,
+    angle:phase + time*(i%2 ? .32 : -.28),
+    alpha:spec.opacity,
+    color:DHAVAL_LIGHT_COLORS[i%DHAVAL_LIGHT_COLORS.length]
+  };
+}
+function drawDhavalObscurity(who){
+  const level = dhavalObscureLevel(who);
+  if(!level || rhosynUltActive(who) || rhosynElsewhere(who)) return;
+  const reduced = motionReduced(), spec = DHAVAL_LIGHT_LEVELS[level - 1];
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  for(let i=0;i<spec.count;i++){
+    const p = dhavalLight(who, i, level, W, H, reduced);
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+    ctx.globalAlpha = p.alpha;
+    /* A broad opaque core and short feather retain legibility as circles.
+       The sweeping arc makes rotation visible even though the core is round. */
+    const light = ctx.createRadialGradient(0,0,p.r*.65,0,0,p.r);
+    light.addColorStop(0,p.color); light.addColorStop(.72,p.color);
+    light.addColorStop(1,p.color + "00");
+    ctx.fillStyle = light;
+    ctx.beginPath(); ctx.arc(0,0,p.r,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = p.alpha*.48;
+    ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = p.r*.045;
+    ctx.beginPath(); ctx.arc(0,0,p.r*.77,-.8,.9); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 function drawGlassLayer(){
   const o = VOWN === "me" ? G : VOWN;
   ctx.fillStyle = vign; ctx.fillRect(0,0,W,H);
-  drawLadder();
   const blind = o.blind || 0;
   if(blind > 0) drawBlind(blind, o.blindPts);
+  drawDhavalObscurity(VOWN);
+  drawLadder();
 }
 
 function bubbleFlash(row){

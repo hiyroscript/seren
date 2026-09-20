@@ -509,4 +509,30 @@ test('Cole forms have independent measured hulls before load, rotate and follow 
   }
 });
 
+test('Dhaval measured silhouette is independent, available before load, and aligned at every pose',()=>{
+  const d=fixture();d.boot();d.run(`G.local=false;G.car='dhaval';G.rules=defaultRules();startRace();
+    G.state='running';carW=100;carH=186;G.x=200;playerY=300;G.tilt=0;`);
+  assert.equal(d.run('raceScale("dhaval")'),1);
+  assert.ok(d.run('CARS.dhaval.hitShape.length')>40);
+  assert.equal(d.images.find(i=>i.src==='v_dhaval.PNG').complete,false);
+  for(const other of ['CAR_HIT_RECT',...['flann','neela','lolanthe','verdant','rhosyn','saffron','cole'].map(id=>'CARS.'+id+'.hitShape')])
+    assert.notEqual(d.run('CARS.dhaval.hitShape'),d.run(other));
+  const solid=[[512,65],[230,120],[820,320],[512,750],[212,810],[146,1150],[840,1320],[512,1440]];
+  const empty=[[125,54],[898,54],[160,650],[512,1500],[163,1415],[317,1480]];
+  for(const angle of [0,.28,-.24]){
+    d.run(`G.tilt=${angle};`);
+    for(const [points,inside] of [[solid,true],[empty,false]])for(const [x,y] of points){
+      const px=(x-512)*100/774, py=(y-769)*100/774;
+      const wx=200+px*Math.cos(angle)-py*Math.sin(angle),wy=300+px*Math.sin(angle)+py*Math.cos(angle);
+      assert.equal(d.run(`insideHitPolygon(carHit().points,${wx},${wy})`),inside,`source ${x},${y} at ${angle}`);
+    }
+  }
+  d.run(`G.rivals[0].car='dhaval';`);
+  assert.equal(d.run('JSON.stringify(carHit("me",200,300,.28))'),d.run('JSON.stringify(carHit(G.rivals[0],200,300,.28))'));
+  const points=JSON.parse(d.run('JSON.stringify(carHit("me",0,0,.28).points)'));
+  d.run('carW*=2;carH*=2;');
+  const doubled=JSON.parse(d.run('JSON.stringify(carHit("me",0,0,.28).points)'));
+  points.forEach((p,i)=>{assert.ok(Math.abs(doubled[i].x-2*p.x)<1e-8);assert.ok(Math.abs(doubled[i].y-2*p.y)<1e-8);});
+});
+
 console.log(`\n${checks} hitbox checks passed.`);

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {fixture} from './game-fixture.mjs';
 import './progression-check.mjs';
 import './cole-check.mjs';
+import './dhaval-check.mjs';
 let checks = 0;
 const f = fixture(), {run} = f;
 f.images.forEach(image => image.load());
@@ -101,7 +102,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     /* Nothing reaches a car that is not there, so the solid-hazard privilege
        is neither given to Rhosyn nor needed by it. */
     equal('clearsSolidHazards(who)',
-          ['flann','neela','lolanthe','verdant','cole'].indexOf(car) >= 0);
+          ['flann','neela','lolanthe','verdant','cole','dhaval'].indexOf(car) >= 0);
     equal('neelaCanSwap(who)',car === 'neela');
     equal('racerDetectable(who)',car !== 'verdant' && car !== 'rhosyn');
     /* And none of them takes its own driver's controls away. */
@@ -211,7 +212,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
        not, for anybody. Rhosyn smashes none of them and is caught by none of
        them: it is not on the road the hazard is lying on, so the hazard is
        still there afterwards for whoever does drive over it. */
-    const smashed = ['flann','neela','lolanthe','verdant','cole'].indexOf(car) >= 0 &&
+    const smashed = ['flann','neela','lolanthe','verdant','cole','dhaval'].indexOf(car) >= 0 &&
                     (type === 'weed' || type === 'meteor');
     test(label + (away ? ' is not on the road to meet the '
                        : smashed ? ' smashes ' : ' vulnerable to ') + type,()=>{
@@ -228,7 +229,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
         if(type === 'seeker') equal('G.missiles.length',1);
         return;
       }
-      if(type === 'puddle') equal('o.blind > 0',true);
+      if(type === 'puddle'){ equal('o.blind > 0',car !== 'dhaval'); if(car === 'dhaval') equal('G.traps.length',0); }
       else if(type === 'weed'){
         if(smashed){
           equal(`(who==='me'?G.slowT:o.slow)`,0);       /* no Slow for the ram */
@@ -699,7 +700,7 @@ test('a finished racer is out of play and wears no badge',()=>{
 /* The icon layer: one table, one renderer, and a badge for every Condition. */
 test('every Condition has one canonical colour, type and icon',()=>{
   const ids = Array.from(run('CONDITION_IDS'));
-  assert.deepEqual(ids,['invulnerable','boosted','slowed','obscured','skidded',
+  assert.deepEqual(ids,['cleansed','invulnerable','boosted','slowed','obscured','skidded',
                         'mindControlled']);
   const seen = new Set();
   for(const id of ids){
@@ -858,7 +859,7 @@ function duo(nSide, vSide, ulting = true){
   const vExpr = vSide === 'me' ? '"me"'
               : (nSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
   run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"saffron"'};
-       G.rules = defaultRules(); G.rules.bots = 6; G.rules.boost = false;
+       G.rules = defaultRules(); G.rules.bots = 7; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
        G.traps = []; G.slicks = []; G.missiles = []; G.boxes = []; G.fx = [];
@@ -1450,7 +1451,7 @@ test('teleporting player one leaves every other absolute position exactly alone'
   equal('order().length',run('FIELD_SIZE'));
   equal('order().every((a,i,all) => i === 0 || all[i-1].m >= a.m - 1e-9)',true);
   equal('placeOf("me")',run('order().findIndex(a => a.me) + 1'));
-  for(let i=0;i<6;i++)
+  for(let i=0;i<7;i++)
     equal(`placeOf(G.rivals[${i}])`,run(`order().findIndex(a => a.who === G.rivals[${i}]) + 1`));
   /* Nobody was wrecked to do any of it. */
   equal('G.dead',0);equal('N.dead',0);
@@ -1462,7 +1463,7 @@ test('teleporting player one leaves every other absolute position exactly alone'
 test('a whiteout covers only the views it belongs to, in two, three and four seats',()=>{
   for(const seats of [2,3,4]){
     run(`G.local = true; G.players = ${seats}; G.rules = defaultRules();
-         G.rules.bots = ${6 - seats};
+         G.rules.bots = ${8 - seats};
          G.picks = ["neela"].concat(CAR_IDS.filter(c => c !== "neela")).slice(0,${seats});
          G.car = G.picks[0]; startRace(); clearTimers(); G.state = 'running';
          G.nextTrap = 1e9; G.nextRow = 1e9; G.traps = []; G.invuln = 0;
@@ -1519,7 +1520,7 @@ function pair(aSide, bSide, aCar, bCar){
   const aExpr = aSide === 'me' ? '"me"' : 'G.rivals[0]';
   const bExpr = bSide === 'me' ? '"me"' : (aSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
   run(`G.local = false; G.car = "saffron";
-       G.rules = defaultRules(); G.rules.bots = 6; G.rules.boost = false;
+       G.rules = defaultRules(); G.rules.bots = 7; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
        G.traps = []; G.slicks = []; G.missiles = []; G.boxes = []; G.fx = [];

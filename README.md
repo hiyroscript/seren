@@ -1,6 +1,6 @@
 # SEREN
 
-A three-lane arcade racer that runs in a browser tab. Seven cars, each with its own
+A three-lane arcade racer that runs in a browser tab. Eight cars, each with its own
 ultimate, race up a road that never stops speeding up — through a city, a desert
 and a rainbow strip of deep space — dodging puddles, meteors and tumbleweeds,
 grabbing items out of mystery bubbles, and barging each other into the barriers.
@@ -39,7 +39,7 @@ it can never drift out of date.
 ![A bot race in progress](docs/img/race.png)
 
 The HUD, clockwise from the top left: the track name and race clock; the distance
-you have covered and the seven-car standings, with your row picked out; a ladder
+you have covered and the eight-car standings, with your row picked out; a ladder
 down the right showing how far ahead or behind each racer is; your ultimate meter
 and item box bottom right; your own Conditions as a column of coloured icon
 circles bottom left; three pink, yellow and cyan shield bars immediately above
@@ -99,12 +99,12 @@ getting faster. Drive as far as you can; leaving the race banks the distance as
 your personal best.
 
 **Race against bots** — pick a difficulty, then race the full distance: reach
-3.00×, then three track changes, then 900 metres to the flag. Seven cars, every
+3.00×, then three track changes, then 900 metres to the flag. Eight cars, every
 trap, every pickup, and a finishing order at the end.
 
 **Local play** — two to four people on one screen, one controller each, on a
 computer. The screen splits into equal columns and the bots fill whatever seats
-are left, so it is always a seven-car field. Local play is offered on phones but
+are left, so it is always a eight-car field. Local play is offered on phones but
 greyed out with the reason, because it needs a keyboard-and-mouse machine with
 pads attached.
 
@@ -122,11 +122,12 @@ never inherit half a custom race by accident.
 
 Every car has the same mechanical ultimate: a **85-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
-boost, never its strength, duration or charge rate. All seven do something
+boost, never its strength, duration or charge rate. All eight do something
 else with those fifteen seconds as well.
 
 | Car | Ultimate effect |
 | --- | --- |
+| **Dhaval** | 15 seconds at 2× pace, **five-level light Obscurity** and destruction of contacted road hazards |
 | **Flann** | 15 seconds at 2× pace, **on fire** — see below |
 | **Neela** | 15 seconds at 2× pace, **transformed** — see below |
 | **Lolanthe** | 15 seconds at 2× pace, **Mind Controlling** — see below |
@@ -345,14 +346,34 @@ its blue energy exhaust is the ordinary boost flag every car has, so boosting,
 a boost can and the ultimate's own speed all light the pipes, and none of them
 transforms anything. Only the ultimate does that.
 
-**Obscured** now has two sources rather than one: puddle water on the glass, and
-the white of a Neela transformation or exchange. It is the same Condition, the
-same badge and the same wording either way.
+**Obscured** combines independent water and Dhaval timers into one badge.
+Transformation whiteouts also use this badge as presentation feedback; they are
+not hostile debuffs and Cleansed does not cancel transformations.
 
-**Mind Controlled** is the one Condition an ultimate applies directly. It is a
+**Mind Controlled** is Lolanthe’s directly applied Condition. It is a
 debuff like Slowed and Skidded: temporary invulnerability refuses it and clears
 it, a wreck and the finish line take it away, and its badge is derived from the
 same three-second timer the control lock is.
+
+### Dhaval — light-show Obscurity
+
+Dhaval is the eighth racer, using `v_dhaval.PNG`. Its ultimate covers nearby
+opponents’ own views in large white, purple, red and green moving, orbiting,
+popping light circles. Obscurity starts at level 1. Each accepted road-hazard
+contact adds one level, capped at 5; shield absorption still counts. Destroying
+a hazard with an ultimate, a near miss, and a Perfect Dodge do not escalate it.
+The four-car-length aura refreshes a three-second tail without resetting severity.
+A new episode after expiry begins at level 1.
+
+Ulting Rhosyn and Verdant are immune and clear existing Dhaval Obscurity on
+activation. Ulting Lolanthe instead receives **Cleansed**: immediately remove
+all debuffs and refuse new ones for three seconds, refreshed by exposure.
+Cleansed does not prevent physical collisions, shield loss or wrecks.
+
+Dhaval’s own ultimate destroys contacted weeds, meteors and puddles. Its shared
+charge, duration and pace are unchanged. Obscured bots have shorter sight and
+slower reactions. Reduced motion freezes the light layout while preserving its
+coverage. See [measurements, interaction tests and visual QA](docs/DHAVAL-QA.md).
 
 ## Driving
 
@@ -479,17 +500,20 @@ runs when the road has all but stopped.
 
 ## Conditions
 
-Five of them, and each one is a small filled circle in its own colour with a
+Seven of them, and each one is a small filled circle in its own colour with a
 plain device inside it. The shape carries the meaning as much as the colour
 does, so a Condition is never told apart by colour alone.
 
 | Condition | | Colour | Icon | Meaning |
 | --- | --- | --- | --- | --- |
+| **Cleansed** | buff | `#94F4DD` | sparkle and clearing star | Clears every debuff and refuses new ones for three seconds; physical contact still applies |
 | **Boosted** | buff | `#FF9A4A` | forward chevrons | Anything making you go faster, whatever put it there: the boost meter, a boost can, an ultimate, or a rear-end shunt |
 | **Invulnerable** | buff | `#FFD86B` | shield | Respawn protection: pass through road contact and refuse every debuff |
 | **Slowed** | debuff | `#8A9099` | arrow brought down to a floor | Anything making you go slower, whatever put it there |
-| **Obscured** | debuff | `#B07A4A` | crossed-out eye | Water from a puddle over your screen |
+| **Obscured** | debuff | `#B07A4A` | crossed-out eye | Puddle water or Dhaval’s five-level light obstruction; also used for transformation feedback |
 | **Skidded** | debuff | `#0B0B0C` | paired skid marks | No grip: left goes right and right goes left |
+
+| **Mind Controlled** | debuff | `#8A4FE0` | musical note | Lolanthe locks driver commands and can force lane changes |
 
 **Where they are shown.** Every visible car that is *not* the owner of the view
 you are looking through wears its Conditions as a compact column of these
@@ -504,7 +528,7 @@ Where several are active they stack in a fixed order — Invulnerable, Boosted,
 Slowed, Obscured, Skidded — so a stack never reshuffles between frames.
 
 **Invulnerable** clears the debuffs already on you and refuses new ones for as
-long as it lasts. Activating an ultimate leaves every Condition in place.
+long as it lasts. Rhosyn and Verdant clear Dhaval Obscurity on ultimate activation. Ulting Lolanthe converts Dhaval’s aura into Cleansed; other existing conditions keep their ordinary rules.
 
 A racer that has crossed the line shows no Conditions at all: it is out of the
 race, not protected within it. The garage's **Conditions** tab is where the
@@ -576,7 +600,7 @@ sheet) → each player picks a car in turn with their own pad → race.
   game — its own camera, its own instruments — and the world is built wide enough
   to cover the whole spread of the field, so a player half a screen up the road
   is not driving through nothing.
-- The field is always **seven cars**. Bots fill whatever seats the people leave.
+- The field is always **eight cars**. Bots fill whatever seats the people leave.
 - Every human car wears a coloured ring on the road, and the cars that are not
   yours wear a numbered flag, so two players in identical positions on two
   columns can still be told apart.
@@ -643,7 +667,7 @@ One system, from the splash to the finish line, built on four things:
   the selected step, the charge in the ultimate square, the tick beside your own
   row in the standings. Colours that mean something in the game — the four seat
   colours, gold/silver/bronze in the running order, the rarity of a pickup, the
-  five Condition colours — stay, because they are the game speaking and not the
+  seven Condition colours — stay, because they are the game speaking and not the
   interface decorating.
 - **Glass for anything elevated.** Dialogs, panels, the countdown plate
   and every instrument over the road use one recipe: a dark tonal fill, a blurred
@@ -764,6 +788,7 @@ node tools/menu-check.mjs
 node tools/ultimate-check.mjs
 node tools/sprite-check.mjs
 node tools/hitbox-check.mjs
+node tools/dhaval-check.mjs
 ```
 
 It is plain Node with no dependencies — there is no `package.json` and nothing to
@@ -788,9 +813,10 @@ job unchanged. It verifies:
   the roll, the rarities, the artwork, oil, seekers and bubble rows all survive
   behind it
 - Flann's ram, Neela's exchange, Lolanthe's aura, Verdant's invisibility and
-  Rhosyn's Aero-Glow are the game's only car-specific ultimate logic, and three
-  sprite cars' race sizes the only per-car dimensions: `flannCar()`,
-  `neelaCar()`, `lolantheCar()`, `verdantCar()` and `rhosynCar()` are the only
+  Rhosyn's Aero-Glow, Saffron's flight, Cole's form and Dhaval's aura use shared
+  car predicates and measured per-car dimensions: `flannCar()`,
+  `neelaCar()`, `lolantheCar()`, `verdantCar()`, `rhosynCar()`, `saffronCar()`,
+  `coleCar()` and `dhavalCar()` are the only
   places a racer is compared to a car, the predicates built on them are read by
   the contact rules, the hazards, the bot mind, the inputs and the renderer,
   `neelaFormActive()` is still demonstrably narrower than `neelaUltActive()`
@@ -816,7 +842,7 @@ Run it before you commit. It takes well under a second.
 DOM/Canvas test doubles, including localization, every Settings preference and
 what it reaches, setup, simulated controllers, car turns and pause/results.
 `node tools/ultimate-check.mjs` runs the ultimate, Condition, hazard, contact and
-Mystery Bubble behaviour for all seven cars as player, bot and local seat, plus
+Mystery Bubble behaviour for all eight cars as player, bot and local seat, plus
 Neela's exchange, Lolanthe's aura and forced lane change and Verdant's
 directional defence in every ownership direction, the documented collision
 priority for every pair of ulting cars, the world-position regression that says
@@ -826,7 +852,7 @@ biome continuing through it, the isolation in both directions against every
 contact rule, hazard, pickup and targeting system, the two seconds of
 Invulnerable granted at the frame the car is genuinely back, finishing from
 inside it, pause, a forced wreck and a restart;
-`node tools/sprite-check.mjs` covers race sizes, all seven sprite cars' sheets
+`node tools/sprite-check.mjs` covers race sizes, all eight sprite cars' sheets
 and measured emitters, the ultimate fire, the transformation flash, Verdant's
 per-view opacity and Rhosyn's disappearance from every other view in one to four
 columns, and both note effects;
@@ -852,6 +878,7 @@ v_neela.PNG         Neela’s, likewise
 vtm_neela.PNG       the shape Neela’s ultimate turns it into, races only
 v_lolanthe.PNG      Lolanthe’s, likewise
 v_verdant.PNG       Verdant’s, likewise
+v_dhaval.PNG        Dhaval’s measured eighth-racer sprite
 queen_note.PNG      the note that floats above an ulting Lolanthe, races only
 pion_note.PNG       the three that orbit a Mind Controlled racer, races only
 js/                 the game, in load order (see below)
@@ -941,4 +968,4 @@ Cole is the seventh racer. Tap the swap button beside the item holder, press **Q
 
 These multipliers stack with the ordinary pace effects. Cole’s ultimate clears tumbleweeds and meteors in either form; puddles and opponent attacks retain their usual behavior. Bots switch to the motorcycle after their opening reaction. A new race always begins in car form.
 
-A full field has seven racers: local races with two, three, or four humans have five, four, or three bots. See [Cole measurements and QA](docs/COLE-QA.md). `node tools/cole-check.mjs` runs the focused integration checks; the ultimate suite includes them too.
+A full field has eight racers: local races with two, three, or four humans have six, five, or four bots. See [Cole measurements and QA](docs/COLE-QA.md). `node tools/cole-check.mjs` runs the focused integration checks; the ultimate suite includes them too.

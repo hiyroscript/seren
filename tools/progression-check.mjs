@@ -129,8 +129,9 @@ for(const kind of ['player','local','bot']) for(const hazard of ['puddle','weed'
   test(kind+'/'+hazard+' precise escape is frame-rate independent and rewarded once',()=>{
     for(const dt of [1/30,1/60,1/144,0.05]){
       dodgeSetup(kind,hazard,hazard==='meteor'?0.115:0.10);
+      run('applyDhavalObscure(who,{});');
       run(`o.lane=2;for(let i=0;i<Math.ceil(0.7/${dt});i++)update(${dt});`);
-      near('o.ult',0.3); equal('o.dead',0);
+      near('o.ult',0.3); equal('o.dead',0);equal('dhavalObscureLevel(who)',1);
       run('for(let i=0;i<20;i++)update(0.01);'); near('o.ult',0.3);
     }
   });
@@ -203,10 +204,10 @@ test('large separations keep standings and physical proximity independent',()=>{
   near('G.rivals[0].y',run('playerY-(10000-G.meters)/0.075'));
   run('playerY-=100;');
 });
-test('seven-racer starting grid retains two rows and adds a third',()=>{
-  setup('bot');run('G.rules.bots=6;spawnRivals();');
-  equal('G.rivals.length',6);
-  for(let i=0;i<6;i++){
+test('eight-racer starting grid has finite positions across three rows',()=>{
+  setup('bot');run('G.rules.bots=7;spawnRivals();');
+  equal('G.rivals.length',7);
+  for(let i=0;i<7;i++){
     near(`G.rivals[${i}].y`,run(`playerY+${i<2?0:i<5?1:2}*Math.max(...CAR_IDS.map(id=>carDims(id).h))*1.3`));
     near(`metersOf(G.rivals[${i}])`,run(`G.meters-${i<2?0:i<5?1:2}*Math.max(...CAR_IDS.map(id=>carDims(id).h))*1.3*0.075`));
   }

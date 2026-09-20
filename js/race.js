@@ -94,21 +94,21 @@ function switchTrack(){
    ================================================================ */
 function spawnRivals(){
   /* Whoever is being driven by a person gets the car that person chose, in
-     seat order; the bots take what is left. The full field has seven cars, so
-     two players leave five bots, three leave four and four leave three - and
+     seat order; the bots take what is left. The full field has eight cars, so
+     two players leave six bots, three leave five and four leave four - and
      every car in the game is on the road in every local race. */
   const taken = G.local ? G.picks.slice(0, G.players) : [G.car];
   const spare = CAR_IDS.filter(function(id){ return taken.indexOf(id) < 0; });
   const seats = G.local ? G.picks.slice(1, G.players) : [];
   /* People first, always; the bots take what is left of the grid. How much is
-     left is the rule, and the standard rule is "all of it" - which is the seven
+     left is the rule, and the standard rule is "all of it" - which is the eight
      cars this has always put on the road. A custom race can ask for fewer, or
      for none at all, and then the field is just the people. */
   const others = seats.concat(spare.slice(0, botsWanted())).slice(0, FIELD_SIZE - 1);
   /* front row alongside you, the rest lined up behind */
   const front = [0, 1, 2].filter(function(l){ return l !== G.lane; });
-  const grid = front.concat([0, 1, 2, 1]);          /* two beside you, three behind, one in row three */
-  const rows = [0, 0, 1, 1, 1, 2];
+  const grid = front.concat([0, 1, 2, 1, 0]);       /* two beside you, three behind, two in row three */
+  const rows = [0, 0, 1, 1, 1, 2, 2];
   const rowHeight = Math.max(...CAR_IDS.map(id => carDims(id).h))*1.3;
   G.rivals = others.map(function(id, i){
     const lane = grid[i];
@@ -123,6 +123,7 @@ function spawnRivals(){
       padId:(G.padIds && G.padIds[i + 1] !== undefined ? G.padIds[i + 1] : null),
       pk:newPadKeys(),
       wantBoost:false, blindPts:[],
+      cleanseT:0, dhavalObscureT:0, dhavalObscureLevel:0, dhavalObscureAge:0,
       abs:0, changeT:rand(0.2, 0.7),          /* standing start: everyone from zero */
       slow:0, blind:0, dead:0, shield:SHIELD_MAX, shieldHitT:0, invuln:0, shuntT:0, bumpCD:0, slip:0,
       /* Neela's ultimate, carried by every racer so nothing downstream has to
@@ -194,6 +195,7 @@ function startRace(){
   G.charge = 1; G.boosting = false; G.keyBoost = false; G.ptrBoost = false;
   G.shake = 0;
   G.traps = []; G.fx = []; G.trapGap = 0; G.nextTrap = 620;
+  G.cleanseT = 0; clearDhavalObscure("me");
   G.tier = 0; G.speedT = SPEED_SECONDS; G.blind = 0; G.blindPts = [];
   G.dead = 0; resetShield("me"); G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
@@ -283,6 +285,7 @@ function leave(){
     store.set("seren.best", best);
     paintBest();
   }
+  for(const who of ["me", ...G.rivals]){ clearDebuffs(who); (who === "me" ? G : who).cleanseT = 0; }
   G.state = "idle";
   document.body.classList.remove("local");
   VIEWS = 1;
@@ -358,7 +361,7 @@ function checkFinish(){
       if(R.ultOn) endUlt(R);
       clearLolantheState(R);                     /* nor a note over a parked car */
       R.boosting = false;
-      clearDebuffs(R);                           /* out of play, and clean */
+      R.cleanseT = 0; clearDebuffs(R);                           /* out of play, and clean */
     }
   }
   if(G.finished === null && G.meters >= G.finishAt){
@@ -373,7 +376,7 @@ function checkFinish(){
     clearLolantheState("me");                   /* nor a note over a parked car */
     G.boosting = false;
     G.keyBoost = G.ptrBoost = G.ultKey = G.padBoost = false;
-    clearDebuffs("me");                         /* out of play, and clean */
+    G.cleanseT = 0; clearDebuffs("me");                         /* out of play, and clean */
     if(!G.local) finishRace();
   }
   /* On one screen the race is over when your car crosses. On four it is over
@@ -435,7 +438,7 @@ function localWinner(){
   }
   return t("localOver");
 }
-/* The whole grid as it finished: seven cars in order, the ones with people in
+/* The whole grid as it finished: eight cars in order, the ones with people in
    them wearing their colour and their number. A single line of "P1 3rd" told
    you your place and nothing about the race. */
 function localBoard(){
@@ -641,6 +644,7 @@ function update(dt){
   /* And Lolanthe's and Verdant's. The Mind Control clock is the Condition and
      the control lock together, so it is advanced with the rest of the hit
      states; the note and fade timers beside it are cosmetic. */
+  tickDhavalConditions("me", dt);
   tickMindControl("me", dt);
   if(G.queenPop > 0) G.queenPop = Math.max(0, G.queenPop - dt);
   if(G.queenOut > 0) G.queenOut = Math.max(0, G.queenOut - dt);
@@ -674,7 +678,7 @@ function update(dt){
      the flag is tested - so it reads one settled picture of the road rather
      than a half-updated one, and the answer does not depend on where a racer
      happens to sit in the rivals list. */
-  if(st === "running") lolantheAuras();
+  if(st === "running"){ dhavalAuras(); lolantheAuras(); }
   checkFinish();
   if(dodgeFrame) finishPerfectDodges(dodgeFrame);
   updateFx(dt, d);
@@ -710,6 +714,7 @@ function updateRival(R, dt, st){
   /* Ahead of the wrecked and finished branches below, exactly as the other
      hit states are: a car that has just been wrecked still has to finish
      taking its notes and its fade off the screen. */
+  tickDhavalConditions(R, dt);
   tickMindControl(R, dt);
   if(R.queenPop > 0) R.queenPop = Math.max(0, R.queenPop - dt);
   if(R.queenOut > 0) R.queenOut = Math.max(0, R.queenOut - dt);
@@ -833,7 +838,7 @@ function updateRival(R, dt, st){
     R.inDanger = true;
     /* Reaction quality depends on difficulty. */
     R.willReact = Math.random() > D.lapse;
-    R.reactT = rand(D.react[0], D.react[1]);
+    R.reactT = rand(D.react[0], D.react[1])*(1 + dhavalObscureLevel(R)*.3);
   } else if(!inLane) R.inDanger = false;
 
   if(!R.human && !controlsLocked(R) && R.changeT <= 0 && R.blind <= 0){
@@ -871,8 +876,13 @@ function updateRival(R, dt, st){
       if(o.kind === "weed" && clearsSolidHazards(R)){
         showShieldHit(R); smashWeed(o, R.car); G.traps.splice(i,1); break;
       }
-      if(refusesDebuffs(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
+      if(dhavalUltActive(R)){
+        smashFx(o.x, o.y, o.rx || o.r, CARS.dhaval.accent, R.car);
+        G.traps.splice(i,1); break;
+      }
+      increaseDhavalObscure(R);
       if(hitShield(R)){ if(o.kind === "weed") G.traps.splice(i,1); break; }
+      if(refusesDebuffs(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
       ultDelta(R, ULT_ON_TRAP);
       if(o.kind === "weed"){ R.slow = SLOW_TIME; puffFx(o.x, o.y); G.traps.splice(i,1); }
       else { R.blind = BLIND_TIME; R.blindPts = blindSpray(); puffFx(o.x, o.y); }
