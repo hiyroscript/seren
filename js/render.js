@@ -1285,6 +1285,7 @@ function drawAirborneRacers(){
     drawRacerNotes(who, o.x, y-altitude, alpha);
     if(G.local && (a.me || o.human)) drawSeatMark(who, o.x, y-altitude, alpha);
     if(VOWN !== who) drawConditionStack(who, o.x, y-altitude, alpha);
+    drawShieldHit(who, o.x, y-altitude, alpha);
     ctx.restore();
   }
 }
@@ -1352,6 +1353,7 @@ function renderView(dy){
       if(G.local && RV.human) drawSeatMark(RV, RV.x, RV.y, ra);
     }
     if(VOWN !== RV && ra > 0.004) drawConditionStack(RV, RV.x, RV.y, ra);
+    drawShieldHit(RV, RV.x, RV.y, ra);
   }
 
   const blink = G.invuln > 0 && Math.floor(G.invuln*9) % 2 === 0;
@@ -1368,6 +1370,7 @@ function renderView(dy){
       if(G.local) drawSeatMark("me", G.x, playerY, ma);
     }
     if(VOWN !== "me" && ma > 0.004) drawConditionStack("me", G.x, playerY, ma);
+    drawShieldHit("me", G.x, playerY, ma);
   }
 
   for(let i=0;i<G.fx.length;i++){

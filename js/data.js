@@ -8,6 +8,12 @@
 /* Mystery Bubble film and durability HUD share the same three hues. */
 const BUBBLE_TINTS = { pink:"#FF8CE1", yellow:"#FFEB96", cyan:"#78EBFF" };
 const SHIELD_COLORS = [BUBBLE_TINTS.pink, BUBBLE_TINTS.yellow, BUBBLE_TINTS.cyan];
+const SHIELD_GRADIENTS = [
+  [[0, "#FFD0F1"], [.5, SHIELD_COLORS[0]], [1, "#CF58AF"]],
+  [[0, "#FFF7CD"], [.5, SHIELD_COLORS[1]], [1, "#D3B957"]],
+  [[0, "#C8F7FF"], [.5, SHIELD_COLORS[2]], [1, "#3AB3CC"]]
+];
+const SHIELD_HIT_TIME = 1;
 const SHIELD_BARS = SHIELD_COLORS.length;
 const SHIELD_HALVES_PER_BAR = 2;
 const SHIELD_MAX = SHIELD_BARS*SHIELD_HALVES_PER_BAR;

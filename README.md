@@ -145,7 +145,7 @@ what it gains is priority in a collision.
 - **Tumbleweed.** Smashed apart on contact. No Slow and no meter cost.
 - **Meteor.** Neither the falling rock nor the blast can destroy it, and the
   ultimate carries on.
-- **Puddle.** Unchanged. Water is liquid and cannot be rammed apart, so an
+- **Puddle.** Shield halves are preserved while the ultimate is active. Water is liquid and cannot be rammed apart, so an
   ulting Flann still gets the spray over its screen and still wears **Obscured**
   — Boosted and Obscured at the same time.
 
@@ -173,7 +173,7 @@ privilege.
   exchange and after it. No Slow and no meter cost.
 - **Meteor.** Neither the falling rock nor the blast can destroy it, again for
   the whole ultimate.
-- **Puddle.** Unchanged. Water is liquid and cannot be smashed, so an ulting
+- **Puddle.** Shield halves are preserved while the ultimate is active. Water is liquid and cannot be smashed, so an ulting
   Neela still gets the spray over its screen and still wears **Obscured**.
 
 The transformation and the exchange white out the view of each human involved
@@ -217,7 +217,7 @@ and everything close enough loses its driver.
   the point. Lolanthe gains no kill from any of it — the destruction comes
   from the collision system, not from a ram Lolanthe does not have.
 - **Tumbleweed and meteor.** Smashed apart on contact, for the whole ultimate,
-  exactly as Neela's are. **Puddle** is unchanged: water is liquid.
+  exactly as Neela's are. **Puddle** still obscures the view, but consumes no shield during the ultimate.
 
 Lolanthe does not destroy racers by touching them. An ulting **Verdant** is
 immune to the whole of it, reveal included — Lolanthe cannot command a target
@@ -246,7 +246,7 @@ hitbox, and still something you can run into.
   **transformed Neela** meeting an ulting Verdant is destroyed with its meter
   emptied, no exchange and no teleport, and Verdant survives.
 - **Tumbleweed and meteor.** Smashed apart on contact, for the whole ultimate.
-  **Puddle** is unchanged.
+  **Puddle** still obscures the view, but consumes no shield during the ultimate.
 
 Nothing pinned to the car gives it away: the exhaust out of its pipe, its seat
 ring and flag, its Condition badges and its edge marker all follow the same
@@ -406,7 +406,8 @@ and hazards. The HUD shows the base multiplier to two decimal places.
 ### Hazards
 
 Every racer starts with three full shield bars: **pink → yellow → cyan**. Each
-puddle or tumbleweed hit removes **half a bar**, retaining its normal Obscured
+puddle or tumbleweed hit outside an active ultimate removes **half a bar**,
+consuming **cyan → yellow → pink**, retaining its normal Obscured
 or Slow effect on a surviving racer. **The sixth hit destroys the racer** through
 the existing 3-second wreck lifecycle; it does not take a seventh hit. During
 the wreck delay the shield stays empty, and **respawning fully restores all three
@@ -908,3 +909,23 @@ way: copy `index.html`, the six `.PNG` files, `css/` and `js/` and you are done.
 
 A game by **hiyroscript**. No license file is present, so default copyright
 applies until the author adds one.
+
+### Shield presentation and contact feedback
+
+Shield bars remain ordered pink → yellow → cyan, but lose durability cyan →
+yellow → pink. `shieldBarFill()` supplies both HUDs; `SHIELD_GRADIENTS` supplies
+matching borderless, dividerless gradient fills without changing bubble colors.
+`SHIELD_MAX` remains six halves. Respawn restores them after the existing wreck delay.
+
+`hitShield()` preserves the current half count while `ultOn` is active. This
+neither regenerates shield nor grants universal invulnerability: surviving
+Obscured/Slow effects and car-specific solid-hazard behavior remain intact,
+and meteors still bypass durability under their existing destruction rules.
+
+Accepted surviving hazard contacts refresh cosmetic `shieldHitT` to
+`SHIELD_HIT_TIME` (1 second). Frame updates count it down; wreck, respawn, finish
+and race reset clear it. `shieldStage()` selects the current color and half-state.
+`drawShieldHit()` shows one compact bar above the measured car silhouette,
+including the airborne render pass, suppresses the current viewport owner and
+uses the car's per-view alpha so invisible racers stay hidden. No-contact states
+and dodges produce no feedback. This timer has no gameplay effect.

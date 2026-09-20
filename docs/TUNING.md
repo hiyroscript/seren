@@ -126,7 +126,7 @@ new clock, no new constant.
 | Two ulting Flanns | Neither can smash the other; the contact falls back to the ordinary shunt and barge. |
 | Tumbleweed | Destroyed on contact. No `SLOW_TIME`, no `ULT_ON_TRAP`. |
 | Meteor, falling rock or blast | Cannot wreck Flann, and does not end the ultimate. |
-| Puddle | Unchanged. `BLIND_TIME`, the spray and the Obscured badge all apply — water is liquid and cannot be rammed apart. |
+| Puddle | Shield halves are preserved during the active ultimate. `BLIND_TIME`, the spray and the Obscured badge all apply — water is liquid and cannot be rammed apart. |
 | Oil, seekers | Unchanged. These are Mystery Bubble items and are currently unobtainable in any case. |
 
 Respawn invulnerability and finish protection are untouched and stay
@@ -158,7 +158,7 @@ both the ultimate and the form flag.
 | Any racer contact after that | Ordinary `BUMP_SLOW` / `SHUNT_TIME` rules. Neela never gains the ability to wreck anybody. |
 | Tumbleweed | Destroyed on contact, before and after the exchange. No `SLOW_TIME`, no `ULT_ON_TRAP`. |
 | Meteor, falling rock or blast | Cannot wreck Neela, and does not end the ultimate. Again, before and after. |
-| Puddle | Unchanged. `BLIND_TIME`, the spray and the Obscured badge all apply — water is liquid and cannot be smashed. |
+| Puddle | Shield halves are preserved during the active ultimate. `BLIND_TIME`, the spray and the Obscured badge all apply — water is liquid and cannot be smashed. |
 | Oil, seekers | Unchanged. These are Mystery Bubble items and are currently unobtainable in any case. |
 
 Unlike the ram, this does have constants of its own. They are Neela's timings
@@ -271,7 +271,7 @@ ghost dissolving through somebody else's wreck animation.
 | Transformed Neela, either way | Neela destroyed, meter `0`, no exchange, no teleport; Verdant reveals |
 | Lolanthe's aura | Refused for the whole ultimate, reveal included |
 | Tumbleweed, meteor | Smashed apart, exactly as Neela's are |
-| Puddle, oil, seekers | Unchanged |
+| Puddle, oil, seekers | Existing effects remain; an active ultimate preserves puddle shield halves |
 
 ### Rhosyn's Aero-Glow
 
@@ -547,3 +547,23 @@ rather than removed:
 | --- | --- | --- |
 | `RIVAL_LAPSE` | `data.js` | superseded by the per-difficulty `lapse` field |
 | `LANDSCAPE` | `core.js` | from before the road always ran up the screen |
+
+### Shield presentation and contact feedback
+
+Shield bars remain ordered pink → yellow → cyan, but lose durability cyan →
+yellow → pink. `shieldBarFill()` supplies both HUDs; `SHIELD_GRADIENTS` supplies
+matching borderless, dividerless gradient fills without changing bubble colors.
+`SHIELD_MAX` remains six halves. Respawn restores them after the existing wreck delay.
+
+`hitShield()` preserves the current half count while `ultOn` is active. This
+neither regenerates shield nor grants universal invulnerability: surviving
+Obscured/Slow effects and car-specific solid-hazard behavior remain intact,
+and meteors still bypass durability under their existing destruction rules.
+
+Accepted surviving hazard contacts refresh cosmetic `shieldHitT` to
+`SHIELD_HIT_TIME` (1 second). Frame updates count it down; wreck, respawn, finish
+and race reset clear it. `shieldStage()` selects the current color and half-state.
+`drawShieldHit()` shows one compact bar above the measured car silhouette,
+including the airborne render pass, suppresses the current viewport owner and
+uses the car's per-view alpha so invisible racers stay hidden. No-contact states
+and dodges produce no feedback. This timer has no gameplay effect.

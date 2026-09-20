@@ -760,10 +760,9 @@ body.no-hints .keys{display:none}
 }
 .shield-bar{
   position:relative;flex:1;min-width:0;height:8px;overflow:hidden;border-radius:2px;
-  background:var(--glass-3);border:1px solid var(--line-2);
+  background:var(--glass-3);border:0;
 }
 .shield-bar i{position:absolute;inset:0 auto 0 0;width:100%}
-.shield-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,0,0,.55)}
 /* The boost meter, in its own tray across the foot: one place to look for
    "how much have I got". js/hud.js lays the split-screen copy out from the
    same figures. */

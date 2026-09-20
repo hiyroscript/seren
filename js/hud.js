@@ -368,6 +368,29 @@ function hudMeters(o){
 }
 
 /* ---- per-life shield, in the same corner in both renderers ---- */
+function drawShieldBar(x, y, w, h, bar, fill){
+  ctx.save();
+  rr(x, y, w, h, Math.min(2*SCENE, h/2));
+  ctx.fillStyle = "rgba(14,14,18,.72)"; ctx.fill(); ctx.clip();
+  const gradient = ctx.createLinearGradient(0, y, 0, y + h);
+  for(const [stop, color] of SHIELD_GRADIENTS[bar]) gradient.addColorStop(stop, color);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, w*fill, h);
+  ctx.restore();
+}
+function drawShieldHit(who, cx, cy, alpha){
+  const o = who === "me" ? G : who;
+  if(VOWN === who || o.shieldHitT <= 0 || o.dead > 0 || o.finished || alpha <= .004) return;
+  const stage = shieldStage(o.shield), dims = racerDims(who);
+  if(!stage || cy < CT - dims.h || cy > CB + dims.h) return;
+  const w = Math.min(36*SCENE, W - 6), h = 6*SCENE;
+  const x = clamp(cx - w/2, 3, W - w - 3);
+  const y = cy - dims.h/2 - 8*SCENE - h;
+  if(y < CT || y + h > CB) return;
+  ctx.save(); ctx.globalAlpha = clamp(alpha, 0, 1);
+  drawShieldBar(x, y, w, h, stage.bar, stage.fill);
+  ctx.restore();
+}
 function hudShieldWidth(){
   return Math.max(24, Math.min(HUD_SHIELD_W, W - hudSide()*2 - HUD_ACT*2 - HUD_ACT_GAP - 8));
 }
@@ -377,12 +400,7 @@ function hudShield(o){
   ctx.save();
   for(let i=0;i<SHIELD_BARS;i++){
     const x = hudSide() + i*(w + HUD_SHIELD_BAR_GAP);
-    hudGlass(x, y, w, HUD_SHIELD_H, 2);
-    const fill = shieldBarFill(o.shield, i);
-    ctx.fillStyle = SHIELD_COLORS[i];
-    ctx.fillRect(x + 1, y + 1, (w - 2)*fill, HUD_SHIELD_H - 2);
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(x + w/2, y + 1, 1, HUD_SHIELD_H - 2);
+    drawShieldBar(x, y, w, HUD_SHIELD_H, i, shieldBarFill(o.shield, i));
   }
   ctx.restore();
 }
@@ -392,7 +410,7 @@ function paintShield(){
   meter.setAttribute("aria-valuenow", shieldOf("me"));
   const fills = [$("#shieldPink"), $("#shieldYellow"), $("#shieldCyan")];
   for(let i=0;i<SHIELD_BARS;i++){
-    fills[i].style.background = SHIELD_COLORS[i];
+    fills[i].style.background = "linear-gradient(to bottom, " + SHIELD_GRADIENTS[i].map(([stop, color]) => color + " " + stop*100 + "%").join(", ") + ")";
     fills[i].style.width = (shieldBarFill(G.shield, i)*100) + "%";
   }
 }

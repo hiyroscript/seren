@@ -13,8 +13,14 @@ ctx.setTransform=(...m)=>{matrix=m;};
 ctx.translate=(x,y)=>{[matrix[4],matrix[5]]=point(x,y);};
 ctx.rotate=a=>{const [a0,b,c,d,e,g]=matrix,s=Math.sin(a),co=Math.cos(a);matrix=[a0*co+c*s,b*co+d*s,c*co-a0*s,d*co-b*s,e,g];};
 ctx.drawImage=(image,x,y,w,h)=>calls.push({type:'image',image,x,y,w,h,m:matrix.slice()});
-ctx.createLinearGradient=(x,y,x2,y2)=>{calls.push({type:'plume',root:point(x,y),tip:point(x2,y2),x,y});return {addColorStop(){}};};
-/* The rear exhaust is the only thing that builds a linear gradient, and the
+ctx.createLinearGradient=(x,y,x2,y2)=>{
+  const call={type:'plume',root:point(x,y),tip:point(x2,y2),x,y};calls.push(call);
+  return {addColorStop(stop,color){
+    if(['#FF8CE1','#FFEB96','#78EBFF'].includes(color))call.type='shield';
+  }};
+};
+/* Shield gradients are identified by their base colors; remaining linear
+   gradients describe rear exhaust. The
    ultimate body fire is the only thing that builds a radial one inside a car,
    so the two effects can be told apart by which primitive they reach for. */
 ctx.createRadialGradient=(x,y,r,x2,y2,r2)=>{calls.push({type:'fire',root:point(x,y),r,r2});return {addColorStop(){}};};

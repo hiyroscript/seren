@@ -120,7 +120,7 @@ function spawnRivals(){
       pk:newPadKeys(),
       wantBoost:false, blindPts:[],
       abs:0, changeT:rand(0.2, 0.7),          /* standing start: everyone from zero */
-      slow:0, blind:0, dead:0, shield:SHIELD_MAX, invuln:0, shuntT:0, bumpCD:0, slip:0,
+      slow:0, blind:0, dead:0, shield:SHIELD_MAX, shieldHitT:0, invuln:0, shuntT:0, bumpCD:0, slip:0,
       /* Neela's ultimate, carried by every racer so nothing downstream has to
          ask which kind of object it is holding. See G in runtime.js. */
       saffronPhase:"off", saffronT:0, saffronLift:0,
@@ -341,7 +341,7 @@ function checkFinish(){
   for(let i=0;i<G.rivals.length;i++){
     const R = G.rivals[i];
     if(R.finished === null && metersOf(R) >= G.finishAt){
-      R.finished = G.results.length + 1;
+      R.finished = G.results.length + 1; R.shieldHitT = 0;
       G.results.push({ me:false, car:R.car, place:R.finished });
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
       R.parkM = metersOf(R);                     /* rolls out from where it crossed */
@@ -356,7 +356,7 @@ function checkFinish(){
     }
   }
   if(G.finished === null && G.meters >= G.finishAt){
-    G.finished = G.results.length + 1;
+    G.finished = G.results.length + 1; G.shieldHitT = 0;
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
     clearSaffronState("me");
@@ -624,6 +624,7 @@ function update(dt){
   }
 
   /* hit states */
+  if(G.shieldHitT > 0) G.shieldHitT = Math.max(0, G.shieldHitT - dt);
   if(G.blind > 0)  G.blind  = Math.max(0, G.blind - dt);
   if(G.slipT > 0) G.slipT = Math.max(0, G.slipT - dt);
   if(G.canT > 0) G.canT = Math.max(0, G.canT - dt);
@@ -692,6 +693,7 @@ function updateRival(R, dt, st){
   const D = diff();
 
   if(R.slow > 0)   R.slow   = Math.max(0, R.slow - dt);
+  if(R.shieldHitT > 0) R.shieldHitT = Math.max(0, R.shieldHitT - dt);
   if(R.blind > 0)  R.blind  = Math.max(0, R.blind - dt);
   if(R.invuln > 0) R.invuln = Math.max(0, R.invuln - dt);
   if(R.slip > 0) R.slip = Math.max(0, R.slip - dt);
@@ -869,7 +871,7 @@ function updateRival(R, dt, st){
          water is not a solid thing to break, so it goes on fouling the screen
          below for Flann and Neela alike. */
       if(o.kind === "weed" && clearsSolidHazards(R)){
-        smashWeed(o, R.car); G.traps.splice(i,1); break;
+        showShieldHit(R); smashWeed(o, R.car); G.traps.splice(i,1); break;
       }
       if(refusesDebuffs(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
       if(hitShield(R)){ if(o.kind === "weed") G.traps.splice(i,1); break; }
