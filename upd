@@ -1,513 +1,852 @@
-Modify the Seren game in the hiyroscript/seren repository carefully and comprehensively. Do not make a superficial constants-only patch. Trace every affected gameplay path, HUD path, bot/local-player path, documentation reference, and automated check so all systems continue to agree with one another.
+Implement a complete three-bar car shield / durability system in the Seren game repository.
 
-The goal is to rebalance the race around a new 1.00× → 3.00× speed progression, remove the old five-minute finish trigger, lengthen/rebalance boost and ultimate charging, and add skill-based ultimate-charge rewards for perfect hazard dodges and Mystery Bubble pickups.
+Before changing anything, inspect the current implementation carefully and preserve the game’s existing architecture, coding style, rendering style, racer parity, collision semantics, HUD layout, accessibility behavior, local multiplayer behavior, and existing gameplay mechanics.
 
-Do not change unrelated car abilities, collision priorities, track visuals, item behavior, custom-race rules, difficulty philosophy, or finish parking behavior.
+This is a plain JavaScript / Canvas 2D browser game with no framework and no build system. Do not introduce dependencies, libraries, frameworks, asset pipelines, or unnecessary abstractions.
 
-Repository architecture that matters
+The shield system must work for every racer equally: the main player, bots, and human racers in local multiplayer.
 
-The current implementation is spread across several files and must be changed consistently.
+Core gameplay requirement
 
-js/data.js owns the shared tuning constants. It currently contains ULT_CHARGE = 75, SPEED_SECONDS = 30, MULT_STEP = 0.05, MAX_MULT = 2.00, derived MAX_TIER, RACE_MINUTES = 5, FINAL_TRACKS = 3, and FINISH_STRETCH = 900.
+Every racer starts with three full shield bars.
 
-js/race.js owns the main race update loop. It currently computes player pace from BASE_SPEED * speedMult(), applies the existing normal boost at ×1.5, scrolls the world with d = G.speed * dt, changes speed tiers through G.speedT, starts the closing race phase after RACE_MINUTES * 60, charges the player’s ultimate, and separately applies the same boost/ultimate systems to rivals and local human racers.
+The three bars are separate colored bars in this exact damage order:
 
-js/mechanics.js contains speedMult(), ultDelta(), Mystery Bubble collection through takeBubble(), trap collision geometry, markPassed(), hazard handling, and the shared ultimate reward/penalty infrastructure.
+1. Pink
+2. Yellow
+3. Cyan
 
-js/hud.js currently assumes the old five-minute finish system in both raceSpan() and #raceClock. That logic must be rewritten rather than left pointing at a deleted RACE_MINUTES.
+Each individual bar has two halves.
 
-js/runtime.js currently initializes speedT with a literal 30; this must not remain stale after the new speed interval is introduced.
+Therefore every racer effectively has:
 
-js/render.js scrolls visual patterns from G.scroll and has speed-streak intensity based on hard-coded speed normalization. Audit this for the new 3.00× maximum so visuals do not behave as though 2.00× were still the effective ceiling.
+* 3 bars
+* 2 shield hits per bar
+* 6 half-bar shield units total
 
-README.md and docs/TUNING.md explicitly describe the old 75-second ultimate, ~2.5-second boost, ~7-second refill, five-minute race structure, and 1.00×–2.00× progression. They need to match the implementation after the change.
+Every valid ordinary hazard collision removes exactly one half-bar.
 
-tools/ultimate-check.mjs currently explicitly asserts ULT_CHARGE === 75 and a one-second refill of 1/75. Update it and add regression coverage for the new mechanics. Extend the existing validation/test tools rather than leaving these changes untested.
+The depletion sequence must be:
 
-1. Change the base race speed progression to 1.00× → 3.00×
+* Start: Pink 100%, Yellow 100%, Cyan 100%
+* First valid hazard hit: Pink 50%, Yellow 100%, Cyan 100%
+* Second hit: Pink 0%, Yellow 100%, Cyan 100%
+* Third hit: Pink 0%, Yellow 50%, Cyan 100%
+* Fourth hit: Pink 0%, Yellow 0%, Cyan 100%
+* Fifth hit: Pink 0%, Yellow 0%, Cyan 50%
+* Sixth hit: Pink 0%, Yellow 0%, Cyan 0%, and the racer is immediately wrecked/destroyed through Seren’s existing wreck lifecycle
 
-The standard road-speed progression must start at 1.00× and stop at 3.00×.
+Do not require a seventh hit after the shield reaches zero.
 
-Change the tuning to:
+The sixth shield-damaging hit empties the final half of the cyan bar and destroys the car.
 
-const SPEED_SECONDS = 20;
-const MULT_STEP = 0.10;
-const MAX_MULT = 3.00;
-const MAX_TIER = Math.round((MAX_MULT - 1) / MULT_STEP);
+What damages the shield
 
-BASE_SPEED remains 420.
+Only genuine collisions with Seren’s ordinary non-meteor track hazards should consume shield durability.
 
-The resulting MAX_TIER should still be 20.
+In the current game these are:
 
-The progression must therefore be exactly:
+* City puddle
+* Desert tumbleweed
 
-0:00   1.00×
-0:20   1.10×
-0:40   1.20×
-1:00   1.30×
-...
-3:20   2.00×
-...
-6:20   2.90×
-6:40   3.00×
+A successful collision with one of these hazards removes exactly one half-bar.
 
-Every increase must be exactly +0.10×.
+Do not drain shield for:
 
-Never allow 3.10×, floating-point-looking HUD values such as 2.999999×, or an extra tier beyond MAX_TIER.
+* meteors
+* meteor blast damage
+* car-to-car contact
+* rear-end shunts
+* barriers
+* offensive ultimates
+* seeker hits
+* oil slicks
+* mind control
+* Conditions
+* any non-hazard gameplay interaction
+* a hazard that the racer destroys instead of being hit by
+* a hazard while the racer is protected/unreachable and the existing game would reject the collision
 
-Keep speedMult() as the canonical source of the base race multiplier. It should continue clamping to MAX_MULT.
+The rule must be based on the actual hazard contact result, not merely proximity.
 
-Do not create a second independent notion of race speed.
+A hazard must never drain multiple shield halves from one collision because several frames overlap the same collision.
 
-The base target for every racer must continue to be derived from:
+Use the existing per-racer hit bookkeeping and contact protections rather than inventing a second collision model.
 
-BASE_SPEED * speedMult()
+Meteors are explicitly excluded
 
-before personal modifiers such as ultimate, slowing, normal boost, boost cans, or shunts are applied.
+Meteors must NOT use this shield system.
 
-Player, bots, and local human racers must all use the same progression.
+Preserve Seren’s existing meteor behavior.
 
-2. Make world scrolling genuinely follow the new speed progression
+Currently meteors have their own fall, roof-contact and detonation logic, and a meteor blast can destroy racers through the existing destroyCar() / wreckRival() paths.
 
-The new multiplier must affect the actual race, not only a HUD number.
+Leave that behavior intact.
 
-The current canonical player/world scroll path is:
+A racer can therefore still be destroyed by a meteor even if all three shield bars are full.
 
-target = BASE_SPEED * speedMult();
-...
-G.speed = ...
-G.scroll += G.speed * dt;
-...
-const d = G.speed * dt;
+A meteor must consume zero pink/yellow/cyan shield durability.
 
-Preserve that architecture.
+Example:
 
-Road markings, scenery, props, walking features, hazards, Mystery Bubbles, finish-line positioning, distance accumulation, and every other world-fixed object that currently consumes G.speed, G.scroll, or d must continue to scroll from that canonical movement.
+A racer has:
 
-At 3.00× base speed, the road must actually move at roughly three times the 1.00× base rate before personal modifiers.
+* Pink 50%
+* Yellow 100%
+* Cyan 100%
 
-Do not change the multiplier only visually.
+The racer is then destroyed by a meteor.
 
-Do not introduce a separate fixed scroll speed.
+Do not change those shield values simply because the meteor struck.
 
-Audit for hidden assumptions that 2.00× is the maximum. In particular, js/render.js currently computes road-speed streak strength using hard-coded numbers:
+When that racer subsequently respawns, the normal respawn reset described below restores all three bars to full.
 
-const sr = clamp((G.speed - 330) / 620, 0, 1) + ...
+Destroying hazards must not cost shield
 
-Retune this normalization around BASE_SPEED and MAX_MULT, or otherwise make it suitable for the new 3.00× range so the visual acceleration still has useful progression rather than effectively saturating around the old ceiling.
+This is critical.
 
-Likewise, inspect any engine/audio normalization or similar hard-coded speed visualization. It is fine for effects to saturate at extreme temporary speeds from boosts/ultimates, but normal 1.00×–3.00× progression should be represented sensibly.
+Seren already has ultimate mechanics that allow certain racers to destroy solid hazards through clearsSolidHazards(who).
 
-Keep the existing short physical speed easing unless removing it is truly necessary. The important requirement is that the canonical target and actual scrolling follow the new tier. Do not create a HUD multiplier that disagrees with the baseline race-speed system.
+For example, a racer with the appropriate active ultimate may smash a tumbleweed rather than suffer its normal collision result.
 
-3. Remove the five-minute finish trigger completely
+That interaction must consume ZERO shield durability.
 
-The race must no longer enter its closing phase because five minutes have elapsed.
+The order of operations matters.
 
-Remove RACE_MINUTES = 5 as a finish-condition tuning value and remove all gameplay/HUD dependencies on it.
+For a tumbleweed collision:
 
-G.raceT may remain. It is useful as elapsed-race time and is used elsewhere for animations/projections. Do not delete raceT just because the five-minute rule disappears.
+1. Determine whether the racer can destroy/clear the solid hazard using the existing logic.
+2. If the hazard is destroyed by the racer:
+    * preserve the current destruction effect
+    * remove the hazard as currently implemented
+    * do not reduce the shield
+    * do not accidentally run the normal shield-hit path afterward
+3. Only if the racer genuinely takes the normal hazard hit should one shield half be removed.
 
-The old logic in js/race.js currently does approximately this:
+The same principle applies to any future ordinary hazard that can be destroyed.
 
-if (G.tracksLeft < 0 && G.raceT >= RACE_MINUTES * 60)
-  G.tracksLeft = FINAL_TRACKS;
+Destroying a meteor also consumes no shield, although meteors are excluded from the shield system regardless.
 
-That condition must disappear.
+Do not make merely shooting/removing a hazard somewhere else on the road affect anyone’s shield.
 
-Do not replace five minutes with another arbitrary elapsed-time threshold.
+Preserve existing hazard effects
 
-4. Start the final-track/finish-line sequence only after 3.00× is reached
+The shield is a durability/life system layered onto Seren’s current hazard mechanics.
 
-For race modes that run to a flag (bots and local through the existing toFlag() behavior), the closing sequence must become eligible only once the normal speed progression has reached 3.00×.
+Do not silently rewrite what puddles and tumbleweeds currently do.
 
-The correct lifecycle is:
+A surviving non-meteor hazard hit should still perform its existing gameplay consequence:
 
-Race starts
-→ speed progresses from 1.00× to 3.00×
-→ exactly when MAX_TIER / 3.00× is reached, arm the existing FINAL_TRACKS phase
-→ existing track transitions continue
-→ after the existing final-track countdown reaches zero, plant the finish line
-→ FINISH_STRETCH remains 900 metres
-→ racers finish and park exactly as they do now
+* Puddle continues to apply its existing Obscured/water-on-screen behavior.
+* Tumbleweed continues to apply its existing Slow behavior.
+* Existing ultimate-meter consequences of a hazard collision should continue using the current shared helpers.
+* Existing particles, sound, shake, perfect-dodge bookkeeping and hazard cleanup should continue to work.
 
-Use the existing G.tracksLeft, FINAL_TRACKS, switchTrack(), G.finishAt, FINISH_STRETCH, checkFinish(), and parking system instead of building a second finish mechanism.
+However, when the shield-depleting hit takes the racer to zero and destroys them, stop further unnecessary debuff processing for that collision because the normal wreck lifecycle already clears/deactivates relevant state.
 
-A good authoritative place for the new trigger is immediately after the speed-tier update in the running-race clock block:
+Do not create duplicate penalties or duplicate collision effects merely to implement the shield.
 
-if (
-  toFlag() &&
-  G.finished === null &&
-  G.tracksLeft < 0 &&
-  G.tier >= MAX_TIER
-) {
-  G.tracksLeft = FINAL_TRACKS;
-}
+Use the existing paths wherever possible.
 
-The exact structure can vary, but it must be a one-time state transition associated with reaching MAX_TIER.
+Use integer half-bar durability
 
-Do not repeatedly reset G.tracksLeft to FINAL_TRACKS every frame.
+Do not represent this as floating-point values such as 2.5 bars if that can be avoided.
 
-Do not plant the finish line immediately at 3.00×. Reaching 3.00× starts the existing final-track system. The finish line must still come through that system and the existing FINISH_STRETCH.
+Use one authoritative integer value per racer representing remaining half-bars.
 
-Keep FINAL_TRACKS = 3 and FINISH_STRETCH = 900 unless another existing invariant requires a structural rewrite.
+Recommended concept:
 
-Endless mode must remain endless. Reaching 3.00× in Endless must never create tracksLeft, finishAt, or a finish line.
+shield = 6
 
-5. Rewrite the HUD race projection for the new finish rule
+where:
 
-js/hud.js::raceSpan() currently projects the end of the race using the time remaining until the five-minute mark. That becomes invalid.
+* 6 = three full bars
+* 5 = pink half depleted
+* 4 = pink empty
+* 3 = yellow half depleted
+* 2 = yellow empty
+* 1 = cyan half depleted
+* 0 = no shield remaining
 
-Rewrite the projection around time remaining until MAX_TIER.
-
-Before 3.00×, determine the remaining speed-progression time from G.tier and G.speedT.
+Define named constants rather than scattering magic numbers.
 
 For example, conceptually:
 
-const tiersRemaining = MAX_TIER - G.tier;
-const secondsToMax =
-  tiersRemaining <= 0
-    ? 0
-    : G.speedT + Math.max(0, tiersRemaining - 1) * SPEED_SECONDS;
+* maximum shield halves = 6
+* halves per bar = 2
+* number of bars = 3
 
-Then account for the track timer as it will stand when the 3.00× threshold is reached and project the existing closing tracks plus FINISH_STRETCH.
+The exact naming can follow Seren’s existing conventions.
 
-The old raceSpan() already contains logic that advances G.trackT conceptually to a future race milestone. Reuse that idea, replacing the old five-minute milestone with the new 3.00× milestone.
+Do not store three independent mutable percentages if one integer can be the authoritative gameplay state.
 
-Once G.tracksLeft >= 0, continue using the actual final-track state.
+The HUD should derive its three fill amounts from this state.
 
-Once G.finishAt exists, use the real finish distance exactly as today.
+Shared shield helpers
 
-Endless must still return no fixed finish span.
+Keep the logic centralized.
 
-6. Replace the obsolete five-minute HUD clock with a speed readout
+Add small shared helpers in the appropriate gameplay file rather than manually decrementing state in several collision branches.
 
-The current #raceClock displays the five-minute countdown before the final phase. That countdown must disappear.
+The system should have one authoritative way to:
 
-Before the final-track sequence begins, use that HUD space to display the current base race multiplier to two decimals:
+* get a racer’s shield state
+* reset a racer’s shield
+* consume one shield half
+* determine whether the shield depletion caused a wreck
 
-1.00×
-1.10×
-1.20×
-...
-3.00×
+The helper must support both:
 
-It must come from the same canonical multiplier as gameplay, preferably speedMult(), not from a duplicated formula.
+* "me"
+* a rival racer object
 
-When the closing-track phase begins, preserve the useful final-race information, but keep the speed state understandable. A compact format such as these is appropriate:
+This matches Seren’s existing shared helpers such as wreckRacer(who, by), noContact(who), clearsSolidHazards(who), etc.
 
-3.00× · T-3
-3.00× · T-2
-3.00× · T-1
-3.00× · 842m
+When shield durability reaches zero, use the existing shared wreck lifecycle.
 
-The exact separator can match Seren’s existing HUD style, but do not display the removed five-minute countdown anywhere.
+Do not create a separate “shield death” implementation.
 
-Avoid adding a large new HUD component if the existing #raceClock can cleanly become the speed/final-state readout.
+For example, the final depletion should ultimately go through the same established behavior as:
 
-7. Increase shared ultimate charge time from 75 seconds to 85 seconds
+* destroyCar() for the primary racer
+* wreckRival() for rivals
 
-Change:
+Prefer using wreckRacer(who, by) where appropriate so player/bot/local-human behavior cannot drift apart.
 
-const ULT_CHARGE = 75;
+Racer state
 
-to:
+Add shield state to every racer.
 
-const ULT_CHARGE = 85;
+Main racer
 
-This must remain the one shared charging clock for every racer.
+G is defined in js/runtime.js.
 
-The player and every rival/local human already charge using:
+Add the full shield state there so a new/uninitialized main racer begins with the correct value.
 
-dt / ULT_CHARGE
+Rivals and local humans
 
-Preserve that shared architecture.
+Rival racer objects are constructed in js/race.js.
 
-One second of normal charge should therefore add exactly approximately:
+Those objects are also used for human racers in local multiplayer, so add the same shield state to every created rival racer.
 
-1 / 85 = 0.0117647...
+Do not add a special local-human-only shield field.
 
-to the normalized 0–1 ultimate meter.
+Every racer object should expose the same concept.
 
-A completely empty ultimate meter takes 85 seconds of eligible charging to reach 100%.
+Race start reset
 
-Do not change:
+Starting a new race must reset every racer to full shield.
 
-ULT_TIME = 15
-ULT_SPEED = 2.0
+The existing race reset currently restores values such as:
 
-The active ultimate should still last 15 seconds and still provide its existing 2× personal pace multiplier.
+* charge
+* dead
+* invulnerability
+* debuffs
+* ultimate state
+* item state
+* etc.
 
-Update stale comments saying “seventy-five seconds.”
+Include shield state in that lifecycle.
 
-Update the hard-coded tests in tools/ultimate-check.mjs from 75 and 1/75 to 85 and 1/85.
+A previous race must never leak shield damage into a new one.
 
-8. Add +10 percentage points of ultimate charge for a true perfect hazard dodge
+Respawn reset
 
-Add a skill reward for a genuine last-second hazard dodge.
+This is an explicit gameplay requirement:
 
-A successful perfect dodge grants:
+Every respawn restores all three shield bars completely.
 
-+0.10
+When the player’s existing G.dead countdown finishes:
 
-to the racer’s normalized ultimate meter, i.e. +10 percentage points.
+* set shield back to 6
+* restore the existing respawn invulnerability
+* preserve the current respawn effect/audio behavior
 
-Introduce a named tuning constant rather than burying the reward inline, for example:
+When a rival/local-human R.dead countdown finishes:
 
-const ULT_ON_PERFECT_DODGE = 0.10;
+* set that racer’s shield back to 6
+* preserve the existing R.invuln = INVULNERABLE_TIME behavior
 
-The timing window should be intentionally very small. Use approximately:
+This must happen for every kind of wreck, not only wrecks caused by shield depletion.
 
-const PERFECT_DODGE_WINDOW = 0.12;
+Examples:
 
-meaning roughly 120 milliseconds of genuine imminent danger.
+* six puddle/tumbleweed hits → shield reaches zero → wreck → respawn → 6/6
+* meteor wreck while shield was 4/6 → respawn → 6/6
+* another racer wrecks you while shield was 1/6 → respawn → 6/6
 
-The important design requirement is that this must not become a generic “passed near a hazard” bonus.
+The reset belongs to respawn, not specifically to the shield-destruction branch.
 
-A racer should qualify only when the hazard was on a legitimate collision course within that tiny imminent-impact window and the racer then avoids the impact through last-second lateral movement.
+During the wreck delay, do not prematurely refill it. The refill should correspond to the actual respawn event.
 
-Use Seren’s real collision geometry. Do not implement this with lane numbers alone.
+Invulnerability interaction
 
-The game already has useful primitives such as carHit(), nearestOnCar(), puddleHits(), sweptY(), the trap radius values, and the per-racer hazard bit system used by o.hit, o.nm, and markPassed().
+The existing respawn invulnerability must continue to prevent immediate repeated hazard damage.
 
-Build the perfect-dodge system around those existing primitives.
+If the existing collision system considers a racer unreachable/protected through:
 
-A robust design is to maintain small per-hazard bitmasks such as a “perfect-dodge threat” mask and “perfect-dodge already rewarded” mask. Player bit 1 and the existing rival bits (2 << index) can be reused so one shared hazard can independently track all racers without creating a parallel player-only implementation.
+* noContact
+* refusesDebuffs
+* invulnerableMe
+* invulnerableCar
+* finished state
+* dead state
+* airborne/off-road ultimate states where appropriate
 
-Only arm the threat bit if the racer’s pre-avoidance trajectory/hull would genuinely collide with the hazard within PERFECT_DODGE_WINDOW.
+then an ordinary hazard must not secretly reduce shield durability.
 
-Then, when that hazard safely passes that racer or resolves without hitting them, grant the reward only if that threat bit was armed and the racer actually escaped the threatened collision.
+Do not bypass Seren’s existing protection predicates.
 
-Use swept/predicted geometry so a 120 ms window does not become frame-rate dependent. The main frame loop caps dt, but the mechanic should still work at 30, 60, 120+ FPS and under occasional long frames.
+HUD — required position
 
-For road hazards such as puddles and tumbleweeds, use their actual shape/radius and relative movement.
+Add the shield HUD at the bottom-left of the race screen, directly above the boost meter.
 
-For meteors, treat the imminent rock/impact/blast timing consistently with the existing rockLead(), rockAlt(), falling timer, and detonation geometry. A racer that genuinely exits the danger footprint during the tiny final window may earn the reward; simply being nowhere near the meteor must not.
+It should visually belong to Seren’s existing restrained HUD.
 
-A normal early lane change must not qualify.
+Do not place it in the center of the road.
 
-A wide miss must not qualify.
+Do not move the boost meter to a different location.
 
-Driving beside a hazard without making a last-second avoidance must not qualify.
+Do not put the shield beside the ultimate/item boxes on the right.
 
-Getting hit must not qualify.
+The shield belongs on the bottom-left, immediately above the bottom boost rail.
 
-The same hazard must never award the same racer twice.
+Seren already uses the bottom-left for Condition badges, so integrate the shield carefully into the available vertical gap rather than allowing the two systems to overlap.
 
-Do not award perfect-dodge charge to a racer that is wrecked, finished, invulnerable, outside the shared road in Rhosyn’s Aero-Glow, or airborne as Saffron where normal road-hazard interaction is intentionally absent.
+Maintain clear spacing between:
 
-The mechanic should work fairly for the player, local human racers, and bots. Difficulty may affect whether a bot is capable of making such a maneuver through its normal driving intelligence, but difficulty must not multiply the reward.
+1. boost rail at the very bottom
+2. new shield bars just above it
+3. Condition badges above/around that corner
 
-Grant the reward through the existing:
+The layout must work on narrow/mobile layouts and the shorter-height layout as well as desktop.
 
-ultDelta(who, ULT_ON_PERFECT_DODGE);
+HUD — visual design
 
-infrastructure.
+Display exactly three small horizontal bars.
 
-That is important because ultDelta() already preserves Seren’s invariant that charge rewards/penalties do not extend or shorten an ultimate that is currently active.
+Order from left to right:
 
-Do not add +10% directly to G.ult or R.ult in a way that bypasses that invariant.
+Pink | Yellow | Cyan
 
-9. Mystery Bubble collection must grant +5 percentage points of ultimate charge
+They should be visually separate bars with a small consistent gap between them.
 
-Every successfully collected Mystery Bubble must now grant the collecting racer:
+Each bar represents two hits.
 
-+0.05
+Each bar should visibly support exactly these states:
 
-ultimate charge, i.e. +5 percentage points.
+* full
+* half
+* empty
 
-Add a named constant such as:
+A full bar displays 100% colored fill.
 
-const ULT_ON_BUBBLE = 0.05;
+A half bar displays 50% colored fill.
 
-and apply it through:
+An empty bar keeps its subtle dark track/frame visible but has no colored fill.
 
-ultDelta(who, ULT_ON_BUBBLE);
+Do not replace the bars with:
 
-The important repository-specific detail is that Mystery Bubble item rewards are currently intentionally disabled:
+* hearts
+* shield icons
+* circles
+* numbers only
+* six tiny pips
+* one large health bar
+* a radial meter
 
-const MYSTERY_ITEMS_ENABLED = false;
+They must remain three distinct bars.
 
-Do not turn this back on.
+A subtle midpoint divider may be used so the two-hit structure is easy to understand at a glance.
 
-The new +5 ultimate-charge reward must work independently of the disabled item-reward gate.
+Keep the design minimal.
 
-takeBubble() currently returns immediately when MYSTERY_ITEMS_ENABLED is false. Therefore apply the ultimate-charge reward before that early return.
+Use Seren’s existing:
 
-Conceptually:
+* dark glass surfaces
+* thin hairlines
+* compact geometry
+* restrained effects
+* small radii
+* peripheral HUD placement
 
-function takeBubble(who, bx, by) {
-  ultDelta(who, ULT_ON_BUBBLE);
-  if (!MYSTERY_ITEMS_ENABLED) {
-    popFx(bx, by, "#BFC6D0");
-    return;
-  }
-  // existing item reward path
-}
+Do not add large labels such as SHIELD over the road unless necessary for accessibility markup rather than visible presentation.
 
-Keep the existing plain Bubble pop when item rewards are disabled.
+Shield colors must match the Mystery Bubble palette
 
-Do not grant an item while the switch is false.
+Use the three existing Mystery Bubble thin-film colors as the shield hues.
 
-If item rewards are eventually switched back on, the same Bubble should grant the +5 ultimate charge and then continue through the normal item roll exactly once.
+The current bubble renderer in js/render.js uses these RGB colors:
 
-Because this goes through ultDelta(), collecting a Bubble during an already-active ultimate must not extend that active ultimate’s 15-second duration.
+* Cyan: rgb(120, 235, 255) / #78EBFF
+* Pink: rgb(255, 140, 225) / #FF8CE1
+* Yellow: rgb(255, 235, 150) / #FFEB96
 
-Apply the reward equally to player, bot, and local-human collectors.
+The shield bar order must be:
 
-10. Rebalance normal boost duration and refill
+1. Pink #FF8CE1
+2. Yellow #FFEB96
+3. Cyan #78EBFF
 
-The normal boost already provides the desired 1.5× multiplier. Preserve that value.
+Use appropriate alpha levels for the HUD if needed, but do not change the underlying hues.
 
-A full normal boost bar must now last 5.5 seconds instead of ~2.5 seconds.
+Prefer one canonical palette definition rather than maintaining two unrelated sets of magic RGB values.
 
-A completely empty normal boost bar must now refill in 5.0 seconds instead of ~7 seconds.
+If clean within the current architecture, extract the Mystery Bubble tint palette into an appropriate shared constant in js/data.js so both:
 
-Do not approximate these by eye.
+* drawBubbles() in js/render.js
+* the shield HUD
 
-The mathematically correct normalized rates are:
+read the same source colors.
 
-drain = 1 / 5.5; // ≈ 0.1818181818 per second
-refill = 1 / 5;  // 0.2 per second
+Do not perform a large unrelated refactor merely for this.
 
-Do not continue scattering those rates as duplicated magic numbers.
+Single-player DOM HUD
 
-Create shared tuning constants in js/data.js, for example:
+The normal one-player HUD is DOM-based.
 
-const BOOST_SPEED = 1.5;
-const BOOST_DRAIN_TIME = 5.5;
-const BOOST_REFILL_TIME = 5.0;
-const BOOST_DRAIN_RATE = 1 / BOOST_DRAIN_TIME;
-const BOOST_REFILL_RATE = 1 / BOOST_REFILL_TIME;
+Update index.html with a compact shield container inside the existing race HUD.
 
-Then replace all relevant player and rival/local-human paths in js/race.js.
+It should have three bar tracks and three fills.
 
-The player’s existing:
+Keep the markup simple.
 
-G.charge = clamp(G.charge - dt * 0.4, 0, 1);
-G.charge = clamp(G.charge + dt * 0.14, 0, 1);
+For accessibility, expose the overall durability as a meaningful meter/progress value such as 0 through 6 remaining shield halves.
 
-must use the new shared rates.
+Do not require the user to distinguish state by color alone in accessibility metadata.
 
-All corresponding rival paths using R.charge must use those exact same rates.
+If adding an accessible name such as “Shield”, use Seren’s existing localization architecture and add the necessary English/French key to js/i18n.js rather than hardcoding English-only interface text.
 
-The existing ×1.5 applications for player and rivals should use the shared BOOST_SPEED constant so the value cannot drift between implementations.
+Update css/app.css so it:
 
-Preserve the existing dry-bar lockout behavior: reaching zero locks boost, and boost becomes available again only after the bar returns to full.
+* anchors at the same --side inset used by the rest of the lower HUD
+* remains above #meterRail
+* does not collide with #condList
+* respects safe-area insets
+* keeps the bars readable against every track
+* fits short-height and narrow screens
+* retains Seren’s current glass/hairline visual language
 
-Do not alter bot decision-making simply to force them to burn the full 5.5 seconds. Their intelligence may still release boost early according to D.keep, hazards, or race strategy. The capacity of the boost system is what changes.
+Update the existing HUD paint/sync path in js/hud.js so the three fills are derived directly from G.shield.
 
-Do not confuse normal boost with other speed effects.
+Do not create timers for this.
 
-Leave the Mystery Bubble boost can alone:
+The displayed state should simply reflect authoritative game state whenever the HUD paints.
 
-CAN_TIME = 2.2
-CAN_SPEED = 1.55
+Local multiplayer / split-screen HUD
 
-Leave the rear-end shunt alone:
+This feature is not complete unless local multiplayer also works.
 
-SHUNT_TIME = 0.8
-SHUNT_BOOST = 1.35
+Seren does not use the DOM race HUD for each local multiplayer seat. Each local player’s instruments are painted directly into their Canvas column through js/hud.js.
 
-Leave the shared ultimate speed multiplier at 2.0.
+The current path includes:
 
-11. Remove stale literal initialization values
+* drawSeatHud(who, seat)
+* hudMeters(o)
+* hudActions(o)
+* hudConditions(who)
 
-js/runtime.js currently has:
+Add a Canvas shield renderer for this path.
 
-tier: 0,
-speedT: 30,
+It must display the shield belonging to that specific view owner.
 
-Do not leave 30 there after SPEED_SECONDS becomes 20.
+Examples:
 
-Prefer:
+* Player 1’s column shows Player 1’s shield.
+* Player 2’s column shows Player 2’s shield.
+* Player 3’s column shows Player 3’s shield.
+* Player 4’s column shows Player 4’s shield.
 
-speedT: SPEED_SECONDS,
+Do not accidentally draw G.shield in every split-screen column.
 
-since data.js is intentionally loaded before runtime.js.
+The function must receive/read the o associated with that seat.
 
-Likewise, if there are other easy-to-remove duplicated literals directly representing named timing constants, use the canonical constants without broadly refactoring unrelated systems.
+The Canvas version should visually match the DOM version as closely as practical:
 
-startRace() already resets G.speedT = SPEED_SECONDS; preserve that.
+* same three bars
+* same Pink → Yellow → Cyan order
+* same full/half/empty states
+* same relative lower-left position
+* same approximate bar dimensions
+* same dark tracks
+* same colors
+* same spacing
 
-12. Update documentation and comments
+Use the existing shared HUD constants and geometry philosophy.
 
-Update every player-facing or maintainer-facing description that becomes false.
+The page HUD and Canvas HUD are intentionally maintained as one design in Seren; preserve that contract.
 
-At minimum update README.md, docs/TUNING.md, comments in js/data.js, comments in js/race.js, comments in js/mechanics.js, and relevant test comments.
+Bottom HUD geometry
 
-The documentation should state that normal race speed begins at 1.00×, rises by 0.10× every 20 seconds, reaches 3.00× after 6 minutes 40 seconds, and then starts the closing-track sequence.
+The current boost rail geometry in js/hud.js uses values such as:
 
-Replace the old README race diagram:
+* HUD_RAIL_BOT
+* HUD_RAIL_H
+* HUD_RAIL_PAD
+* HUD_BAR
+* hudSide()
 
-0:00 → 5:00 → three tracks → +900m → finish
+Use these rather than hardcoding a completely independent screen position for split-screen.
 
-with a diagram based on:
+The shield group should sit a small fixed gap above the top edge of the boost tray.
 
-0:00 1.00×
-→ +0.10× every 20s
-→ 6:40 / 3.00×
-→ three-track closing sequence
-→ +900m
-→ finish
+Make sure hudZones() and any collision/edge-badge layout calculations that depend on occupied HUD regions continue to receive sensible lower-screen bounds.
 
-Document boost as 5.5 seconds of capacity, five seconds to refill, and 1.5× pace.
+If the new shield group expands the area considered occupied by the bottom-left HUD, update that geometry rather than allowing edge indicators or Condition badges to overlap it.
 
-Document ultimate charging as 85 seconds.
+Condition badge coexistence
 
-Document the +10% perfect-dodge reward and +5% Mystery Bubble pickup reward.
+Seren’s own Conditions are currently displayed in the lower-left corner.
 
-Keep the existing explanation that active ultimates use their meter as remaining duration and ordinary charge deltas do not alter that duration.
+Do not remove or replace them.
 
-13. Add regression coverage
+The shield system is separate from the existing Invulnerable Condition.
 
-Do not rely solely on manual testing.
+Specifically:
 
-Extend the existing dependency-free test/validation tools. tools/check.mjs and tools/ultimate-check.mjs are natural places, but put tests wherever they best fit the existing organization.
+* three colored durability bars = permanent per-life shield durability
+* Invulnerable Condition = temporary respawn protection
 
-The implementation is complete only when all of the following are verified:
+Do not conflate the two.
 
-* SPEED_SECONDS === 20, MULT_STEP === 0.10, MAX_MULT === 3.00, and MAX_TIER === 20.
-* The speed progression is exactly 1.00× at start, 1.10× after 20 seconds, 2.00× after 200 seconds, and 3.00× after 400 seconds, with no value above 3.00×.
-* tracksLeft remains inactive before 3.00× even if raceT passes five minutes or any larger old threshold.
-* Reaching 3.00× in Bots or Local starts FINAL_TRACKS exactly once.
-* Reaching 3.00× in Endless does not create a finish.
-* finishAt is still created only through the existing final-track flow and still uses FINISH_STRETCH.
-* The world-scroll delta is derived from actual G.speed, and the 3.00× baseline visibly/physically scrolls faster than 2.00× and 1.00×.
-* A full held player boost lasts approximately 5.5 seconds before reaching zero.
-* A zero boost bar takes approximately five seconds to refill completely.
-* Rival/local-human boost uses the identical rates.
-* Normal boost remains exactly 1.5×.
-* ULT_CHARGE === 85.
-* One second of normal ultimate charging produces approximately 1/85 for both the player and a rival.
-* Perfect dodge awards exactly +0.10.
-* A normal early dodge, wide miss, passive miss, collision, or duplicate pass does not award perfect-dodge charge.
-* The perfect-dodge result is stable across reasonable frame rates and does not rely on one exact frame landing at the collision point.
-* A perfect dodge during an active ultimate does not extend the active ultimate.
-* Collecting a Mystery Bubble awards exactly +0.05.
-* Bubble +5 charge works while MYSTERY_ITEMS_ENABLED === false.
-* A disabled Mystery Bubble still gives no item.
-* If the item gate is enabled for a test, Bubble collection still awards only one +0.05 charge and then grants the normal item.
-* Player, bot, and local human reward paths behave consistently.
-* Existing trap penalties (ULT_ON_TRAP), wreck penalties, kill rewards, active-ultimate rules, finish protection, invulnerability, Saffron airborne behavior, Rhosyn Aero-Glow behavior, Neela/Flann/Verdant/Lolanthe interactions, item systems, and finish parking continue to pass their existing tests.
-* node tools/check.mjs, node tools/menu-check.mjs, node tools/ultimate-check.mjs, node tools/sprite-check.mjs, and node tools/hitbox-check.mjs all pass after the change.
+Do not turn the durability bars gold during invulnerability.
 
-Final implementation standard
+Do not reuse G.invuln as shield health.
 
-Treat this as a gameplay-system change, not a collection of isolated number edits.
+Do not remove the existing Invulnerable badge or gold view border.
 
-There must be one authoritative base race multiplier, one authoritative world-scroll speed, one shared ultimate charging clock, one shared normal-boost tuning set, and shared reward helpers for player/rivals wherever possible.
+Both systems should coexist correctly after respawn:
 
-Do not solve the player path and forget bots or local players.
+* shield immediately returns to 6/6
+* temporary Invulnerable Condition remains active for its existing duration
 
-Do not leave the old five-minute rule alive in HUD projections, documentation, or dead code.
+Player hazard integration
 
-Do not reactivate Mystery Bubble item rewards.
+In js/mechanics.js, integrate shield consumption into the actual player puddle/tumbleweed collision paths.
 
-Do not change the 900 m finish stretch, three-track closing sequence, 15-second ultimate duration, 2× ultimate pace, 1.55× boost-can effect, 1.35× shunt, track duration, or unrelated car mechanics.
+Current relevant code includes:
 
-After implementation, review the diff specifically for stale literals 75, 30, 0.05, 2.00, RACE_MINUTES, dt * 0.4, and dt * 0.14 where they referred to the old systems. Do not blindly replace unrelated numeric occurrences.
+* updateTraps(...)
+* hitWeed(o)
+* hitPuddle()
+* clearsSolidHazards("me")
 
-The finished result should feel like one coherent progression:
+For tumbleweed:
 
-1.00× → +0.10× every 20 seconds → 3.00× → final three-track sequence → finish, with longer strategic boost capacity, faster boost recovery, an 85-second base ultimate charge, and meaningful precision rewards for last-second hazard avoidance and Mystery Bubble collection.
+* an ultimate that clears the weed must still destroy it without shield damage
+* otherwise a genuine weed collision consumes exactly one shield half
+* if shield remains above zero, preserve existing Slow behavior
+* if that hit takes shield to zero, wreck the racer and do not leave a Slow debuff hanging on the wreck
+
+For puddle:
+
+* a genuine puddle collision consumes exactly one shield half
+* if shield remains above zero, preserve existing Obscured behavior
+* if it reaches zero, wreck the racer and avoid applying meaningless post-wreck obscuring state
+
+The existing hazard hit bit/bookkeeping must continue preventing duplicate consumption.
+
+Rival and local-human hazard integration
+
+js/race.js currently performs ordinary rival hazard collision handling inside the racer update path.
+
+The relevant branch:
+
+* skips meteors
+* handles puddle/tumbleweed collisions
+* respects clearsSolidHazards(R)
+* uses per-racer hazard hit bits
+* applies Slow or Blind state
+
+Integrate the same shield logic there.
+
+Do not duplicate a second version of the shield algorithm.
+
+Call the shared shield helper.
+
+For a normal rival or local human:
+
+* cleared tumbleweed → 0 shield damage
+* valid puddle/weed hit → −1 half
+* shield > 0 → current hazard behavior continues
+* shield == 0 → wreckRacer(R) / existing equivalent
+* meteor handling remains outside this path
+
+Bots must follow exactly the same durability rules as humans.
+
+Difficulty settings must not secretly give bots extra shield unless an existing game rule explicitly says so. This feature should start everyone at the same 6/6.
+
+Do not alter perfect-dodge logic incorrectly
+
+Seren has perfect-dodge detection and ultimate-charge rewards tied to predicted real hazard collisions.
+
+Preserve that.
+
+A hazard that actually hits the racer and removes a shield half must still count as a hit, not a dodge.
+
+A properly dodged hazard consumes no shield.
+
+A hazard cleared by an ultimate consumes no shield and should preserve the current perfect-dodge bookkeeping behavior.
+
+Do not rewrite the perfect-dodge geometry just for the shield feature.
+
+Do not make the shield a custom-race toggle
+
+This is a core racer durability mechanic.
+
+Do not add:
+
+* a setup toggle
+* a custom-race rule switch
+* a settings preference
+
+The bars should exist for racers in normal gameplay automatically.
+
+If a custom race has hazards turned off, the shield naturally remains full because there are no ordinary hazards to damage it.
+
+No world-space shield bubble
+
+Do not add a glowing force field around each car.
+
+Do not add new sprite art.
+
+Do not add a shield icon over cars.
+
+The requested visual representation is the three-bar HUD system.
+
+Any hit feedback should remain very restrained and consistent with the current game.
+
+Optional restrained hit feedback
+
+If a tiny shield-hit response is useful, it may be implemented as a very short HUD-only flash or pulse on the specific bar/half that was lost.
+
+This is optional.
+
+If implemented:
+
+* do not obscure gameplay
+* do not add screen-filling flashes
+* obey reduced-motion settings
+* keep the authoritative state independent from animation
+* never delay the actual durability reduction waiting for an animation
+
+The gameplay state must change immediately.
+
+Documentation
+
+Update the README so the feature is documented accurately.
+
+Update the existing HUD description to mention the three shield bars at the lower-left above the boost rail.
+
+Update the Hazards section to explain:
+
+* puddles and tumbleweeds remove half a shield bar on hit
+* six such hits exhaust a fresh shield
+* the sixth hit destroys the racer
+* meteors bypass the shield entirely and preserve their current destruction behavior
+* a hazard destroyed by an applicable ultimate does not consume shield
+* respawning fully restores all three bars
+
+Do not rewrite unrelated README sections.
+
+Regression requirements
+
+Do not break:
+
+* single-player
+* local multiplayer
+* bots
+* split-screen rendering
+* custom races
+* disabled boost
+* disabled mystery bubbles
+* disabled hazards
+* ultimate mechanics
+* Flann hazard clearing
+* Neela hazard clearing
+* Lolanthe hazard clearing
+* Verdant hazard clearing
+* Saffron airborne meteor interception
+* Rhosyn off-road/Aero-Glow behavior
+* Conditions
+* respawn invulnerability
+* perfect-dodge rewards
+* mystery bubble collection
+* item logic
+* finish protection
+* car-to-car collision
+* seeker behavior
+* existing HUD responsiveness
+* high contrast
+* reduced motion
+* English/French localization
+
+Required validation cases
+
+Manually verify all of the following before considering the task complete.
+
+Basic shield sequence
+
+Fresh race:
+
+Pink 100%
+Yellow 100%
+Cyan 100%
+
+After first puddle/weed hit:
+
+Pink 50%
+Yellow 100%
+Cyan 100%
+
+Second:
+
+Pink 0%
+Yellow 100%
+Cyan 100%
+
+Third:
+
+Pink 0%
+Yellow 50%
+Cyan 100%
+
+Fourth:
+
+Pink 0%
+Yellow 0%
+Cyan 100%
+
+Fifth:
+
+Pink 0%
+Yellow 0%
+Cyan 50%
+
+Sixth:
+
+Pink 0%
+Yellow 0%
+Cyan 0%
+
+The racer immediately enters the existing wreck state.
+
+After the existing 3-second wreck/respawn period:
+
+Pink 100%
+Yellow 100%
+Cyan 100%
+
+Existing respawn invulnerability is active normally.
+
+Mixed hazard sequence
+
+Puddle → Weed → Puddle → Weed → Puddle → Weed
+
+must remove exactly six halves and wreck the racer.
+
+Meteor
+
+With 6/6 shield:
+
+Meteor hit → existing meteor wreck behavior.
+
+Shield did not absorb the meteor.
+
+After respawn → shield is 6/6.
+
+Ultimate-cleared tumbleweed
+
+With 6/6 shield and an ultimate currently allowed by clearsSolidHazards:
+
+Hit and destroy tumbleweed.
+
+Expected:
+
+* tumbleweed destruction effect occurs
+* shield remains 6/6
+* no accidental half-bar loss
+
+Destroyed meteor
+
+A racer that destroys/intercepts a meteor through existing ultimate behavior must lose zero shield.
+
+Invulnerability
+
+Immediately after respawning, overlap an ordinary hazard while existing invulnerability still protects the racer.
+
+Expected:
+
+* no additional shield loss
+* no spawn-chain depletion
+
+One collision, many frames
+
+Remain overlapping a puddle for several rendered frames.
+
+Expected:
+
+* only one half is consumed for that hazard encounter
+
+Local multiplayer
+
+Damage Player 2 while Player 1 remains safe.
+
+Expected:
+
+* Player 2’s Canvas HUD changes
+* Player 1’s does not
+
+Repeat independently for every local seat.
+
+Bots
+
+Allow a bot to collide with puddles/tumbleweeds repeatedly.
+
+Expected:
+
+* it follows the same six-half durability progression
+* it wrecks on depletion
+* its shield returns to full after respawn
+
+Non-hazard destruction
+
+Destroy a racer through an existing non-hazard wreck source while it has partially depleted shield.
+
+Expected:
+
+* the shield does not prevent that destruction unless the existing mechanic already does
+* after respawn the shield is restored to 6/6
+
+Hazard disabled race
+
+Run a custom race with traps/hazards disabled.
+
+Expected:
+
+* no shield damage occurs
+* no errors occur
+* HUD remains stable
+
+Implementation quality
+
+Do not solve this with scattered special cases.
+
+The final implementation should have:
+
+* one authoritative shield durability value per racer
+* one shared shield damage/reset implementation
+* existing hazard collision detection reused
+* existing wreck lifecycle reused
+* player/bot/local-human parity
+* single-player DOM HUD and local Canvas HUD parity
+* no duplicate timer loops
+* no dependency additions
+* no unrelated redesigns
+* no new image assets
+* clear comments where the new gameplay contract is not self-evident
+
+Inspect the surrounding code before editing each integration point and follow the existing Seren conventions rather than replacing working systems.
+
+The final result should feel as though the three-bar shield system was part of Seren’s original architecture, not bolted on afterward.
