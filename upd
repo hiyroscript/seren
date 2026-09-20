@@ -1,504 +1,436 @@
-Work in the hiyroscript/seren repository on the current main branch.
+You are modifying the current hiyroscript/seren repository on its existing architecture. Implement Cole as the game’s seventh racer/car using the two sprite assets that already exist in the repository:
 
-Objective
+v_cole.PNG — Cole’s normal car form
+vtm_cole.PNG — Cole’s motorcycle form
 
-Fix a race-simulation bug where racers that are sufficiently far away from Player 1 can effectively stop making race progress when Player 1 is destroyed/wrecked.
+Do not redesign Seren’s architecture around Cole. Integrate Cole through the same shared systems already used by Flann, Neela, Lolanthe, Verdant, Rhosyn, and Saffron. Preserve the existing philosophy that racer behavior is shared between the player, local human racers, and bots wherever possible.
 
-Seren is supposed to behave like an actual race simulation: every racer still in the race must have independent longitudinal progress. Destroying the player may stop that player’s car temporarily, but it must never stop, freeze, pause, tether, or otherwise suspend the other racers.
+Cole’s defining mechanic is that he can freely transform between his normal car and motorcycle during a race. This transformation is not his ultimate and is not temporary. It is a core vehicle-selection mechanic controlled by the racer, with a two-second cooldown between transformations.
 
-This must be fixed at the simulation/state-model level. Do not hide the problem with a larger coordinate clamp, special-case HUD math, fake catch-up, or by continuing to advance the player’s distance while their car is wrecked.
+Core goal
 
-Confirmed relevant architecture
+Add Cole as the seventh full racer in Seren. Cole must be selectable everywhere the other racers are selectable, appear in the garage/reference interface, participate as a bot, work in local multiplayer, receive a proper seventh starting-grid slot, appear in standings, finish correctly, and be covered by the repository’s existing test suite.
 
-Inspect these files first:
+The active race field should now contain seven racers, not six.
 
-js/race.js
+Change FIELD_SIZE from 6 to 7 and audit every assumption in the project that currently means “there are six cars in a race.” Do not blindly replace every occurrence of the number six because some unrelated systems, such as Condition counts or shield values, legitimately use six. Only update race-field/roster assumptions.
 
-* spawnRivals()
-* metersOf(R)
-* update(dt)
-* updateRival(R, dt, st)
-* updateRivals(dt, st)
-* checkFinish()
-* parking/finish helpers
+CAR_IDS should become:
 
-js/mechanics.js
+["flann", "neela", "lolanthe", "verdant", "rhosyn", "saffron", "cole"]
 
-* racerWorldPose()
-* rebaseWorld()
-* teleportRacerToPose()
-* collision/contact code that directly modifies a rival’s y
-* wreckRival()
-* destroyCar()
-* fieldTopY() / fieldBottomY()
+Cole should use the internal id cole, the displayed name Cole, v_cole.PNG as his default vehicle, and vtm_cole.PNG as his motorcycle.
 
-js/ai.js
+Cole vehicle data
 
-* botSense()
-* race-distance comparisons
-* target/threat calculations
+Implement Cole in CARS in js/data.js as a proper sprite model following the same data-driven conventions as Flann and Neela.
 
-js/hud.js
+Do not use CAR_HIT_RECT as Cole’s real geometry. Do not copy Flann’s, Neela’s, Saffron’s, or any other racer’s measurements.
 
-* placeOf()
-* standings and race-distance displays
+Measure v_cole.PNG directly. Determine its real image dimensions, visible alpha/body bounds, center, physical silhouette, tailpipe position or positions, and suitable race scale. Store those measurements using the same normalized-source-coordinate approach already used by the existing sprite cars.
 
-js/render.js
+Cole’s car form must have its own spriteBounds, exhaust, hitShape, flame, and, if necessary, raceScale.
 
-* any conversion from race position to camera position
+Then create Cole’s motorcycle as Cole’s altForm, using vtm_cole.PNG.
 
-docs/ARCHITECTURE.md
+Measure vtm_cole.PNG independently. It must have its own spriteBounds, exhaust, hitShape, and suitable scale. Do not assume that the car and motorcycle share dimensions, collision geometry, center, or exhaust location.
 
-* especially Where a racer actually is
+The motorcycle is naturally much narrower than a car, but do not allow it to appear like a tiny icon driving between full-sized Seren vehicles. Use the existing raceScale/alternate-form scale architecture to give it an appropriate visual presence. Its physical width can remain motorcycle-like, but its overall visible length and mass on screen should look intentionally comparable to racers such as Flann and Neela.
 
-docs/TUNING.md
+Preserve each source image’s original aspect ratio. Scaling must remain uniform. Never stretch Cole horizontally or vertically merely to fill the lane.
 
-* distance/pixel conversion documentation
+The normal car and motorcycle should both look like they were authored for Seren at race scale, menu scale, local split-screen scale, and desktop/mobile scale.
 
-Tests:
+Precise Cole hitboxes
 
-* tools/progression-check.mjs
-* tools/ultimate-check.mjs
-* tools/hitbox-check.mjs
-* other existing regression suites affected by racer position
+Create a separate measured collision polygon for each form.
 
-The current bug
+For the car, trace the meaningful solid vehicle silhouette from v_cole.PNG, including the actual main body and physically meaningful extremities while excluding transparent padding, shadows, exhaust flames, detached particles, or purely decorative empty protrusions that should not collide.
 
-The current model makes a rival’s longitudinal race distance depend on its screen-space position relative to Player 1:
+For the motorcycle, trace vtm_cole.PNG independently. Its collision polygon should reflect the motorcycle’s narrower physical shape, including the meaningful wheel/body silhouette rather than pretending the motorcycle is car-width.
 
-metersOf(R) effectively does:
+The polygons must be ordered correctly and expressed in the normalized logical coordinate convention used by Seren’s existing hitShape models.
 
-G.meters + (playerY - R.y) * 0.075
+Cole’s active collision body must change at the exact same moment as his rendered vehicle changes.
 
-Meanwhile normal rival motion in updateRival() does approximately:
+Continue using racerModel(who) as the authoritative source of the active model. Do not build a “motorcycle hitbox” branch somewhere else in collision code while rendering reads another state. Rendering, racerDims(), carHit(), exhaust placement, and all other model consumers must agree on a single active model.
 
-R.y += (G.speed - R.abs) * dt
+Extend racerModel() so Cole returns his altForm whenever coleBikeActive(who) is true.
 
-and then:
+Cole transformation state
 
-R.y = clamp(R.y, -30000, H + 30000)
+Give every racer object the state necessary to support Cole, just as every racer currently carries state required by the other special cars.
 
-This means R.y is doing two jobs at once:
+Add equivalent state to both G and every object created by spawnRivals().
 
-1. presentation/camera-relative screen position;
-2. authoritative race progress.
+Use clear state such as:
 
-Those concepts must not be the same thing.
+coleBike: false
+coleSwitchT: 0
 
-The failure becomes obvious for a racer far ahead.
+Add a named constant:
 
-Suppose a rival reaches the existing upper-road clamp:
+COLE_SWITCH_COOLDOWN = 2.0
 
-R.y === -30000
+Add centralized helpers such as coleCar(who), coleBikeActive(who), coleUltActive(who), canColeSwitch(who), and switchColeForm(who).
 
-The rival may still have:
+Follow the existing convention where direct comparisons such as o.car === "cole" are kept inside the dedicated Cole predicate instead of being scattered throughout rendering, racing, collision, HUD, and AI code.
 
-R.abs === BASE_SPEED or substantially more.
+At the beginning of every new race, Cole starts in car form with coleBike = false and no cooldown.
 
-As long as Player 1 is moving, G.meters increases, so metersOf(R) can continue increasing even though the rival itself is stuck at R.y === -30000.
+When a valid transformation is requested, immediately toggle the active form and set coleSwitchT = 2.0.
 
-But when Player 1 is destroyed, update() deliberately drives:
+Decrease the cooldown from normal simulation dt, exactly like Seren’s other race timers. Pausing the game must therefore pause the cooldown naturally.
 
-G.speed -> 0
+A switch request must be rejected if the racer is not Cole, the cooldown is still active, the race is not in the running state, the racer is wrecked, the racer has finished, or the racer’s controls are currently locked by a gameplay effect such as Mind Control.
 
-which is correct behavior for the wrecked player.
+The two-second cooldown begins from the instant a successful transformation occurs. Repeated clicks, key presses, or controller presses during those two seconds must not extend, reset, or bypass the cooldown.
 
-Now G.meters stops advancing.
+Cole’s selected form should persist through normal driving, boosting, an ultimate, hazards, and a wreck/respawn. A wreck should not force Cole back to his car because the motorcycle is not an ultimate transformation. Reset Cole to car only when initializing a new race unless a future game rule explicitly says otherwise.
 
-The distant rival continues trying to execute:
+Use Neela’s transformation effect
 
-R.y += (0 - R.abs) * dt
+Cole must use the existing Neela transformation presentation, not a new imitation.
 
-but that would put it below -30000, so the clamp immediately forces it back to -30000.
+Reuse Seren’s shared startWhiteout(who), startMorph(who), WHITEOUT_TIME, MORPH_TIME, and morphFlash(who) systems.
 
-Therefore:
+Whenever Cole successfully switches from car to motorcycle or motorcycle to car, call both the appropriate per-racer whiteout and morph flash so the form change is concealed and revealed exactly in Seren’s established transformation language.
 
-* R.y no longer changes;
-* G.meters no longer changes;
-* metersOf(R) no longer changes.
+Do not duplicate Neela’s effect into new Cole-specific timers or new CSS animations.
 
-The rival is still notionally driving according to R.abs, but its authoritative race distance is frozen.
+Cole’s transformation only changes the vehicle model. It must not teleport him, alter his lane, change his meters, reset steering, reset boost, interrupt an ultimate, or invoke any part of Neela’s position-swap mechanic.
 
-The 30000px limit represents only roughly 2250 metres at the game’s 0.075 metres/pixel conversion, so a sufficiently separated field can genuinely reach this condition during a long race.
+In local multiplayer, only the transforming Cole player’s viewport should receive that player’s whiteout. Other local players must continue seeing their own views normally while seeing Cole’s body flash on the shared road.
 
-This is a camera-coordinate leak into simulation state.
+Because the existing Obscured Condition can be produced by a transformation whiteout, update its user-facing description so it is no longer described as exclusively “a Neela transformation.” Use wording that covers transformations such as Neela and Cole in both English and French.
 
-Required simulation model
+Motorcycle speed rules
 
-Give every rival an authoritative longitudinal world/race distance that exists independently from Player 1’s camera position.
+Cole’s car form uses Seren’s standard speed rules with no special multiplier.
 
-Player 1 may continue to use G.meters as its canonical longitudinal distance.
+Cole’s motorcycle form has three exact speed advantages.
 
-Every rival should have an equivalent canonical value, for example:
+Its base-speed amplifier is +0.5×, meaning its normal tiered base pace is 1.5× the normal base pace.
 
-R.m
+Its standard boost multiplier is 1.8× instead of the normal 1.5×.
 
-or another clearly named field.
+Its ultimate multiplier is 2.3× instead of the normal 2.0×.
 
-The exact name is up to you, but there must be one authoritative longitudinal value per racer.
+Add named constants rather than scattering magic numbers, for example:
 
-Conceptually:
+COLE_BIKE_BASE_SPEED = 1.5
+COLE_BIKE_BOOST_SPEED = 1.8
+COLE_BIKE_ULT_SPEED = 2.3
 
-Player 1:
-canonical distance = G.meters
+Do not change the global BOOST_SPEED = 1.5 or ULT_SPEED = 2.0, because every other racer must remain exactly as currently balanced.
 
-Rival:
-canonical distance = R.m
+Refactor or centralize the pace calculation sufficiently that the player and rival paths cannot drift apart.
 
-Camera-space rival position should become a projection of those values:
+The intended motorcycle calculation is conceptually:
 
-R.y = playerY - (R.m - G.meters) / 0.075
+normal tiered pace
+× 1.5 because Cole is currently a motorcycle
+× 2.3 if Cole’s ultimate is active
+× 1.8 if the normal boost meter is currently being used
+× any ordinary global effects such as Slow, Boost Can, or rear-contact shunt that already stack through Seren’s standard rules.
 
-A rival’s race progress must no longer be reconstructed from a bounded screen coordinate.
+Preserve Seren’s current multiplier stacking semantics. If a player simultaneously uses the boost meter during a motorcycle ultimate, both the 1.8× motorcycle boost multiplier and 2.3× motorcycle ultimate multiplier apply, along with the 1.5× motorcycle base multiplier.
 
-Rival initialization
+Cole’s car form must continue to use 1.0× base, 1.5× boost, and 2.0× ultimate.
 
-When rivals are spawned, initialize their canonical distance so their current starting-grid layout remains exactly the same.
+Changing forms while currently boosting or while an ultimate is running must cause the speed target to immediately begin resolving toward the correct multiplier for the new form using Seren’s existing acceleration smoothing. Do not stop/restart the boost or ultimate merely because the body changed.
 
-Do not visually change the starting grid.
+The passive 1.5× motorcycle base pace should not by itself create the temporary Boosted Condition. It is an intrinsic property of the vehicle form, not a temporary boost effect.
 
-For example, derive initial R.m from the existing initial R.y/grid offset once during construction, or construct both from the same starting-distance value.
+Do not alter CAN_SPEED, shunt behavior, Slow, tier progression, boost drain/refill rates, or ultimate duration unless necessary to fix an actual integration bug.
 
-The first frame of a race should be visually and mechanically indistinguishable from the current game.
+Cole’s ultimate
 
-Normal rival movement
+Cole still uses Seren’s normal shared ultimate lifecycle: 85 seconds to charge and 15 seconds of activation.
 
-When a live racer is driving, advance its canonical race distance directly from its own physical speed.
+Do not create a second ultimate clock.
 
-At a conceptual level:
+Cole’s car-form ultimate speed is the regular 2.0×.
 
-R.m += R.abs * dt * 0.075
+Cole’s motorcycle-form ultimate speed is 2.3×.
 
-The player continues advancing with:
+In either Cole form, while Cole’s ultimate is active, he receives Seren’s solid-hazard destruction privilege.
 
-G.meters += G.speed * dt * 0.075
+Add coleUltActive(who) to the centralized clearsSolidHazards(who) rule.
 
-Then derive the rival’s camera-relative position from the difference between R.m and G.meters.
+That means an ulting Cole destroys tumbleweeds and meteors instead of receiving their normal consequences, using the same destruction/effect path the current privileged ultimates use.
 
-Do not advance rival race distance using (G.speed - R.abs).
+Puddles remain completely normal and must still affect Cole. A puddle is not destroyed merely because Cole is ulting.
 
-That expression is useful for calculating relative movement on Player 1’s screen, but it is not the rival’s actual forward race progress.
+Do not turn Cole into a Flann-style ram. Cole’s ultimate does not gain the ability to destroy other racers by touching them. Racer-vs-racer contact remains Seren’s ordinary collision, shunt, and barge behavior.
 
-This distinction is critical.
+Do not make Cole generally Invulnerable.
 
-If Player 1 is stationary and a bot is moving at 420 px/s, the bot should still cover approximately:
+Do not make the ultimate eliminate oil, seekers, opponent attacks, Mind Control, or unrelated systems merely because they can colloquially be called hazards. Use the game’s existing clearsSolidHazards() definition so the behavior remains consistent with Seren’s established “tumbleweeds and meteors break, puddles still get you” rule.
 
-420 * 1 * 0.075 = 31.5 metres
+Cole must be allowed to transform during his ultimate, subject only to the normal two-second transformation cooldown and normal control locks. Hazard-destruction privilege continues regardless of which form he is currently using.
 
-during one simulated second.
+Exhaust and boost fire placement
 
-If Player 1 is wrecked for the normal three-second DEAD_TIME, the rest of the field should continue advancing for those three seconds according to each car’s own speed, boosts, ultimates, slows, shunts, etc.
+Both Cole forms must use Seren’s existing fire-style boost exhaust, not Neela’s blue energy exhaust.
 
-Do not let a coordinate clamp control race progress
+Do not set exhaustStyle: "energy" on Cole unless the artwork itself explicitly requires that, which this feature does not.
 
-The existing:
+Measure the actual tailpipe opening or openings in v_cole.PNG and place the normal form’s exhaust anchor exactly there.
 
-clamp(R.y, -30000, H + 30000)
+Then separately measure the motorcycle exhaust outlet in vtm_cole.PNG and place its alternate model’s exhaust anchor exactly at that outlet.
 
-must no longer be capable of freezing or modifying canonical race progress.
+If a form visibly has one pipe, give it one emitter. If it visibly has two, give it two. Never invent a symmetrical second pipe and never reuse Flann or Neela’s anchor coordinates.
 
-Prefer removing the simulation-level clamp entirely and deriving the real camera-relative y from canonical distance.
+The existing spriteAnchor() → drawSpriteExhaust() → drawSpriteFlame() pipeline should remain responsible for drawing the flame so the effect automatically follows Cole’s correct source-pixel location, scale, race scale, alternate-form scale, rotation, and lane-change tilt.
 
-The finite race distances used by Seren are nowhere near JavaScript numeric limits.
+The root of every fire plume should visually originate from the actual bore of Cole’s exhaust at every tested vehicle scale and tilt.
 
-If some rendering safeguard is still genuinely needed, clamp only a temporary value used for drawing/culling. Never write a presentation clamp back into authoritative race state.
+Cole should not receive Flann’s ultimate body-fire effect. His only fire here is the normal rear boost/ultimate exhaust effect that comes from his measured tailpipe.
 
-Also consider the secondary problem with keeping simulation objects clamped: two racers that are actually hundreds of metres apart could eventually collapse onto the same -30000 coordinate and appear physically colocated to collision or AI code. The fix should ensure a rendering safeguard cannot create false simulation proximity.
+Switch button beside the Mystery Bubble item holder
 
-Wrecked rivals
+Add a dedicated Cole transformation button to the race HUD immediately beside the Mystery Bubble item holder.
 
-Preserve existing wreck behavior.
+In index.html, add a third action control inside #hudActions, for example #coleSwitch.
 
-When a rival itself is destroyed:
+The normal single-player action ordering should remain visually coherent. A suitable order is Ultimate → Item → Cole Switch, with the Cole switch directly adjacent to the Item holder and outermost when visible.
 
-* its own forward race distance should stop advancing for the duration of its wreck;
-* Player 1 and every other racer continue normally;
-* if Player 1’s camera moves during that time, the wrecked rival’s camera-relative y should still update because its fixed world position is being viewed from a moving camera;
-* after its wreck timer expires, it resumes from the exact canonical distance at which it was destroyed.
+The button is visible only when the controlled racer is Cole.
 
-Do not accidentally make a wrecked rival continue racing invisibly.
+Do not tie the button’s existence to ruleOn("bubbles") or MYSTERY_ITEMS_ENABLED. Cole’s transformation is his own ability and must remain available even when Mystery Bubbles/items are disabled in custom rules. The button merely lives beside the item holder.
 
-The required change is independence between racers, not removal of wreck penalties.
+Likewise, disabling ultimates must not disable Cole’s form switching.
 
-Player destruction
+During countdown, wrecking, finishing, Mind Control, or the two-second cooldown, display the button but put it into an appropriately disabled state when the current player is Cole.
 
-destroyCar() and Player 1’s existing wreck lifecycle should retain their intended effects.
+The button should clearly communicate vehicle switching without introducing a large label into the race HUD. Use a compact vehicle/swap icon consistent with Seren’s existing line-icon visual language.
 
-It is correct that Player 1’s own speed falls to zero.
+Give it a localized accessible label such as hudColeSwitch, translated in English and French.
 
-It is correct that Player 1 does not accumulate race distance while stopped.
+Show meaningful two-second cooldown feedback directly on the button. A small numeric countdown or a simple fill/ring is appropriate as long as it remains legible at phone size and in local split-screen. The button should visibly become ready at zero.
 
-It is incorrect for this to stop another racer’s distance.
+Use actual disabled/ARIA state where appropriate rather than making a control merely look disabled.
 
-Do not solve the issue by advancing G.meters while Player 1 is destroyed. G.meters belongs to Player 1 and should continue meaning Player 1’s actual distance.
+Extend all CSS selectors that currently style only #ultPct,#itemBox so Cole’s switch receives the same dimensions, glass styling, focus treatment, active press treatment, high-contrast treatment, reduced-motion behavior, and general visual quality.
 
-Finish-line behavior
+Dynamic HUD geometry
 
-A rival must be able to cross the finish line while Player 1 is wrecked and stationary.
+The current HUD is designed around two 56×56 action squares. Cole introduces a third.
 
-checkFinish() already runs during the race. After this fix it must receive a continuously advancing rival distance from metersOf(R).
+Do not simply add another square and allow it to overlap the shield meter, edge markers, standings, or narrow/mobile layouts.
 
-Verify this explicitly.
+Update the HUD’s action-width calculations so the amount of horizontal space reserved is based on how many action controls are actually visible.
 
-Example scenario:
+This applies to the DOM HUD and the local split-screen canvas HUD.
 
-* Player 1 is destroyed.
-* G.speed === 0.
-* a bot is still alive and approaching G.finishAt.
-* the bot continues accumulating distance.
-* it crosses G.finishAt.
-* R.finished receives the correct placing immediately.
-* the result is added to G.results.
-* Player 1 may still be in the middle of the wreck timer.
+hudShieldWidth() currently reserves exactly two HUD_ACT squares plus one gap. Generalize that assumption.
 
-Do not defer AI finishes until Player 1 respawns.
+hudZones() currently derives actsLeft around a two-square action group. Generalize it so off-screen racer markers still know the real occupied rectangle.
 
-Finish rollout / parking
+The corresponding CSS calculation for #shieldHud also reserves space for the existing two actions. Make that layout understand Cole’s third action rather than hard-coding another unexplained pixel value.
 
-Preserve the current finish parking system.
+For non-Cole racers, the HUD should remain visually identical to the current two-action layout.
 
-R.parkM is already expressed as an absolute road-distance concept and should remain consistent with the new canonical racer distance.
+If items or ultimates are disabled by custom rules, reclaim that empty action space just as the existing HUD already attempts to do.
 
-Decide carefully whether a finished racer’s canonical distance should follow its rollout or whether parkM remains the separate post-finish presentation distance. Either is acceptable if the current visible behavior and race-order semantics are preserved.
+Local multiplayer HUD and controls
 
-Do not break:
+Cole must be a complete local-play racer, not a feature that only works for player one.
 
-* finishing order;
-* the staggered parking staircase;
-* parkLaneFor();
-* parkMeters();
-* the current easing;
-* already-finished cars remaining correctly placed while other cars continue racing.
+drawSeatHud()/hudActions(o) currently paints the local action controls directly into each split-screen canvas column. Extend that renderer so a human Cole seat gets the same switch indicator and cooldown presentation as the DOM HUD.
 
-metersOf()
+Do not draw Cole’s switch in the other players’ columns.
 
-After the migration, metersOf(R) should return the rival’s canonical longitudinal distance rather than reverse-engineering it from R.y.
+Because local players use controllers rather than clicking DOM controls, add a real controller input for Cole’s transformation that routes through the same switchColeForm(who) mechanic.
 
-Keep metersOf() as the central accessor if that reduces churn. A large amount of the game already correctly asks metersOf() instead of reading longitudinal state directly.
+Use an otherwise-unused controller button such as L1 if the current controller constants confirm it is free. Do not steal the ultimate combination, R2/Circle item control, steering, boost, or Start/pause mappings.
 
-That means AI, HUD standings, targeting, race order, finish detection, and mechanics can benefit from the architectural fix without each subsystem inventing its own workaround.
+Add a keyboard mapping for player one as well; Q is a sensible free binding in the current keyboard control layout. It should call the exact same switching mechanic as the HUD button.
 
-Avoid scattering direct R.m reads everywhere unless there is a strong reason.
+Do not allow separate keyboard, controller, and HUD implementations of the cooldown. They are three input routes into one mechanic.
 
-Audit every direct rival y mutation
+Pointer/touch users must be able to transform exclusively by tapping the new on-screen button, with no gesture conflict against existing canvas steering/boost controls.
 
-This part is important.
+Bot Cole behavior
 
-Search the entire repository for code that directly modifies a racer’s y.
+Cole must work when controlled by the AI.
 
-Classify each occurrence as either:
+Because motorcycle form has a pure speed advantage and no downside has been specified, do not create a complicated false strategic choice for the bot.
 
-Camera projection only
-The racer’s world distance did not change. Only its location relative to Player 1’s camera changed.
+Have an AI-controlled Cole switch into motorcycle form shortly after the race begins once controls are available, using the same switchColeForm(R) function a human racer uses. It may remain in motorcycle form for the rest of the race unless a future balance rule creates a reason to change back.
 
-or:
+Do not directly write R.coleBike = true from AI code. The AI must go through the same mechanic and cooldown path.
 
-Actual longitudinal movement / teleport
-The racer’s real position on the track changed and therefore its canonical distance must change.
+A local human Cole remains entirely controlled by that person and should never be auto-transformed by bot logic.
 
-Pay special attention to:
+Seven-racer field
 
-* updateRival()
-* wreck handling
-* finish rollout
-* rebaseWorld()
-* teleportRacerToPose()
-* contact/rear-end displacement
-* any code that assigns who.y
-* Neela’s position exchange
+Because Cole is the seventh racer, update the actual field from six to seven.
 
-Do not leave hidden code paths that mutate R.y without keeping canonical distance coherent.
+Set FIELD_SIZE = 7.
 
-A useful invariant is:
+With seven total CAR_IDS and a full standard field, all seven named racers can once again be present in the same full race rather than one roster entry being silently excluded.
 
-For every active rival, when using an unclamped camera projection,
+Update spawnRivals() to create up to six rivals around player one.
 
-R.y ≈ playerY - (metersOf(R) - G.meters) / 0.075
+The current starting arrangement provides five rival positions because it was written for six cars total. Extend the starting grid cleanly. Preserve the existing first row containing player one plus the two other lanes, preserve the three-car second row, and place the seventh racer in a safe third-row position such as the center lane far enough behind the second row that measured hitboxes cannot overlap at race start.
 
-Any real longitudinal position change should update canonical metres first and then project to y.
+Do not let the larger Cole models overlap a neighboring starting car merely because the old grid used carH derived from the generic box. Verify the seven-car start with the actual maximum racer dimensions.
 
-Neela and world rebasing
+Update local race bot counts. With seven racers total, two local players should have five bots, three local players should have four bots, and four local players should have three bots when the field is filled.
 
-Be particularly careful with Neela.
+Update English/French text that genuinely describes the active race field: “Six cars” becomes “Seven cars,” and local-player descriptions receive the new bot counts.
 
-Current architecture deliberately supports racerWorldPose(), teleportRacerToPose(), and rebaseWorld() so Neela can exchange actual world positions even though Player 1 is the camera anchor.
+Update custom-race bot limits so “Fill” means enough bots to reach seven total racers.
 
-Keep that behavior.
+Do not alter the maximum number of local human players; LOCAL_MAX remains four.
 
-racerWorldPose(R) should naturally return the new canonical rival distance.
+Seven-place standings and finish behavior
 
-Teleporting a rival to a pose must set its canonical longitudinal distance as well as its lane/x and camera projection.
+The race HUD currently contains explicit standings rows through sixth place. Add a seventh row and corresponding seventh-place localized label.
 
-When Player 1 is teleported through rebaseWorld():
+Add the necessary posRow7, pos7, and pos7n DOM elements following the exact current structure.
 
-* G.meters changes;
-* scenery/hazards/world-space presentation shifts appropriately;
-* unrelated rivals’ canonical distances must NOT change;
-* their camera-relative y values must change only because the camera moved.
+Add place7, with English 7th and the appropriate French 7e.
 
-Do not double-apply the rebase to both R.m and R.y.
+Audit canvas/local standings rendering so seventh place is visible and does not collide with the rest of the HUD in narrow split-screen views.
 
-The existing documented invariant that unrelated racers stay at the same world location through a Player 1 rebase must remain true.
+PLACE_COLS can continue using plain white for places after bronze; there is no need for a special seventh-place color.
 
-AI behavior
+Audit finish parking. The existing PARK_BASE/PARK_STEP comments and tuning were specifically designed around a six-car field. Seven finishers must all roll beyond the line into distinct safe resting positions while preserving finishing order and remaining visible.
 
-Bots must continue thinking and driving while off-screen and while Player 1 is wrecked.
+Retune or derive the parking geometry as necessary instead of assuming constants tuned for sixth place automatically work for seventh.
 
-Difficulty must continue affecting decision quality only. Do not add rubber-banding or a special wreck bonus.
+Selection screen and garage
 
-Existing values such as:
+Add a seventh Cole option to the car-selection markup with id carCole, a normal car-cv, data-car="cole", and the localized Cole name.
 
-* R.abs
-* boost state
-* ultimate state
-* slow state
-* shunt state
-* AI think timers
+Add the corresponding selection listener in js/main.js.
 
-should continue working normally.
+The garage already derives car cards from CAR_IDS; preserve that architecture so Cole appears automatically once properly registered.
 
-Distance-based AI decisions should use canonical race distance through metersOf().
+The selected-car hero should display v_cole.PNG, not the motorcycle, because Cole’s normal/default form is the car.
 
-Do not make bots chase Player 1 simply because the camera belongs to Player 1.
+The garage/selection description should explain Cole’s transformation mechanic and speed differences clearly.
 
-They are racing the whole field.
+The current .car-grid was visually balanced around six entries in three columns. Seven entries must look intentional. Adjust the responsive grid so Cole is not an awkward lone card glued to one side. A responsive auto-fit layout, a balanced four-plus-three desktop arrangement, or centered final row is acceptable as long as it preserves Seren’s current understated visual design.
 
-Local multiplayer
+Do not create a second separate motorcycle selection card. Cole is one racer with two race forms.
 
-This fix must also work in Local mode.
+Localization
 
-Player 1 being destroyed must not suspend P2, P3, P4, or any bot.
+Add complete English and French strings for Cole.
 
-Likewise, if a human-controlled rival is far ahead of Player 1, that racer must continue making independent race progress even if Player 1’s car is stationary.
+cole should display “Cole.”
 
-The canonical-distance solution should apply equally to bot rivals and human-controlled rivals because they share updateRival().
+coleUlt should explain the entire distinguishing mechanic clearly enough that the player understands it before selecting him: Cole can switch between car and motorcycle with a two-second cooldown; the motorcycle has 1.5× base pace, 1.8× boost instead of 1.5×, and 2.3× ultimate instead of 2.0×; his ultimate breaks tumbleweeds and meteors while puddles still affect him.
 
-Do not create separate physics for bots and local humans.
+Add the switch-button accessibility label and any cooldown/form strings actually shown in the interface.
 
-What NOT to do
+Update existing strings that explicitly say there are six cars in a race.
 
-Do not fix this by merely increasing 30000 to a larger number.
+Update obscuredInfo so the shared white transformation flash is no longer described as only belonging to Neela.
 
-Do not remove the clamp and leave R.y as authoritative race state.
+Keep the English and French interfaces feature-equivalent.
 
-Do not make G.meters advance while the player is wrecked.
+Maintain the shared architecture
 
-Do not add a special if (G.dead) distance increment.
+Do not special-case Cole independently in player-only rendering or collision code.
 
-Do not calculate standings differently only while the player is destroyed.
+The same Cole mechanics must work for "me", bots, and local-human rival objects.
 
-Do not teleport distant racers forward after the player respawns.
+Where both player and rival pace currently contain almost identical logic, prefer introducing a small shared form-aware multiplier/helper rather than adding one Cole branch to player speed and another slightly different Cole branch to rival speed.
 
-Do not implement rubber-banding.
+The same principle applies to transformation eligibility.
 
-Do not pause AI until racers return to the visible screen.
+Keep racerModel() authoritative for visual body and collision body.
 
-Do not create a second simplified simulation for off-screen racers.
+Keep drawSpriteExhaust() authoritative for Cole’s boost flame.
 
-There should be one race simulation. Visibility is presentation only.
+Keep clearsSolidHazards() authoritative for Cole’s ultimate hazard privilege.
 
-Regression tests to add
+Keep startWhiteout() and startMorph() authoritative for Cole’s transformation presentation.
 
-Add deterministic regression coverage for this bug, preferably to tools/progression-check.mjs or another existing simulation-focused suite.
+Keep switchColeForm() authoritative for every route that requests the transformation.
 
-At minimum cover all of these cases:
+Files that should be audited
 
-1. Put a live rival at or beyond the old -30000 far-ahead condition.
-2. Give it a known R.abs, such as BASE_SPEED.
-3. Destroy Player 1 or otherwise put Player 1 into the real wreck state with zero movement.
-4. Run one simulated second.
-5. Assert that the rival gained approximately 31.5 metres at tier 0:
-    BASE_SPEED * 1s * 0.075.
-6. Assert that Player 1 gained essentially zero metres during the stationary wreck interval.
-7. Put a rival shortly before G.finishAt, destroy Player 1, simulate enough time for the rival to cross, and assert that the rival receives a finishing place while G.dead > 0.
-8. Verify monotonic rival progress through the entire Player 1 wreck/respawn cycle: no freeze, backwards jump, teleport, or catch-up correction.
-9. Verify a rival that is itself wrecked does NOT gain distance during its own wreck.
-10. Verify rebaseWorld() / Neela position exchange keeps unrelated racers’ canonical world distances unchanged.
-11. Verify standings obtained through placeOf() remain correct for very large separations.
-12. Verify Local mode human rivals continue progressing while Player 1 is wrecked.
+At minimum, inspect and modify the relevant portions of js/data.js, js/runtime.js, js/mechanics.js, js/race.js, js/render.js, js/hud.js, js/input.js, js/ai.js, js/ui.js, js/main.js, js/i18n.js, index.html, and css/app.css.
 
-Where practical, construct the regression so the old implementation fails for the precise reason described above rather than merely checking a new field exists.
+Also update the repository’s test/check scripts rather than weakening or deleting tests to make the change pass.
 
-Documentation
+The current checks contain several deliberate six-car assumptions and explicit existing-car lists. In particular, audit tools/check.mjs, tools/menu-check.mjs, tools/hitbox-check.mjs, tools/sprite-check.mjs, tools/progression-check.mjs, tools/ultimate-check.mjs, tools/shield-check.mjs, and their fixtures.
 
-Update docs/ARCHITECTURE.md.
+Do not change checks about unrelated quantities merely because they happen to contain the word “six.”
 
-The current Where a racer actually is section says that rival position is fundamentally a screen offset converted by metersOf().
+Testing requirements
 
-That will no longer be accurate.
+Update the existing tests and add Cole-specific coverage. Do not treat “the game loads” as sufficient validation.
 
-Document the new invariant clearly:
+The implementation is complete only when all of the following are true:
 
-* every racer has canonical longitudinal race distance;
-* Player 1’s canonical value is G.meters;
-* rivals carry their own canonical value;
-* R.y is a camera-space projection of the difference;
-* simulation progress exists independently of visibility and independently of Player 1’s movement;
-* player/world rebasing changes the camera/world presentation without changing unrelated racers’ absolute track positions.
+* CAR_IDS contains seven racers with Cole in the seventh slot, and FIELD_SIZE is seven.
+* A full standard race contains seven actual racers.
+* Local two-player races fill to seven with five bots; three-player races use four bots; four-player races use three bots.
+* The seven-car starting grid contains no initial hitbox overlap.
+* Cole appears in car selection, random selection, garage/reference UI, bot rosters, standings, results, and local play.
+* Cole begins each race in v_cole.PNG.
+* A successful switch changes him to vtm_cole.PNG, and another successful switch changes him back.
+* The active sprite, racerDims(), carHit(), and exhaust model all change together through racerModel().
+* Both Cole PNGs have independently measured spriteBounds.
+* Both Cole forms have independently measured, non-generic hitShape polygons.
+* Neither Cole hitbox equals CAR_HIT_RECT, Flann’s shape, Neela’s shape, or the other Cole form’s shape.
+* Collision tests prove transparent corners do not collide and representative solid points do.
+* Cole’s car and motorcycle remain visually large enough to belong beside Flann and Neela without distorting either image.
+* The motorcycle remains convincingly narrower than a car while not looking tiny.
+* Both Cole forms use their own measured tailpipe emitter positions.
+* Boost fire originates from the physical pipe position under multiple sizes and positive/negative tilt.
+* Cole uses normal fire-style exhaust rather than Neela’s energy exhaust.
+* Cole never receives Flann’s body-fire overlay.
+* Switching plays the shared Neela-style whiteout and morph flash in both directions.
+* Switching does not teleport Cole, alter his lane, change race distance, reset boost, or cancel an ultimate.
+* The cooldown is exactly two simulation seconds.
+* The cooldown cannot be bypassed by rapidly alternating HUD, keyboard, or controller input.
+* Pausing freezes the cooldown.
+* Wrecked, finished, countdown-state, or control-locked Cole cannot transform.
+* Cole’s chosen vehicle form survives wreck/respawn.
+* Non-Cole racers never display or respond to Cole’s transform control.
+* Car-form Cole uses ordinary base pace, 1.5× boost, and 2.0× ultimate.
+* Motorcycle Cole uses 1.5× base pace.
+* Motorcycle Cole uses 1.8× boost.
+* Motorcycle Cole uses 2.3× ultimate.
+* Motorcycle base, boost, and ultimate multipliers stack according to the game’s existing multiplier semantics.
+* Switching during boost immediately changes the target to the correct form-aware boost calculation without restarting boost.
+* Switching during an ultimate immediately changes between the 2.0× and 2.3× ultimate amplifier without restarting or extending the 15-second ultimate.
+* Global BOOST_SPEED remains 1.5; global ULT_SPEED remains 2.0; other racers are unchanged.
+* An ulting Cole destroys tumbleweeds.
+* An ulting Cole survives/destroys meteors through the existing solid-hazard privilege.
+* An ulting Cole is still affected normally by puddles.
+* Cole’s ultimate does not make him Invulnerable.
+* Cole’s ultimate does not turn racer contact into a Flann-style kill.
+* The Cole switch appears directly beside the item holder for player-one Cole.
+* The Cole switch still exists when Mystery Bubble rewards or Bubble rules are disabled.
+* The Cole switch still exists when Ultimates are disabled.
+* The switch has correct disabled/cooldown/accessibility states.
+* A local-human Cole gets equivalent switch feedback and can transform from the controller.
+* Whiteout in local play affects only the transforming player’s viewport.
+* AI Cole uses the shared switch mechanic and can enter motorcycle form without directly mutating state.
+* The action HUD correctly accommodates three buttons without colliding with shield meters, edge markers, standings, or the road.
+* Non-Cole HUD layout remains visually unchanged.
+* Seventh place appears correctly in DOM HUD, local HUD, results, and finish ordering.
+* All seven finishers receive distinct safe parking positions after the flag.
+* English and French strings are complete and no untranslated key leaks into the interface.
+* Existing Flann, Neela, Lolanthe, Verdant, Rhosyn, and Saffron mechanics still pass their previous behavioral tests.
+* Existing Neela transformation/swap behavior is unchanged; Cole only reuses the generic transformation visual helpers.
+* node tools/check.mjs, node tools/menu-check.mjs, node tools/hitbox-check.mjs, node tools/sprite-check.mjs, node tools/progression-check.mjs, node tools/ultimate-check.mjs, and node tools/shield-check.mjs all pass after their legitimate seven-racer expectations are updated.
 
-Update docs/TUNING.md if its explanation of metre/pixel conversion becomes inaccurate.
+Final quality bar
 
-Preserve existing behavior
+Cole must feel native to Seren rather than bolted on.
 
-Do not retune the game as part of this fix.
+The car and motorcycle should share one racer identity while behaving as two genuinely different physical models. The transformation should look exactly at home beside Neela’s existing morph language. The motorcycle’s speed advantage must be mechanically identical whether Cole is player one, a local human, or a bot. Collision geometry must follow what is actually visible. Boost flames must come from the actual pipe. The HUD must remain clean at every supported screen size.
 
-Keep unchanged unless technically required:
+Do not solve integration problems by weakening collision precision, using generic rectangles, shrinking Cole until he fits, disabling a feature in local play, hard-coding player-one exceptions, or deleting existing regression coverage.
 
-* BASE_SPEED
-* MULT_STEP
-* MAX_MULT
-* DEAD_TIME
-* boost speed/drain/refill
-* ultimate speed/duration
-* difficulty values
-* race length
-* track timing
-* finish distance
-* hazard behavior
-* six-car field
-* AI personalities
-* collision geometry
-* parking positions
-
-This is a simulation correctness fix, not a balance pass.
-
-Validation
-
-Run the existing relevant regression suites after implementing the change, especially:
-
-node tools/progression-check.mjs
-
-node tools/ultimate-check.mjs
-
-node tools/hitbox-check.mjs
-
-node tools/check.mjs
-
-Also run the other existing Seren checks if the changes touch their domains.
-
-Pay particular attention to Neela’s swap/rebase tests and Rhosyn’s canonical-position tests because both rely heavily on the distinction between world position and presentation.
-
-Finally, manually or deterministically reproduce the original scenario:
-
-* create a racer more than roughly 2.25 km ahead of Player 1;
-* make sure it is actively driving;
-* destroy Player 1;
-* observe Player 1 stop;
-* verify the distant racer continues accumulating metres every simulation frame;
-* verify standings continue changing;
-* verify it can cross the finish line during Player 1’s wreck;
-* verify Player 1 respawning does not cause any rival position correction.
-
-Definition of done
-
-The fix is complete when the race simulation no longer depends on Player 1 moving in order for another racer to make forward progress.
-
-A useful final invariant is:
-
-A racer’s race distance is determined by that racer’s own movement, not by whether that racer is visible and not by whether Player 1’s camera is moving.
-
-Player destruction should affect Player 1.
-
-Rival destruction should affect that rival.
-
-Nothing about either event should freeze the rest of the race.
+The finished implementation should leave the architecture cleaner and more data-driven than it found it while making Cole a complete seventh Seren racer.
