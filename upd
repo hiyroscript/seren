@@ -1,1530 +1,762 @@
-Implement Dhaval as the eighth fully playable racer in Seren, using the existing root-level asset:
-
-v_dhaval.PNG
-
-Do not treat this as a small cosmetic addition. Dhaval must be integrated everywhere the existing seven racers are integrated: car data, measured sprite geometry, collision geometry, race population, menus, garage/reference pages, localization, HUD/rankings, AI, ultimate mechanics, Conditions, hazards, split-screen rendering, lifecycle/reset logic, and automated QA.
-
-Preserve the current architecture and conventions. Do not build a parallel system for Dhaval.
+You are modifying the existing SEREN repository. Work against the current codebase and preserve its architecture, conventions, visual style, local-multiplayer behavior, AI parity, accessibility, and test discipline.
 
-1. Existing architecture to preserve
-
-Seren is a build-free Canvas 2D game using ordered classic scripts:
-
-core → i18n → data → audio → runtime → ui → settings → local → ai → mechanics → race → render → hud → input → main
-
-Relevant ownership:
-
-* js/data.js
-    * CARS
-    * CAR_IDS
-    * CONDITIONS
-    * FIELD_SIZE
-    * tuning constants
-* js/runtime.js
-    * shared race state
-    * carDims()
-    * racerDims()
-    * racerModel()
-    * road and split-screen geometry
-* js/ui.js
-    * car-select UI
-    * garage/reference UI
-* js/ai.js
-    * sensing, decision-making, ultimate valuation
-* js/mechanics.js
-    * car predicates
-    * Conditions
-    * ultimate lifecycle
-    * contact
-    * hazards
-    * debuff application
-* js/race.js
-    * initialization/reset
-    * rival creation/update
-    * frame ordering
-    * rival hazard consequences
-* js/render.js
-    * sprite cache
-    * cars
-    * view-specific effects
-* js/hud.js
-    * Condition badges/icons
-    * local-play HUD
-    * standings/race information
-* js/i18n.js
-    * English and French strings
-* index.html
-    * car-select buttons
-    * DOM standings
-* tools/*.mjs
-    * invariant and regression checks
-
-Follow existing patterns instead of scattering Dhaval-specific conditionals throughout unrelated files.
-
-⸻
+Implement Aureolin as the game’s ninth racer using the assets already present at the repository root:
 
-2. Make Dhaval racer number eight
+v_aureolin.PNG — normal Aureolin car
+vtm_aureolin.PNG — armed Aureolin car
+vp_aureolinb.PNG — Aureolin turret bullet projectile
+vp_aureolinr.PNG — Aureolin rocket projectile
 
-The current roster is:
+This is not a superficial roster addition. Aureolin has a persistent normal/armed vehicle transformation, a rapid-fire turret, a unique yellow weapon meter and overheat system, paired heat-seeking rockets during the ultimate, projectile interactions with the existing racers and hazards, AI behavior, local multiplayer support, mobile controls, precise sprite-derived collision geometry, and full automated QA coverage.
 
-1. Flann
-2. Neela
-3. Lolanthe
-4. Verdant
-5. Rhosyn
-6. Saffron
-7. Cole
+Do not implement Aureolin as player-one-only code. SEREN deliberately uses the same mechanics for "me", bots, and local human rivals. Aureolin must work identically whether controlled by player one, a local player, or a bot.
 
-Add:
+Preserve SEREN’s existing architecture
 
-8. Dhaval
+SEREN has no module/build system. It is a set of ordered global scripts, with the established load order documented in docs/ARCHITECTURE.md. Do not introduce a framework, package manager, bundler, module loader, or alternate game loop.
 
-Update the authoritative roster:
+Continue using SEREN’s existing "me" versus rival-object convention:
 
-CAR_IDS
+const o = who === "me" ? G : who;
 
-to contain dhaval.
+Use common mechanics functions for all driver types instead of writing separate player, bot, and local-player weapon implementations.
 
-Update:
+The current CARS definitions in js/data.js, racerModel() and racerDims() in js/runtime.js, carHit() in js/mechanics.js, and drawCar() / drawSpriteCar() in js/render.js are authoritative for a racer’s active visual model, dimensions, exhaust/anchor geometry, and collision body. Aureolin must enter this same pipeline.
 
-FIELD_SIZE
+Do not special-case Aureolin’s displayed size separately in the renderer. Measure the actual PNGs, define correct spriteBounds, raceScale/alternate-form scale, independent hit polygons, and weapon anchors in CARS.aureolin, then let the existing model/dimension/rendering machinery do the rest.
 
-from 7 to 8.
+The current field is eight racers. Aureolin expands it to nine. Update the real field-size infrastructure instead of merely adding a selection card.
 
-A normal full race must therefore contain eight racers total.
+Aureolin roster/model definition
 
-Expected bot counts when filling the grid:
+Add "aureolin" to CAR_IDS and change FIELD_SIZE from 8 to 9.
 
-* solo: player + 7 bots
-* local 2-player: 2 humans + 6 bots
-* local 3-player: 3 humans + 5 bots
-* local 4-player: 4 humans + 4 bots
+Create CARS.aureolin using v_aureolin.PNG. Its altForm must use vtm_aureolin.PNG.
 
-Search for every assumption that the field contains seven cars. Do not merely change FIELD_SIZE and assume everything else is dynamic.
+Aureolin’s alternate form is not tied to the ultimate. It is a permanent driver-selectable form in the same general category as Cole’s car/motorcycle choice. The driver can switch into or out of the armed form during an ordinary race, subject to the normal form-switch gate.
 
-Audit:
+Carefully inspect both PNGs instead of guessing their geometry.
 
-* rival creation
-* result boards
-* standings
-* finish parking
-* camera/framing after the finish
-* HUD height calculations
-* car-select UI
-* local-player setup
-* test fixtures
-* hard-coded array lengths
-* comments/documentation that describe seven racers
+For both v_aureolin.PNG and vtm_aureolin.PNG, determine the real source dimensions and measure the solid visible bounds from the source alpha data. Ignore transparent padding, very faint detached pixels, and purely decorative extremities when deciding the solid body bounds. Preserve the full source image when rendering, just as SEREN does for the existing sprite cars.
 
-The race must genuinely support all eight simultaneously.
+Create an independent hitShape for each form. Trace the actual solid vehicle body/wheels rather than copying CAR_HIT_RECT or another racer’s polygon. The armed form may have a different hull if its launchers/turret materially change the solid silhouette.
 
-⸻
+Mirrors, thin antennae, tiny barrel tips, detached glow pixels, and similar decorative extremities should not artificially enlarge the collision hull. Major solid launcher/body structures that genuinely occupy space should be represented.
 
-3. Add Dhaval to CARS using v_dhaval.PNG
+Choose the normal raceScale and armed-form scale from the measured artwork so both Aureolin forms look substantial enough to belong beside Flann, Neela, Lolanthe, Verdant, Rhosyn, Saffron, Cole, and Dhaval. The user specifically wants both versions of Aureolin to be large enough to look like legitimate full-size racers, not tiny sprites floating in a lane.
 
-Create a normal sprite-backed CARS.dhaval entry following the existing vehicle model contract.
+Keep the PNG aspect ratios perfectly uniform. Never stretch width and height independently.
 
-It should contain the appropriate equivalent of:
+Measure Aureolin’s actual tailpipe/exhaust point or points and configure them through the existing exhaust-anchor system if appropriate.
 
-dhaval: {
-  key: "dhaval",
-  style: "sprite",
-  sprite: "v_dhaval.PNG",
-  accent: ...,
-  raceScale: ...,
-  spriteBounds: [...],
-  exhaust: [...],
-  hitShape: [...],
-  flame: [...]
-}
+Armed-form transformation
 
-Do not copy another racer’s spriteBounds, dimensions, exhaust positions, or hitbox.
+Aureolin must be able to switch between:
 
-Measure the actual image
+normal car: v_aureolin.PNG
+armed car: vtm_aureolin.PNG
 
-Inspect v_dhaval.PNG itself and measure:
+Use the same design philosophy as Cole’s existing switchColeForm() system. Switching must preserve canonical world position, lane, tilt, boost state, ultimate state, ultimate timer, shield, weapon heat, distance, and all unrelated race state.
 
-* source image dimensions
-* actual visible/solid body bounds
-* transparent padding
-* front tip/nose
-* front corners
-* wheel/fender extents
-* waist
-* rear shoulders
-* rear body
-* exhaust outlet(s), if the artwork contains visible exhausts
-* decorative protrusions that should not count as solid collision geometry
+Use the existing whiteout/body morph transition so the sprite does not snap visibly from one form to the other.
 
-Store the resulting bounds as normalized source coordinates, exactly like the other sprite cars.
+Treat “just like Cole” as also inheriting the existing approximately two-second form-switch cooldown and the same safety gates: no switch while wrecked, finished, paused/counting down, or Mind Controlled.
 
-The full PNG must continue to be rendered. spriteBounds should be used for fitting and centering, not for destructive cropping.
+Do not reset Aureolin to normal form after an ordinary wreck/respawn if Cole currently preserves its selected form through that lifecycle. Match Cole’s persistence rules. A new race should begin in Aureolin’s normal form.
 
-Dhaval must look large enough on the road
+Generalize the existing form-switch input/UI path rather than building a completely unrelated second transformation system.
 
-The current game deliberately uses per-car raceScale values because some source artwork is narrower than others.
+A clean approach is to add an authoritative generic vehicle-form action such as switchVehicleForm(who) that dispatches to Cole or Aureolin while retaining switchColeForm() as a compatibility wrapper for Cole-specific code/tests. Q, L1, and the HUD transformation button should call the generic action.
 
-Dhaval must not look tiny or toy-like beside the current roster.
+Aureolin must never be able to use either weapon while in normal form. Switching out of armed form immediately prevents additional firing, though projectiles already in flight continue under their normal lifetime/range rules.
 
-Measure its visible body and choose a uniform raceScale only if the source artwork needs one.
+Weapon anchors must come from the artwork
 
-The goal is:
+The projectiles must visibly originate from the weapons on vtm_aureolin.PNG.
 
-* it clearly belongs to the same racing class visually
-* its solid body has comparable lane presence to the other cars
-* its proportions remain unchanged
-* no independent X/Y stretching
-* its collision body enlarges by exactly the same factor as the rendered vehicle
+Do not spawn bullets from the car center.
 
-Do not choose an arbitrary oversized number just to make it look large. Base it on the measured visible body against the shared road car box and compare it visually with the existing seven cars.
+Inspect the armed sprite and measure the exact muzzle position of the hood turret. Store that anchor in normalized source-image coordinates alongside the armed model.
 
-The menu/showroom preview should continue to use the existing preview sizing behavior rather than inheriting road-only raceScale in a way that breaks menu composition.
+Likewise measure the actual launch point of the left rocket launcher/bazooka and the actual launch point of the right rocket launcher/bazooka.
 
-⸻
+Add a reusable model-anchor-to-world helper if necessary, analogous to how spriteFrame(), spriteAnchor(), and racerTailPoint() currently preserve exhaust placement through sprite bounds, scale, tilt, and transforms.
 
-4. Give Dhaval a precise measured hitbox
+The helper should take the racer’s current racerModel(), racerDims(), source-space normalized anchor, world position, and tilt and return the correct transformed world point.
 
-Dhaval needs its own traced polygonal hitShape.
+Both turret rounds and rockets must remain correctly attached when Aureolin is tilted during a lane change and at every supported display/local-split size.
 
-This is a hard requirement.
+The two rockets must visibly emerge separately from the left and right launcher mouths. They must never appear to spawn on top of each other at the center of the car.
 
-Do not use:
+Aureolin turret bullets
 
-* CAR_HIT_RECT
-* Flann’s polygon
-* Neela’s polygon
-* another racer’s polygon
-* a loose rectangle around the PNG
-* transparent image bounds as collision geometry
+Only armed Aureolin may fire vp_aureolinb.PNG.
 
-Trace the actual solid body silhouette of v_dhaval.PNG.
+The hood turret is a very rapid minigun-style weapon. Implement the firing rate with a frame-rate-independent accumulator/cooldown rather than “one bullet per frame.”
 
-The polygon should closely follow meaningful solid vehicle structure while excluding:
+Use a centrally defined tuning constant for the rate. A starting value around 15 rounds per second is appropriate for the requested rapid minigun feel, but keep it in js/data.js so it can be tuned without editing mechanics.
 
-* transparent corners
-* anti-aliased fringe
-* detached effects
-* decorative trailing pieces that a player would not reasonably expect to collide
-* flames/exhaust
-* purely ornamental extensions if they do not visually read as body
+Every bullet must spawn from the measured turret muzzle and initially travel forward along the armed car’s actual orientation/tilt. Bullets are not homing.
 
-Include meaningful solid parts such as bodywork, wheels/fenders, nose, and rear body where appropriate.
+Render the actual vp_aureolinb.PNG asset. Preserve its aspect ratio and orient the projectile along its travel direction. Do not replace it with a generic rectangle or Canvas-drawn bullet.
 
-The same active model and dimensions must drive both rendering and collision, preserving Seren’s existing invariant:
+Give each bullet an explicit finite maximum travel distance. Store its spawn/travel state so range is deterministic and independent of frame rate or scrolling.
 
-the car the player sees is the body the collision system uses.
+The normal bullet range should be “decently far” but not infinite. Define the range in a scale-stable unit such as car lengths rather than one hard-coded desktop pixel distance. An initial baseline of roughly eight car lengths is appropriate.
 
-The hitbox must:
+During Aureolin’s ultimate, bullets receive an exact 2.00× range multiplier. Implement this as an explicit tuning value such as AUREOLIN_ULT_BULLET_RANGE_MULT = 2.00, meaning ultimate bullets travel twice Aureolin’s ordinary bullet range.
 
-* scale with Dhaval’s raceScale
-* rotate with vehicle tilt
-* work before the PNG has finished loading
-* work identically for player, bot, and local human
-* remain independent of DPR/camera/view count
-* be deterministic
+The bullet’s allowed range should be decided when it is fired so a projectile already in flight does not unexpectedly gain/lose range if the ultimate begins or ends afterward.
 
-Extend tools/hitbox-check.mjs with Dhaval-specific tests proving this.
+Use swept collision detection for fast bullets so a projectile cannot tunnel through a thin racer or hazard between frames.
 
-⸻
+Bullet slowdown and stacking
 
-5. Dhaval’s ultimate — core concept
+When an Aureolin bullet successfully hits an ordinary reachable racer, consume that projectile and apply one -0.10× speed multiplier stack to the victim.
 
-Dhaval keeps Seren’s standard ultimate lifecycle:
+Every bullet stacks.
 
-* same normal ultimate charge time
-* same standard ultimate duration
-* same shared ultimate speed behavior
-* same meter lifecycle
-* same rules around wrecking, finishing, disabling ultimates, etc.
+Do not map this directly to SEREN’s existing slowT, because the normal Slow condition currently represents the fixed tumbleweed slowdown and cannot express independent -0.10× stacks.
 
-Do not introduce a separate ultimate clock.
+Give each racer independent Aureolin bullet-slow state. The state must exist on both G and every rival object so player one, bots, and local players behave identically.
 
-Use the normal startUlt(), tickUlt(), and endUlt() architecture.
+Implement each live bullet stack as one exact 0.10 reduction. The resulting Aureolin projectile factor should be:
 
-Create centralized predicates such as:
+max(0, 1 - 0.10 * activeStackCount)
 
-dhavalCar(who)
-dhavalUltActive(who)
+Apply this factor through the authoritative racerPace() calculation so it composes correctly with base speed, speed tiers, ordinary Slow, boost, ultimate speed, Cole’s form modifiers, boost-can effects, and rear-end shove effects.
 
-Do not spread raw checks such as:
+Do not let enough stacks create negative movement speed.
 
-o.car === "dhaval"
+The requirement specifies stacking but not an explicit stack lifetime. Do not make bullet slowdown permanent for the rest of a race. Put the duration in one clearly named tuning constant in js/data.js; use a short combat-readable default around 1.5 seconds per independently expiring stack unless an existing game cadence gives a stronger reason for a nearby value.
 
-through unrelated systems.
+Each bullet refreshes/adds its own stack independently rather than resetting one global timer. For example, three bullets in quick succession mean three simultaneous -0.10× stacks, and each expires according to its own lifetime.
 
-Dhaval’s special power is a proximity-based Obscurity aura.
+Treat this as a debuff for SEREN’s condition/cleanse architecture. The Slowed condition indicator should be present whenever either normal slowT or at least one Aureolin bullet stack is active.
 
-While Dhaval’s ultimate is active, nearby eligible opposing racers become Obscured by Dhaval.
+clearDebuffs() and appropriate cleanse mechanics must remove the Aureolin bullet stacks as well.
 
-Dhaval does not obscure itself.
+A wreck/new life must never retain bullet-slow stacks from the previous life.
 
-The mechanic must work identically whether Dhaval is:
+Yellow turret heat/overheat meter
 
-* player one
-* a bot
-* a local multiplayer human
+Aureolin gets a unique weapon-energy/heat meter in addition to the existing red boost-charge meter.
 
-Likewise, targets may be any of those.
+On the main single-player HUD, add one yellow horizontal bar directly below the existing red #boostWrap bar inside the foot meter area.
 
-⸻
+This yellow bar appears only when the current racer is Aureolin. It must not appear for the other eight racers.
 
-6. Dhaval proximity range
+In local split-screen, the Canvas HUD must draw the equivalent yellow bar for whichever seat is driving Aureolin. A non-Aureolin local player’s column must not gain an empty second bar.
 
-Use a world/race-distance-based range, not a raw screen-pixel rectangle.
+The yellow bar represents available firing capacity, with 1.0/full meaning the turret is cool/fully available and 0.0 meaning it has completely overheated.
 
-The mechanic must behave consistently:
+Outside the ultimate, every fired minigun bullet drains this meter. Use deterministic per-shot or equivalent frame-rate-independent drain so changing frame rate cannot change how many bullets a full meter produces.
 
-* portrait vs landscape
-* desktop vs phone
-* one viewport vs four split-screen columns
-* different camera offsets
+Choose the drain from centrally defined tuning constants. A good starting target is roughly four seconds of uninterrupted minigun fire from full to empty at the selected fire rate.
 
-Follow the same architectural principle used for Lolanthe’s proximity aura.
+When the driver is not firing, the meter recharges toward 1.0. Put recharge rate in a central tuning constant; a roughly three-to-four-second recharge from empty to full is an appropriate initial target.
 
-Define one named tuning constant, for example:
+The important lockout rule is exact: when heat reaches 0, set an overheated latch. Aureolin cannot fire any more turret bullets until the yellow meter has recharged all the way back to 1.0.
 
-DHAVAL_AURA_LENGTHS
+Do not allow firing again at 5%, 20%, 50%, etc. after an overheat. The entire meter must refill.
 
-in data.js.
+Once it reaches full, clear the overheat latch and firing becomes legal again.
 
-A sensible starting point is approximately four car lengths, comparable to Lolanthe’s nearby-racer interaction, unless playtesting of the existing road scale indicates that a slightly different radius reads better.
+If the player voluntarily releases fire before reaching zero, the meter may recharge normally without triggering the full-recharge lockout.
 
-Keep the value centralized.
+The yellow HUD meter should communicate overheat clearly while remaining consistent with SEREN’s restrained HUD. For example, keep its canonical fill yellow, but use a muted/locked presentation and accessibility label when overheated rather than introducing an unrelated flashy UI style.
 
-Process the aura from one settled field state per frame, analogous to lolantheAuras(), after racers have moved rather than producing order-dependent results while individual rivals are still updating.
+Expose it as an accessible meter with a translated label and correct aria-valuemin, aria-valuemax, and aria-valuenow.
 
-⸻
+Refactor hudMeters(o) as needed. It currently assumes the foot tray exists only for the normal boost bar. The meter tray must now support the red boost bar, Aureolin’s yellow weapon bar, or both. A custom race with normal boost disabled must still show Aureolin’s yellow weapon meter because the weapon system is not the ordinary boost mechanic.
 
-7. Do not confuse Dhaval Obscurity with puddle water state
+Update HUD geometry and edge-marker calculations so the extra bar never overlaps the shield HUD, action buttons, conditions, standings, safe-area insets, or narrow split-screen columns.
 
-Seren already has an obscured Condition associated with the existing water/blind effect.
+Ultimate interaction with the turret meter
 
-Do not overwrite that state or force Dhaval to share the puddle’s internal timer and spray points.
+When Aureolin’s ultimate starts, immediately set its yellow weapon meter to 100% and clear an active overheat lock.
 
-Dhaval needs independent gameplay state, for example:
+During the ultimate, firing turret bullets consumes zero yellow meter.
 
-dhavalObscureT
-dhavalObscureLevel
+The bar therefore remains full for the entire ultimate regardless of how many bullets are fired.
 
-and any deterministic effect seed/state genuinely needed by the renderer.
+When the ultimate ends, Aureolin keeps the meter in its current full state and ordinary drain/recharge rules resume.
 
-The existing obscured Condition can remain the canonical UI concept if appropriate:
+The ultimate does not automatically arm the car. Weapons still require vtm_aureolin.PNG.
 
-* puddle water active → obscured
-* Dhaval Obscurity active → obscured
-* both active → still one Obscured badge
+If Aureolin starts the ultimate in normal form, it receives the full yellow meter but fires no weapon until it switches into armed form.
 
-But their internal timers/effects must remain independent so:
+Automatic ultimate turret fire
 
-* Dhaval’s effect does not erase puddle spray
-* a puddle does not reset Dhaval’s level
-* clearing Dhaval’s effect does not accidentally erase unrelated state except when a true general debuff-clearing mechanic such as Cleansed calls for it
+Outside the ultimate, the human driver must explicitly fire the minigun.
 
-Create helpers instead of making activeConditions() understand a pile of raw fields.
+During the ultimate, an armed Aureolin automatically fires the turret at its normal rapid firing cadence without the driver having to hold a fire control.
 
-Examples:
+This auto-fire behavior must be shared by player, bot, and local-player Aureolin.
 
-dhavalObscured(who)
-dhavalObscureLevel(who)
-applyDhavalObscure(who, source)
-clearDhavalObscure(who)
-increaseDhavalObscure(who)
+The automatic firing stops immediately if Aureolin is no longer armed, is wrecked, finishes, leaves the running state, or becomes Mind Controlled.
 
-Names may differ, but keep the ownership explicit.
+The automatic firing must not bypass the canonical weapon permission function. Create one gate such as canAureolinFireBullets(who) and make manual firing, AI firing, and ultimate auto-fire all use it.
 
-⸻
+Manual firing controls
 
-8. Five levels of Dhaval Obscurity
+Mobile/touch firing must mirror the existing upward boost gesture but in the opposite direction.
 
-Dhaval Obscurity has exactly five severity levels.
+SEREN currently uses an upward vertical swipe/drag to latch ptrBoost until the finger is released. Implement a downward vertical swipe/drag for Aureolin turret fire.
 
-Initial application
+Use the same directional discrimination principles: a primarily horizontal drag remains lane steering; an upward vertical drag remains boost; a downward vertical drag becomes Aureolin firing.
 
-When an eligible racer is first successfully affected:
+The downward gesture only fires when the current player is armed Aureolin and all weapon gates permit it.
 
-Level 1
+Like the upward boost gesture, it should remain held while the pointer remains down and stop on pointer release/cancel.
 
-Never start at 0 while the debuff is visibly active.
+Do not let a downward firing swipe accidentally become a tap/double-tap item use.
 
-Escalation
+For parity on desktop, map ArrowDown / S to held turret fire.
 
-While that racer is currently under Dhaval Obscurity:
+For controller/local play, use the downward counterpart of the existing boost direction: right stick down and/or D-pad down should request turret fire, while right stick/D-pad up continues to request boost.
 
-every genuine collision with a road hazard increases Obscurity by exactly one level.
+Keep Q/L1 for vehicle-form switching through the generalized form-switch action.
 
-Example:
+Do not allow Mind Control to retain a held shoot command. When control is taken away, explicitly clear Aureolin’s firing intent just as the existing Mind Control handling releases boost state.
 
-first affected → Level 1
-hits one hazard → Level 2
-hits another hazard → Level 3
-hits another hazard → Level 4
-hits another hazard → Level 5
+Mind Controlled Aureolin
 
-Cap at:
+A Mind Controlled Aureolin automatically stops shooting.
 
-Level 5
+This applies to manual minigun fire, bot-requested minigun fire, ultimate automatic minigun fire, and automatic rocket launches.
 
-Further hazard collisions must not exceed 5.
+Projectiles that were already fired remain independent world objects and continue normally. Mind Control stops the driver/vehicle from creating new projectiles; it does not erase bullets or rockets that already exist.
 
-What qualifies as a collision
+Make controlsLocked(who) part of the authoritative weapon firing gate.
 
-Escalate only after the collision system has determined that the racer genuinely contacted the hazard.
+When Mind Control begins, clear any held player/controller/bot fire intent so the weapon does not instantly resume from a stale held flag in a way that bypasses normal controls.
 
-Do not escalate for:
+Ultimate hazard-clearing property
 
-* a near miss
-* a Perfect Dodge
-* a hazard passing nearby
-* an already-spent hazard
-* multiple checks of the same collision in one simulation step
-* a racer that is not currently Dhaval-obscured
-* a target for whom the hazard interaction was impossible because they were physically elsewhere
+Aureolin’s shared ultimate still uses SEREN’s normal ULT_CHARGE, ULT_TIME, and ULT_SPEED lifecycle.
 
-A shield absorbing the gameplay consequence is still a real physical hazard contact. If the collision was genuinely accepted, it may advance Dhaval Obscurity even if shield durability prevented the usual debuff/wreck.
+In addition to the weapon behavior, an ulting Aureolin must gain the same solid-hazard-clearing property that the appropriate existing cars use.
 
-However, if the racer’s own active ultimate destroys the hazard before it can actually hit them, that is not an Obscurity-escalating collision.
+Add aureolinUltActive(who) to the canonical clearsSolidHazards(who) path.
 
-Hook escalation into the authoritative accepted-collision paths, not into visual overlap detection.
+This applies in both Aureolin forms. Normal v_aureolin.PNG and armed vtm_aureolin.PNG both smash through the solid hazards during the ultimate.
 
-Cover both:
+As requested, puddles remain the exception. Aureolin does not destroy water puddles by driving through them during its ultimate, and puddles still affect Aureolin normally.
 
-* player hazard handling in mechanics.js
-* rival hazard handling in race.js
+Do not accidentally give Aureolin Dhaval’s puddle-destruction behavior.
 
-and every applicable G.traps hazard type.
+Ultimate rockets
 
-Reset behavior
+Only an armed Aureolin whose ultimate is currently active may launch rockets.
 
-A new, unrelated Dhaval Obscurity episode starts again at Level 1.
+Use vp_aureolinr.PNG.
 
-Reset the Dhaval Obscurity level when the debuff is genuinely cleared, including:
+Rocket salvos are automatic during the ultimate. The user should not need a second firing gesture for them. This interpretation keeps the requested “in ultimate Aureolin automatically shoots” behavior coherent and avoids inventing an unspecified extra control.
 
-* Cleansed
-* wreck/debuff cleanup
-* race reset
-* finish cleanup where appropriate
-* complete natural expiry
+A valid armed, ulting, non-Mind-Controlled Aureolin automatically launches a salvo whenever the rocket cooldown is ready and a valid racer exists ahead.
 
-Do not leave Level 5 silently stored so the next fresh application begins at Level 5.
+Each salvo contains exactly two rockets spawned in the same firing event:
 
-⸻
+one from the measured left launcher anchor
+one from the measured right launcher anchor
 
-9. Duration / refresh model
+Do not spawn them one frame apart.
 
-Use a named constant for how long Dhaval Obscurity remains after its last successful application, for example:
+After a salvo, impose an exact 2.0-second cooldown before another pair may launch.
 
-DHAVAL_OBSCURE_TIME
+The rockets do not consume the yellow turret meter and do not have any separate ammo meter.
 
-A good initial value is around 3 seconds, matching Seren’s existing preference for short, refreshable proximity debuffs.
+Beginning the ultimate should initialize the rocket cooldown consistently so the first salvo behavior is deterministic. It is acceptable for the first valid salvo to launch immediately upon entering the armed ultimate state.
 
-While an eligible racer remains inside an ulting Dhaval’s radius:
+Do not fire rockets in the normal Aureolin form.
 
-* refresh the timer
-* do not reset the level back to 1
-* do not stack duration additively
+Do not fire rockets outside the ultimate.
 
-After leaving the radius:
+Do not fire rockets while Mind Controlled.
 
-* the existing severity may remain during the short tail
-* then expire normally
+Rocket targeting priority
 
-Re-entering before expiry refreshes the same episode.
+Aureolin rockets are heat-seeking and must continuously follow the racer currently positioned directly ahead of Aureolin in race order.
 
-Re-entering after complete expiry begins a fresh Level 1 episode.
+Use canonical race progress (metersOf) rather than whichever sprite happens to be visually higher on one local camera.
 
-Keep this value easy to tune.
+At every rocket update, find eligible racers whose race progress is greater than the rocket owner’s current progress. Among those racers, select the one with the smallest positive progress gap. That is the racer immediately in front of Aureolin.
 
-⸻
+Do not permanently lock the rocket to the racer that happened to be closest when it launched.
 
-10. Screen effect — white, purple, red, and green moving light circles
+Re-evaluate priority while the rocket is in flight.
 
-The affected racer’s own screen must fill with large luminous circles in exactly this palette family:
+This is important for the requested overtaking example. Suppose Aureolin is behind Rhosyn and Cole. If Cole is currently the closest racer ahead, the rocket follows Cole. If Cole then passes Rhosyn so that Rhosyn becomes the closest racer ahead of Aureolin, target priority must switch to Rhosyn, subject to Rhosyn’s ultimate immunity described below.
 
-* white
-* purple
-* red
-* green
+The targeting system must not choose a racer behind Aureolin.
 
-The result should feel like huge bright stage/carnival/light-show circles repeatedly appearing across the driver’s vision.
+Finished racers and wrecked racers are not valid targets.
 
-The effect should:
+Temporary invulnerability should not allow an immediate damaging hit. Either skip that target while protected or use a consistent existing wait-out behavior, but do not damage a protected respawning racer.
 
-* pop into view
-* move across the screen
-* drift
-* overlap
-* rotate/orbit
-* change composition over time
-* appear at different sizes
-* partially move off-screen
-* create increasingly chaotic obstruction at higher levels
+Both rockets from a salvo independently run this target-selection logic.
 
-Do not turn this into:
+If no valid racer remains ahead, the rockets should continue along their current heading rather than reverse down the track, and should naturally self-destruct when their lifetime expires.
 
-* small particles
-* tiny dots
-* confetti
-* a simple color wash
-* one static radial gradient
-* generic smoke
+Rocket homing and lifetime
 
-The defining visual is large bright circles of light covering the driver’s vision.
+Rockets must visibly home rather than snap directly to the target.
 
-Because a perfectly uniform circle does not visually reveal rotation, give the light forms subtle internal asymmetry, segmented halos, elliptical shape, orbiting sub-lights, sweep highlights, or rotating grouped arrangements so the requested rotation is actually perceptible.
+Give them a forward speed and smooth steering/turn response, stored in central tuning constants. Use dt-based interpolation/turning so homing does not change with frame rate.
 
-Keep it polished rather than noisy pixel clutter.
+Do not reuse the existing Mystery Bubble seeker missile object blindly. Aureolin rockets have different artwork, damage, target-selection rules, Rhosyn/Verdant/Flann interactions, Saffron flight behavior, lifetime, and dual-launch anchors. They should have their own projectile type/state even if useful generic geometry helpers are shared.
 
-⸻
+Give each rocket a finite life span. A value around five seconds is an appropriate initial combat-readable starting point, stored as something like AUREOLIN_ROCKET_LIFE.
 
-11. Exact visual progression from Level 1 to Level 5
+If the rocket has not collided with anything before the life timer reaches zero, it self-destructs and is removed.
 
-Severity must increase clearly and monotonically.
+A lifetime self-destruction must not damage a racer simply because one happens to be nearby unless the design explicitly has an explosion radius. The requirement is direct-contact damage, so default to a visual self-destruct/despawn without splash damage.
 
-The five levels should differ through a combination of:
+Rocket shield damage
 
-* number of circles
-* average radius
-* opacity
-* overlap
-* movement density
-* amount of screen coverage
-* frequency of new pop-ins
-* brightness
+Each rocket that successfully contacts an ordinary valid racer removes exactly one half-shield unit.
 
-Target the following visual read:
+SEREN’s shield is already represented internally as six half-bar units across three colored bars. Therefore each rocket removes exactly 1 from that existing six-unit shield value.
 
-Level 1 — Light obstruction
+A pair of rockets can consequently remove two half-units — one complete shield bar — if both successfully strike the same racer.
 
-The player can still see most of the road.
+Do not use ordinary hitShield() without checking its semantics: the current helper deliberately prevents normal hazard shield loss while a racer is ulting. Aureolin rockets are combat projectiles and the requirement says a rocket removes one half shield on contact.
 
-Use:
+Create/refactor a shield damage helper that can subtract exactly one half-unit for combat projectiles while still respecting wrecked/finished/invulnerable states and Aureolin’s explicitly defined special ultimate interactions below.
 
-* relatively few circles
-* significant empty gaps
-* lower opacity
-* moderate radii
-* slower/cleaner movement
+Other racers being in their normal ultimate should not make the rocket’s half-shield damage disappear unless one of the explicit special cases in this specification applies.
 
-Approximate perceived obstruction: 15–25%.
+When shield reaches zero because of rocket damage, use the existing shared wreck lifecycle rather than inventing a separate death state.
 
-It should be obvious that something is affecting the driver but should not dominate the whole screen.
+Credit/blame the projectile owner through the same existing combat attribution path where relevant.
 
-Level 2 — Noticeable
+Special projectile interaction: ulting Flann
 
-More circles and more overlap.
+Any Aureolin projectile that collides with an ulting Flann immediately destroys/self-explodes and does nothing to Flann.
 
-Approximate perceived obstruction: 30–40%.
+This applies to both bullets and rockets.
 
-Important racing information is still visible through frequent openings.
+The projectile is consumed.
 
-Level 3 — Heavy
+Do not apply bullet slowdown.
 
-The lights are now a serious visibility problem.
+Do not remove shield.
 
-Approximate perceived obstruction: 50–60%.
+Do not interrupt Flann’s ultimate.
 
-Large circles should regularly cross the player’s primary forward view.
+Do not reduce Flann’s ultimate meter.
 
-Level 4 — Severe
+Do not wreck Flann.
 
-The road is difficult to follow.
+A small harmless projectile impact/self-destruction effect is fine, but it must be purely cosmetic.
 
-Approximate perceived obstruction: 70–80%.
+Perform this special check before ordinary bullet/rocket effects.
 
-Use many large overlapping lights with only intermittent openings.
+Special projectile interaction: ulting Verdant
 
-Level 5 — Almost blinded
+If an Aureolin bullet or rocket physically collides with an ulting Verdant, consume the projectile and briefly expose Verdant.
 
-This is the maximum state.
+Use the existing canonical verdantReveal(who) behavior rather than inventing a second reveal timer. SEREN already has VERDANT_REVEAL and a correct hide/reveal pipeline.
 
-The racer should barely be able to see the road.
+This projectile contact is reveal-only.
 
-Approximate perceived obstruction: 85–95% across time.
+Do not apply the bullet slowdown stack on that hit.
 
-Use huge overlapping white/purple/red/green lights with high density.
+Do not remove a half shield with that rocket.
 
-Do not simply replace the entire viewport with one opaque rectangle. There should still be tiny moving openings and visual evidence that a race is continuing underneath.
+Do not end Verdant’s ultimate.
 
-The result should feel like the player’s vision has become almost unusable because of the light storm, not because the renderer stopped drawing the game.
+Do not reset Verdant’s ultimate meter.
 
-⸻
+Do not turn off Verdant’s immunity to other systems.
 
-12. View ownership and split-screen are critical
+The reveal is cosmetic/visibility state exactly like the existing Verdant reveal mechanism.
 
-Dhaval’s lights are a view effect, not a world effect.
+Special projectile interaction: ulting Rhosyn
 
-If Racer A is Obscured:
+No Aureolin projectile reaches an ulting Rhosyn.
 
-* Racer A’s own viewport gets the light circles.
-* Other players’ viewports do not get Racer A’s screen obstruction.
-* Racer A’s physical car should not have giant screen circles attached to it in the world.
-* A bot carries the gameplay status without creating an imaginary full-screen overlay over unrelated human players.
+This is stronger than merely checking whether Rhosyn’s sprite is presently hidden by the Aero-Glow transition.
 
-Use Seren’s existing per-view architecture (VOWN, viewport clipping, etc.).
+While rhosynUltActive(who) is true, Rhosyn is not a valid Aureolin projectile collision target.
 
-Test all four local configurations.
+Bullets should pass without applying any effect rather than suddenly striking an absent/untouchable body.
 
-There must be no effect leakage from one split-screen column into the next.
+Rockets must exclude an ulting Rhosyn from their dynamic closest-ahead target selection and seek the next valid racer ahead if one exists.
 
-In single-player, follow the same convention as the existing water Obscured effect: obscure the playable world without making the HUD fundamentally unreadable.
+If the current rocket target becomes an ulting Rhosyn, retarget instead of continuing to home onto it.
 
-⸻
+Do not reveal, slow, damage, or disturb Rhosyn.
 
-13. Renderer must remain pure
+Special projectile interaction: Saffron dragon
 
-The visual circles must not mutate race state.
+Bullets cannot follow/hit airborne Saffron in dragon form.
 
-Do not:
+Rockets are the exception: Aureolin rockets are allowed to follow Saffron while Saffron is in dragon form.
 
-* allocate new persistent arrays every rendered frame
-* call Math.random() in a way that makes drawing the same simulation state twice produce unrelated layouts
-* advance gameplay timers in render.js
-* alter severity from the renderer
-* create Image objects per frame
+Do not blindly use noContact() as the complete rocket target gate because noContact() intentionally treats airborne Saffron as outside ordinary road collision. Aureolin rockets need a dedicated projectile reachability rule.
 
-Either:
+For bullets, respect Saffron’s airborne state and let the shot pass without collision.
 
-* use deterministic time/seed calculations from stored state, or
-* update cosmetic state from the normal simulation update path and let the renderer only read it
+For rockets, Saffron in the dragon’s airborne phases remains an eligible dynamic target if it is the closest valid racer ahead.
 
-Follow the same read-only renderer invariant as the rest of Seren.
+Rocket homing/rendering should use Saffron’s displayed airborne position/altitude closely enough that the rocket visually flies toward the dragon rather than the empty road underneath it.
 
-⸻
+A rocket that successfully contacts airborne Saffron removes one half shield as normal unless another explicitly stated protection applies.
 
-14. Reduced motion support
+Projectile-versus-hazard rules
 
-Respect:
+Aureolin bullets and rockets destroy hazards they physically collide with, with the explicit exception of water puddles.
 
-motionReduced()
+Projectiles fly over puddles. They do not remove a puddle, trigger the puddle, splash the owner, or spend themselves merely because their path crosses the puddle’s road footprint.
 
-Reduced motion must not remove the gameplay obstruction.
+For destructible hazards, consume or appropriately continue the projectile according to a consistent combat rule. A bullet should normally be consumed by a solid collision. A rocket should self-destruct on solid hazard impact.
 
-At each severity level, reduced-motion users must experience approximately the same visual coverage, but:
+Cover SEREN’s actual hazard containers rather than only one hard-coded trap: tumbleweeds, meteors/falling rock bodies when physically hittable, oil/slick hazards if their physical projectile path intersects them, and other actual destructive hazard objects that exist in the current game.
 
-* stop or strongly reduce continuous rotation
-* stop aggressive sweeping
-* remove rapid popping/flashing
-* hold a stable arrangement of lights
-* preserve opacity/coverage/severity
+Do not accidentally treat Mystery Bubble pickups as hazards.
 
-Do not use strobing.
+Do not remove water puddles.
 
-The mechanic must remain readable as a debuff without requiring animation.
+Use existing smashFx()/appropriate effects where practical so destroyed hazards look like native SEREN interactions.
 
-⸻
+High-speed projectile-versus-hazard tests must use swept geometry so a projectile cannot tunnel through a tumbleweed/meteor between frames.
 
-15. Rhosyn interaction
+Projectile state ownership
 
-An ulting Rhosyn cannot be Obscured by Dhaval.
+Do not mix Aureolin projectiles into G.missiles as indistinguishable Mystery Bubble seeker missiles.
 
-Rhosyn’s existing ultimate/Aero-Glow architecture already distinguishes between:
+Use explicit collections such as G.aureolinBullets and G.aureolinRockets, or a well-defined generic projectile array with a required projectile type and owner. Whichever design is selected must keep the existing seeker-item behavior unchanged.
 
-* ultimate active
-* leaving the shared road
-* away
-* returning
+Each projectile must carry an owner identity using SEREN’s "me"/rival object convention.
 
-Respect those predicates.
+A projectile can never hit its own owner.
 
-At minimum:
+There are no teams, so every other active racer is a valid opponent subject to the special reachability rules.
 
-rhosynUltActive(who)
+Projectiles should survive an owner changing vehicle form or an ultimate ending after they were launched. Their own range/lifetime is authoritative once spawned.
 
-must make the racer ineligible for new Dhaval Obscurity.
+Clear all projectile arrays between races.
 
-While Rhosyn is away through:
+When leaving a race, stale projectile objects must not survive into menus or the next start.
 
-rhosynElsewhere(who)
+Projectile rendering
 
-Dhaval must obviously be unable to reach it at all.
+Preload vp_aureolinb.PNG and vp_aureolinr.PNG exactly once.
 
-Dhaval must not:
+Do not allocate a new Image for every shot or every frame.
 
-* apply a hidden timer while Rhosyn is away
-* pre-load Rhosyn with Level 1 so it appears instantly when Rhosyn returns
-* draw lights in Aero-Glow
-* use the Rhosyn car’s canonical road position as supernatural targeting while it is isolated
+Use a small projectile sprite cache similar in philosophy to CAR_SPRITES/FX_SPRITES.
 
-If Rhosyn activates its ultimate while already Dhaval-obscured, clear Dhaval’s Obscurity as part of the transition so it does not carry into Aero-Glow.
+Render the full transparent PNGs with uniform scaling.
 
-Do not alter Rhosyn’s existing isolation or return Invulnerable behavior.
+Orient bullets and rockets to their velocity vectors.
 
-⸻
+Make bullet size readable but appropriately small relative to a racer. Do not scale vp_aureolinb.PNG into something nearly car-sized.
 
-16. Verdant interaction
+Make rockets visibly larger than bullets but still appropriate for the launcher/bazooka art and lane scale.
 
-An ulting Verdant cannot be Obscured by Dhaval.
+Do not draw a generic replacement missile on top of vp_aureolinr.PNG; this asset is the projectile.
 
-Verdant is different from Rhosyn:
+Existing Mystery Bubble seeker missiles must keep their existing procedural appearance. Aureolin rockets are separate.
 
-* Verdant is still physically present
-* Verdant is invisible to others
-* Verdant can still participate in physical collisions
+Projectiles must render correctly in every local-player camera column. Their simulation coordinates are shared race-world state; the view/camera transform is presentation only.
 
-Do not incorrectly make Verdant noContact().
+Precise projectile collision geometry
 
-Instead, Dhaval’s targeting/application logic must specifically respect:
+Do not use enormous forgiving circular collision radii.
 
-verdantUltActive(who)
+Derive sensible visible bounds from the actual projectile PNGs.
 
-An ulting Verdant is not a valid Dhaval Obscurity target.
+For the fast, slender bullet, use a small oriented rectangular/capsule footprint based on the sprite’s visible body and sweep it from its previous to current position.
 
-If Verdant activates its ultimate while already under Dhaval Obscurity, clear Dhaval’s Obscurity when the ultimate becomes active rather than leaving invisible light-state running against the intended immunity.
+For the rocket, use an oriented body footprint or small polygon based on the rocket’s actual solid silhouette and sweep it along its motion.
 
-Do not alter Verdant’s existing directional defence, reveal timer, invisibility, or Mind Control immunity.
+Test collision against SEREN’s existing accurate carHit(who).points racer polygon, not only the racer center or lane label.
 
-⸻
+A projectile should miss transparent corners of a racer hull when the visible geometry genuinely does not overlap.
 
-17. New Condition: Cleansed
+Test positive and negative car tilt and multiple sprite scales, as the existing hitbox/sprite suites do.
 
-Add a new official Seren Condition:
+Ultimate lifecycle
 
-Cleansed
+Do not create a second Aureolin ultimate clock.
 
-It is a Buff.
+Aureolin uses the same ULT_CHARGE = 85, ULT_TIME = 15, and ordinary ULT_SPEED = 2.0 lifecycle as the rest of the game unless an existing shared rule says otherwise.
 
-Cleansed means:
+startUlt(), tickUlt(), endUlt(), meter charging, wreck behavior, finish behavior, pause behavior, and custom rule ults must remain shared.
 
-Immediately removes every active debuff from the racer. For the entire duration of Cleansed, no debuff can be applied to that racer.
+Aureolin adds behavior inside that shared lifecycle: full weapon-meter recharge, unlimited turret heat consumption, automatic armed-form bullet fire, 2.00× bullet range for shots fired during the ultimate, paired heat-seeking rocket salvos, and solid-hazard clearing except puddles.
 
-This needs to be a first-class Condition, not a special boolean hidden inside Dhaval logic.
+Do not alter the ultimate behavior of the existing eight racers.
 
-Add it to:
+AI behavior
 
-CONDITIONS
+Aureolin bots need to use the same real mechanics functions as human drivers.
 
-with:
+Do not spawn “AI bullets” through a separate simplified system.
 
-* localization key
-* distinct badge color
-* type: "buff"
-* unique icon
-* readable foreground ink
+Extend bot state/judgement so an Aureolin bot can deliberately use its armed form and turret.
 
-Add English and French:
+Outside the ultimate, a bot should generally prefer firing when it has a plausible reachable racer ahead rather than wasting the entire heat meter into empty road. Use botSense()/the existing race picture where practical.
 
-* name
-* garage/reference description
-* any needed accessible labels
+Its shooting quality may vary with difficulty in the same manner as other decisions, but difficulty must not change the underlying fire rate, projectile damage, bullet range, heat capacity, shield damage, or ultimate rules.
 
-It must appear automatically in the Conditions reference UI using the game’s existing generated Buff/Debuff system.
+An Aureolin bot must obey overheat and full-recharge lockout exactly like a human.
 
-⸻
+Mind Control prevents bot shooting through controlsLocked().
 
-18. Cleansed needs its own recognizable icon
+During the ultimate, an armed Aureolin bot automatically fires bullets through the shared auto-fire path; do not duplicate this inside AI.
 
-Extend COND_PATHS.
+Ultimate rocket salvos must also be generated by the shared Aureolin weapon mechanic, not AI-specific code.
 
-Do not reuse the Invulnerable shield icon.
+A bot may switch to the armed form when weapons are useful. Do not forcibly switch local human Aureolin players; humans own their form choice.
 
-Possible visual concept:
+Add Aureolin to TEMPERS with a weapon-oriented temperament consistent with the existing system, but do not use temperament to change the actual car physics.
 
-* sparkle/star with a clearing sweep
-* small burst with a clean ring
-* crossed-away debuff marks
-* another simple geometric “purified/cleared” symbol
+Update comments in js/ai.js that currently describe “all eight” racers or enumerate only the existing special ultimates.
 
-The icon must remain readable at the tiny split-screen badge size.
+Nine-racer starting grid
 
-Color must not be the only distinction between Cleansed and another Condition.
+spawnRivals() currently hard-codes geometry for seven rival cars: two beside player one, three in the next row, and two in the third row.
 
-⸻
+With FIELD_SIZE = 9, there are eight rival racers in a full field.
 
-19. Cleansed mechanics
+Extend the starting grid to provide eight valid rival starting slots. A natural continuation is two alongside the player, then two complete rows of three behind, but choose the exact lane order so the initial arrangement remains visually balanced.
 
-Give racers canonical timer state such as:
+Compute vertical row spacing using the existing maximum carDims() logic so Aureolin’s potentially larger body cannot overlap another starting hull.
 
-cleanseT
+Add automated geometry coverage proving that all nine starting racer polygons are non-overlapping for every selectable player car and representative narrow/wide view sizes.
 
-and helpers such as:
+Do not let grid[i] or rows[i] become undefined for the ninth racer.
 
-cleansedWho(who)
-applyCleansed(who)
+Menus, car selection, garage, standings, copy
 
-Use a named tuning constant, for example:
+Add Aureolin to the car selection UI with a carAureolin button and a canvas preview using data-car="aureolin".
 
-CLEANSED_TIME
+The nine-car selection should naturally form a complete 3×3 grid rather than using special “center the final card” behavior intended for an odd leftover entry.
 
-Unless playtesting gives a stronger reason otherwise, use 3.0 seconds as the initial duration.
+The garage/reference screen already derives much of its content from CAR_IDS; make sure Aureolin appears there with its actual normal car rendered through the shared renderer.
 
-Applying Cleansed should:
+Add English and French localization entries for at least:
 
-1. immediately call the general debuff-clearing path
-2. remove all currently active debuffs
-3. remove/reset Dhaval Obscurity and its severity
-4. set or refresh cleanseT
-5. not stack duration additively
+aureolin
+aureolinUlt / Aureolin gameplay description
+the generic/Aureolin form-switch accessibility text
+normal-form label
+armed-form label
+weapon heat/overheat accessibility text if needed
+place9
 
-If Cleansed is applied again while active, refresh/set it to the configured duration rather than creating six, nine, twelve seconds through additive stacking.
+Update all copy that states there are seven/eight racers or gives local-play bot counts based on an eight-car field.
 
-⸻
+With nine racers, two local humans leave seven bots, three humans leave six bots, and four humans leave five bots in the standard full-field configuration.
 
-20. “No debuff can reach the racer” must be general
+Audit standardDesc, local player descriptions, comments, docs, and tests rather than changing only one visible sentence.
 
-Cleansed must protect against all current debuffs, not merely Dhaval’s.
+Add a ninth standings row in index.html: posRow9, pos9, and pos9n.
 
-That includes at least:
+Make paintHUD() and Canvas local standings handle all nine through FIELD_SIZE.
 
-* Slowed
-* Obscured from water
-* Dhaval Obscurity
-* Skidded
-* Mind Controlled
+Check the taller standings panel against hudZones(), action buttons, edge markers, conditions, and narrow four-player split columns.
 
-Future debuffs should have one obvious shared protection gate to use.
+HUD transformation control
 
-Do not create separate checks like:
+Do not add both a Cole switch square and an Aureolin switch square simultaneously to one racer. A racer can only be one car.
 
-if (!cleanseT) applySlow()
-if (!cleanseT) applyBlind()
-if (!cleanseT) applySlip()
-...
+Generalize the existing Cole transformation square into a reusable vehicle-form switch action that appears for either Cole or Aureolin.
 
-in every mechanic.
+For Cole it must retain its existing car/motorcycle state, icon, Q/L1 behavior, two-second cooldown text, labels, and tests.
 
-Centralize the meaning of “this racer refuses debuffs.”
+For Aureolin it should show normal/armed state and the same shared cooldown behavior.
 
-⸻
+Update hudActionCount(), hudActionWidth(), hudActions(), the DOM action control, split-screen Canvas HUD, focus styles, fallback glass selectors, accessible labels, and layout calculations accordingly.
 
-21. Cleansed is NOT Invulnerable
+Avoid leaving a DOM element named coleSwitch as a hidden architecture dependency if a safe generic rename/refactor can be performed. If compatibility makes keeping the ID safer, at minimum make all behavior/data generic and do not write Aureolin mechanics inside paintColeSwitch().
 
-This architectural distinction is essential.
+Main HUD yellow bar
 
-Cleansed prevents debuffs.
+Extend the existing:
 
-It must not make the car physically unreachable.
+#meterRail
+#boostWrap
+#boostFill
 
-A Cleansed racer must still be able to:
+with Aureolin’s exclusive yellow weapon bar.
 
-* collide with another car
-* be rammed
-* hit a barrier
-* use a shield
-* lose shield durability
-* collide with hazards
-* be wrecked by destructive mechanics where applicable
-* interact with the race normally
+Do not replace or recolor the existing red boost meter.
 
-Do not accidentally add Cleansed to noContact().
+When both are shown, red remains the first/top bar and yellow is immediately beneath it.
 
-The current code has noContact() and refusesDebuffs() coupled closely enough that adding Cleansed naïvely could make the racer intangible.
+Use a proper gameplay yellow consistent with SEREN’s existing sanctioned gameplay colors. Keep the rest of the interface’s red/neutral identity intact.
 
-Refactor the protection predicates if necessary so these questions remain separate:
+The Canvas split-screen HUD must visually match the DOM version.
 
-1. Can this physical body be contacted?
-2. Can a debuff be applied to it?
+Update the foot rail height calculation rather than simply drawing the new bar outside the existing HUD geometry.
 
-For example, it is acceptable to introduce a clearer helper such as:
+Race update/reset state
 
-protectedFromDebuffs(who)
+Add Aureolin state to both the G object in js/runtime.js and every spawned rival object in spawnRivals().
 
-that includes Cleansed, while keeping noContact() based on the existing physical states:
+At minimum the design will need state equivalent to:
 
-* finished
-* wrecked
-* Invulnerable
-* Rhosyn elsewhere
-* Saffron airborne where applicable
+whether the form is armed
+form-switch cooldown
+weapon heat from 0..1
+overheated latch
+held/manual fire request where relevant
+bullet fire accumulator/cooldown
+rocket salvo cooldown
+active bullet slow-stack state on every possible victim
 
-The exact naming is flexible. The semantic distinction is not.
+Use naming consistent with the repository.
 
-⸻
+Initialize/reset these fields correctly at startRace().
 
-22. Lolanthe + Dhaval interaction
+Do not rely on stale object properties from a prior race.
 
-This is the special counter-interaction:
+Pause must freeze form cooldown, weapon recharge/drain, projectile movement, bullet slow timers, rocket cooldown, and projectile lifetimes in the same way other simulation timers freeze because update() is not advancing.
 
-If Dhaval’s ultimate attempts to Obscure a Lolanthe whose own ultimate is currently active, Lolanthe does not receive Dhaval Obscurity. Instead, that Lolanthe becomes Cleansed.
+Finish/wreck transitions should stop further firing intent and auto-fire.
 
-Use:
+A new race resets Aureolin to normal form, full yellow weapon meter, no overheat, no cooldown debt, no projectile slow stacks, and no active projectiles.
 
-lolantheUltActive(who)
+Existing racer interactions must remain intact
 
-as the authoritative check.
+Do not regress Neela’s alternate form/swap, Saffron’s dragon phases, Cole’s motorcycle, Lolanthe’s Mind Control, Verdant invisibility/reveal, Rhosyn Aero-Glow, Dhaval obscurity/cleansing, Flann’s ram/fire, normal boost, Mystery Bubbles, oil, existing seeker missiles, shield HUD, local split-screen, or custom race settings.
 
-Behavior:
+Be especially careful with racerModel(). It currently chooses an altForm based on Neela, Saffron, or Cole state. Add Aureolin’s armed predicate to this authoritative decision without making another renderer-only alternate-form check.
 
-1. Dhaval’s proximity application reaches an ulting Lolanthe.
-2. Do not apply or refresh Dhaval Obscurity.
-3. Clear any existing Dhaval Obscurity immediately.
-4. Apply/refresh Cleansed.
-5. Cleansed immediately removes every other current debuff too.
-6. While Cleansed remains active, no debuff can be applied.
-7. Lolanthe remains physically present and otherwise behaves normally.
+The active Aureolin hitbox must switch on the exact same frame as its sprite.
 
-Do not stop Lolanthe’s ultimate.
+Audio/effects
 
-Do not modify Lolanthe’s Mind Control aura.
+Reuse SEREN’s procedural audio/effect architecture.
 
-Do not make Lolanthe permanently immune after its ultimate ends.
+The rapid turret should have restrained rapid-fire feedback, but do not spawn excessive particle/audio nodes at the minigun rate in a way that hurts performance.
 
-This conversion occurs because Lolanthe is actively ulting when Dhaval’s Obscurity reaches it.
+Rocket launches and impacts/self-destruction may have stronger feedback.
 
-⸻
+Special harmless impacts against ulting Flann and reveal-only impacts against ulting Verdant must not look like the target took ordinary rocket shield damage.
 
-23. Cleansed must block Lolanthe’s own enemy debuffs too
+Respect reduced-motion settings for purely cosmetic motion where appropriate.
 
-Once Cleansed is active, its protection is universal.
+Documentation and automated QA
 
-For example, during Cleansed:
+Create a focused tools/aureolin-check.mjs suite following the style of tools/cole-check.mjs and the other car-specific QA suites.
 
-* another Lolanthe’s Mind Control cannot apply
-* puddle Obscured cannot apply
-* oil Skidded cannot apply
-* tumbleweed Slow cannot apply
-* Dhaval Obscurity cannot apply
+Import it from tools/ultimate-check.mjs if that remains the project’s established pattern for special racer suites.
 
-The relevant hazard/contact can still happen physically; only the debuff consequence is refused.
+Create docs/AUREOLIN-QA.md documenting the measured normal/armed sprite dimensions, solid bounds, race scales, independent hit polygons, exhaust position, turret muzzle source coordinates, left/right rocket launcher source coordinates, projectile bounds/scales, weapon constants, and manual verification notes.
 
-Once Cleansed expires, debuffs may be applied normally again.
+Update docs/ARCHITECTURE.md, docs/TUNING.md, README/game documentation, and comments where they incorrectly state an eight-car field or enumerate special racers incompletely.
 
-⸻
+Do not weaken existing tests to get Aureolin through. Update expectations that genuinely changed because the field is now nine, then preserve all unrelated assertions.
 
-24. Dhaval destroys hazards while ulting
-
-Dhaval’s ultimate must destroy hazards it physically contacts.
-
-Integrate this into the game’s existing ultimate/hazard architecture rather than inventing an unrelated shield.
-
-Add Dhaval to the appropriate solid-hazard privilege where existing ultimate cars destroy solid hazards.
-
-Additionally, because this Dhaval requirement explicitly says Dhaval destroys hazards, audit all objects in the actual road-hazard/trap system:
-
-* tumbleweeds
-* meteors
-* puddles
-
-Dhaval should destroy/remove a contacted G.traps hazard rather than suffering its ordinary consequence.
-
-For Dhaval specifically:
-
-* tumbleweed contact → weed destroyed
-* falling meteor/body contact → meteor destroyed before its normal damaging consequence
-* puddle contact → puddle cleared/destroyed instead of applying water Obscured
-
-Use appropriate existing destruction FX where possible, tinted/styled to Dhaval if needed.
-
-Do not:
-
-* consume Dhaval’s ultimate
-* penalize ultimate charge for the destroyed hazard
-* apply the hazard’s Slow/Obscured consequence
-* count Dhaval destroying the hazard as an Obscurity escalation against Dhaval
-
-Keep item-created Oil conceptually separate unless the existing code formally treats it as the same trap/hazard category. Do not casually delete every offensive object in the game just because Dhaval is ulting.
-
-Make player and rival behavior symmetrical.
-
-⸻
-
-25. Dhaval’s Obscurity and shields
-
-Shield logic must remain coherent.
-
-A Dhaval Obscurity application is a debuff application, not physical damage, so do not consume shield durability merely because Dhaval is nearby unless Seren’s existing Condition rules explicitly make proximity debuffs consume shield.
-
-A racer already under Dhaval Obscurity who physically contacts a hazard:
-
-* may have that hazard handled by shield durability as usual
-* still advances one Obscurity level if the physical hazard collision was genuinely accepted
-* does not advance twice because multiple collision functions observed the same object
-
-Cleansed prevents the Dhaval debuff itself and therefore there is no Dhaval severity to escalate while Cleansed.
-
-Invulnerable should continue to clear/refuse debuffs according to existing game rules.
-
-⸻
-
-26. Bot behavior must not cheat through the visual obstruction
-
-Dhaval’s effect cannot be purely cosmetic for AI racers.
-
-A human at Level 5 can barely see, so an AI racer at Level 5 should not continue to make decisions with perfect supernatural information.
-
-Integrate Dhaval Obscurity into the bot sensing/judgement layer.
-
-Do this in a controlled, deterministic way rather than making the bot randomly crash every frame.
-
-Possible approach:
-
-* Level 1: small perception/judgement degradation
-* Level 2: moderate
-* Level 3: significant
-* Level 4: strong
-* Level 5: severe
-
-It can affect things already modeled by Seren such as:
-
-* whether a hazard is noticed
-* look-ahead
-* deliberate lane assessment
-* target confidence
-* reaction quality
-
-Do not alter the car’s actual physics merely because a bot drives it.
-
-The underlying mechanic remains a visibility/perception debuff.
-
-Also update Dhaval bot ultimate valuation.
-
-A Dhaval bot should value its ultimate more when:
-
-* multiple eligible rivals are inside/near its aura range
-* nearby opponents are in positions where hazard escalation is plausible
-* the pack is dense
-
-It should not value targets that Dhaval cannot Obscure:
-
-* ulting Rhosyn
-* ulting Verdant
-* currently Cleansed racers
-
-For an ulting Lolanthe, recognize that applying Dhaval’s aura gives Lolanthe Cleansed rather than harming it, so a competent bot should not count that target as offensive value.
-
-⸻
-
-27. Dhaval visual identity during its own ultimate
-
-Dhaval still receives the shared ultimate visual language/pacing Seren already uses.
-
-Add a restrained Dhaval-specific cue if needed so players can tell that its aura is active, but do not make the whole car disappear under the victim-screen effect.
-
-The giant colored light circles belong to the victims’ views, not around Dhaval’s physical sprite.
-
-If adding an aura cue around Dhaval:
-
-* keep it lightweight
-* use the same white/purple/red/green palette
-* do not obscure its measured vehicle silhouette
-* do not create collision geometry
-* respect reduced motion
-
-⸻
-
-28. State lifecycle
-
-Add every new state field to both:
-
-* player-one state
-* rivals
-
-Initialize/reset it everywhere equivalent existing fields are initialized.
-
-Audit at minimum:
-
-* fresh game state
-* startRace()
-* rival construction
-* wreck
-* respawn
-* finish
-* race restart
-* ultimate end
-* leaving a race
-* local races
-
-Relevant state includes:
-
-Dhaval Obscurity timer
-Dhaval Obscurity level
-Cleansed timer
-any deterministic cosmetic seed/state
-
-Do not allow stale visual state to survive a new race.
-
-A wreck should use the existing general debuff-cleanup semantics and therefore remove Dhaval Obscurity.
-
-⸻
-
-29. activeConditions() must stay canonical
-
-activeConditions(who) should remain the authoritative derivation of the Conditions currently worn by a racer.
-
-Extend it so:
-
-* Cleansed appears while its timer is active.
-* Obscured appears while puddle obscuration OR Dhaval Obscurity is active.
-* no duplicate Obscured badges are emitted.
-* finished racers still carry no Conditions according to existing lifecycle rules.
-* Condition ordering follows CONDITIONS key order.
-
-Do not create a second mutable list of active Conditions.
-
-⸻
-
-30. Car-select and garage integration
-
-Add Dhaval everywhere the other cars exist.
-
-In index.html, create an eighth option equivalent to:
-
-<button class="car-opt" id="carDhaval">
-  <span class="car-art">
-    <canvas class="car-cv" data-car="dhaval" aria-hidden="true"></canvas>
-  </span>
-  <span class="car-name" data-i18n="dhaval">Dhaval</span>
-</button>
-
-Ensure:
-
-* keyboard navigation still works
-* gamepad car-selection navigation still works
-* hover/focus showroom preview works
-* random selection can choose Dhaval
-* taken-car behavior works in local play
-* layout remains balanced with eight cars
-* no card clips at common viewport sizes
-
-Do not hard-code a separate renderer for its menu artwork. Use the shared drawCar() / sprite path.
-
-Add Dhaval to the Cars & More reference page with an accurate ultimate description.
-
-⸻
-
-31. Standings and place strings
-
-The DOM standings currently contain seven rows.
-
-Add row eight:
-
-* posRow8
-* pos8
-* pos8n
-
-Add the localization needed for eighth place, including the canvas HUD’s:
-
-place8
-
-English should display the equivalent of 8th.
-
-Provide correct French wording consistent with the existing localization style.
-
-Audit:
-
-* running order
-* result board
-* finish result
-* local HUD
-* responsive height calculations
-
-Eight rows must not overlap the ultimate controls or other HUD elements.
-
-⸻
-
-32. Localization
-
-Add complete English and French strings for at least:
-
-* dhaval
-* Dhaval ultimate/power description
-* any Dhaval garage explanatory copy
-* condCleansed
-* Cleansed description
-* place8
-* any new accessibility labels
-
-Do not leave French falling back to English.
-
-tools/check.mjs must continue to report no missing translation keys.
-
-Suggested Dhaval description meaning:
-
-Ultimate — nearby racers are engulfed by moving lights. Obscurity starts at Level 1 and grows whenever the affected racer hits a hazard.
-
-Suggested Cleansed description meaning:
-
-Removes all debuffs and prevents new debuffs for its duration.
-
-Write polished translations consistent with the rest of Seren.
-
-⸻
-
-33. Sprite cache
-
-Because Dhaval is part of CAR_IDS, its sprite should be loaded through the same CAR_SPRITES construction path as the rest of the roster.
-
-Verify:
-
-* v_dhaval.PNG is instantiated exactly once
-* late image load triggers the normal preview repaint
-* no extra Image allocation occurs during gameplay/rendering
-* missing/not-yet-decoded image does not alter collision geometry
-
-Update sprite-cache assertions to the new total number of sheets.
-
-⸻
-
-34. Rendering order for Dhaval screen obstruction
-
-Integrate the light overlay into the correct per-view render sequence.
-
-The intended visual stack is:
-
-1. road/world
-2. cars/hazards/world FX
-3. victim’s Dhaval Obscurity light overlay
-4. normal view/HUD conventions as appropriate
-
-Do not draw it once over the entire combined canvas after all local columns have been rendered.
-
-Each viewport must decide independently whether its owner is Dhaval-obscured and at what level.
-
-Existing water obstruction is the closest architectural reference, but Dhaval’s visual should be its own implementation because it has five severity levels and a different appearance.
-
-⸻
-
-35. Do not break current car-specific mechanics
-
-Regression-test all current special cars.
-
-Dhaval must not change:
-
-Flann
-
-* ultimate ram behavior
-* fire rendering
-* contact priority
-
-Neela
-
-* transformation
-* one exchange
-* active-model hitbox
-* hazard privilege
-* swap guard
-
-Lolanthe
-
-* Mind Control aura
-* note effects
-* forced lane behavior
-* ultimate duration
-
-Only add the documented Dhaval→ulting-Lolanthe Cleansed interaction.
-
-Verdant
-
-* invisibility
-* directional defensive contact
-* reveal timing
-* physical presence
-* Mind Control immunity
-
-Only add immunity to Dhaval Obscurity while Verdant’s ultimate is active.
-
-Rhosyn
-
-* Aero-Glow view
-* physical absence
-* canonical race position continuing underneath
-* return transition
-* return Invulnerable
-
-Only add immunity/cleanup of Dhaval Obscurity during its ultimate.
-
-Saffron
-
-* flight
-* airborne contact rules
-* meteor interception
-* transformation geometry
-
-Cole
-
-* car/motorcycle switching
-* separate measured forms
-* speed multipliers
-* ultimate hazard behavior
-
-Dhaval’s addition must not regress any of these.
-
-⸻
-
-36. Update automated invariants
-
-The current checks contain assumptions about:
-
-* seven racers
-* seven sprite cars
-* field size
-* which cars have special ultimate logic
-* per-car race scales
-* car menu buttons/canvases
-* full-field rendering
-
-Update those assertions intentionally.
-
-Do not merely weaken or delete checks until they pass.
-
-The validators should become stricter by adding Dhaval’s expected behavior.
-
-⸻
-
-37. Required Dhaval tests
-
-Extend the existing suites and, if useful, create a focused:
-
-tools/dhaval-check.mjs
-
-but the main invariant suites must also know Dhaval exists.
-
-At minimum test all of the following.
-
-Roster / field
-
-* CAR_IDS.length === 8
-* FIELD_SIZE === 8
-* solo creates seven rivals
-* local 2/3/4 produces six/five/four bots
-* all eight can render together
-* full race remains stable over an extended simulation
-
-Sprite
-
-* v_dhaval.PNG is cached once
-* Dhaval menu preview uses the shared renderer
-* Dhaval road rendering uses the configured race scale
-* aspect ratio is preserved
-* sprite bounds center the measured visible body
-* rendering does not mutate G
-
-Hitbox
-
-* Dhaval uses its own polygon
-* not CAR_HIT_RECT
-* not another car’s polygon
-* hit geometry exists before image load
-* solid measured source points are inside
-* transparent/decorative corners are outside
-* rotation transforms the polygon exactly with the sprite
-* doubling dimensions doubles the hull
-* raceScale scales sprite and hull together
-* player and rival Dhaval produce identical geometry at identical poses
-
-Shared ultimate lifecycle
-
-* normal charge clock unchanged
-* normal 15-second duration unchanged
-* shared ultimate pace behavior unchanged
-* wreck/end/reset works like other cars
-
-Aura
-
-* nearby ordinary racer receives Level 1
-* out-of-range racer does not
-* Dhaval does not target itself
-* finished/wrecked/unreachable racer does not receive it
-* remaining in range refreshes duration without resetting level
-* leaving range allows the tail timer to expire
-* fresh later application begins at Level 1
-
-Severity
-
-* hazard contact increments 1→2→3→4→5
-* never exceeds 5
-* one hazard cannot increment more than once
-* near miss does not increment
-* Perfect Dodge does not increment
-* ultimate-destroyed hazard does not increment
-* shield-absorbed but genuine contact counts once
-* clearing the debuff resets its severity
-
-Rhosyn
-
-* normal Rhosyn can be affected if otherwise eligible
-* ulting Rhosyn cannot be newly affected
-* activating Rhosyn ultimate clears current Dhaval Obscurity
-* no Dhaval effect appears in Aero-Glow
-* returning does not resurrect stale Dhaval state
-
-Verdant
-
-* normal Verdant can be affected
-* ulting Verdant cannot
-* entering Verdant ultimate clears existing Dhaval Obscurity
-* Verdant remains physically collidable as before
-
-Lolanthe
-
-* normal Lolanthe can receive Dhaval Obscurity
-* ulting Lolanthe instead receives Cleansed
-* no Dhaval Obscurity remains on that Lolanthe
-* Lolanthe’s own ultimate continues normally
-
-Cleansed
-
-* instantly clears Slow
-* instantly clears water Obscured
-* instantly clears Dhaval Obscurity
-* instantly clears Skidded
-* instantly clears Mind Controlled
-* removes Dhaval severity state
-* blocks every one of those while active
-* displays as a Buff
-* refreshes instead of stacking
-* expires correctly
-* after expiry a debuff can land normally again
-* does not make the racer noContact()
-* Cleansed racer can still physically collide, lose shield, and be wrecked
-
-Dhaval hazard destruction
-
-Test Dhaval while ulting against:
-
-* tumbleweed
-* meteor
-* puddle
-
-Confirm:
-
-* contacted hazard is removed/destroyed
-* Dhaval receives no corresponding hazard debuff
-* no trap meter penalty
-* ultimate remains running
-
-Test both player and rival Dhaval.
-
-View overlay
-
-For Levels 1–5:
-
-* coverage increases monotonically
-* Level 1 remains fairly open
-* Level 5 is almost fully obscured
-* palette includes white, purple, red, and green
-* only affected viewport receives overlay
-* two, three, and four-way split-screen do not leak
-* render calls do not modify gameplay state
-* reduced motion preserves severity while stopping/reducing motion
-
-AI
-
-* Dhaval-obscured bots do not retain perfect visibility
-* stronger levels reduce perception more than weaker levels
-* Dhaval bot values clusters of eligible targets
-* immune targets are not counted as ordinary offensive value
-
-UI
-
-* eighth car option exists
-* showroom renders Dhaval
-* garage card exists
-* eighth standings row exists
-* eight-place strings exist
-* EN/FR strings complete
-* responsive layouts do not overlap
-
-⸻
-
-38. Run the existing validation suite
-
-Before considering the work complete, run at least:
+Run the complete repository test suite, including:
 
 node tools/check.mjs
 node tools/menu-check.mjs
-node tools/ultimate-check.mjs
-node tools/sprite-check.mjs
 node tools/hitbox-check.mjs
+node tools/sprite-check.mjs
+node tools/progression-check.mjs
+node tools/ultimate-check.mjs
+node tools/shield-check.mjs
+node tools/cole-check.mjs
+node tools/dhaval-check.mjs
+node tools/aureolin-check.mjs
 
-Also run any currently present focused checks such as Cole’s integration check and the new Dhaval check if one is added.
+Also inspect any additional current QA scripts in the repository and run those as well.
 
-Do not accept a solution that passes only by removing old assertions.
+Required Aureolin QA coverage
 
-⸻
+The focused Aureolin suite must prove the ninth identity and full nine-racer field, including 1–4 local humans and correct remaining bot counts.
 
-39. Manual QA
+It must prove normal/armed switching for player one, bot, and local human; two-second switch cooldown; whiteout/morph behavior; preservation of world pose and unrelated meters; persistence through ordinary wreck/respawn; reset only at a new race; rejection while Mind Controlled, wrecked, finished, paused, or counting down.
 
-After automated tests, manually test in the browser.
+It must verify racerModel() returns v_aureolin.PNG in normal form and vtm_aureolin.PNG in armed form, with independent measured hulls.
 
-Test Dhaval as:
+It must verify normal and armed source bounds, uniform sprite scaling, correct road size, transparent-source misses, solid-source hits, and positive/negative tilt hitbox accuracy.
 
-* player
-* AI
-* local player 2/3/4
+It must verify the bullet begins at the real turret muzzle at multiple scales and tilts.
 
-Test targets:
+It must verify left and right rockets begin at their respective launcher mouths, are distinct points, and do not originate at the vehicle center.
 
-* ordinary racer
-* Rhosyn
-* ulting Rhosyn
-* Verdant
-* ulting Verdant
-* Lolanthe
-* ulting Lolanthe
-* Cleansed racer
+It must verify armed form is mandatory for every weapon.
 
-Manually force Obscurity through all five levels.
+It must verify manual bullet fire rate is frame-rate independent and genuinely rapid.
 
-Verify visually:
+It must verify downward mobile gesture starts firing, pointer release stops firing, upward gesture remains boost, horizontal gesture remains lane movement, and ordinary tap/double-tap behavior is preserved.
 
-* Level 1 is mild
-* every level is clearly more obscuring than the previous
-* Level 5 leaves the race barely visible
-* lights are unmistakably large white/purple/red/green circles
-* circles pop, move, overlap, and visibly rotate/orbit under full motion
-* reduced motion is stable rather than flashing
-* effect remains clipped to the correct split-screen view
-* HUD remains usable enough to understand the Condition
-* no giant overlay appears over spectators/other players
+It must verify keyboard and controller equivalents, including multiple local seats.
 
-Also compare Dhaval physically beside every other vehicle and make sure it reads as a full-size Seren race car rather than an undersized sprite.
+It must verify bullet heat drain, passive recharge, hitting zero, overheat latch, inability to fire at partial recharge, and permission to resume only at exactly/full 100%.
 
-⸻
+It must verify ultimate activation fills the yellow meter and clears overheat.
 
-40. Documentation
+It must verify ultimate bullets do not drain the yellow meter.
 
-Update documentation that currently says there are seven racers.
+It must verify armed ultimate auto-fire works for player, bot, and local-human state without a held fire button.
 
-At minimum update:
+It must verify normal-form Aureolin does not auto-fire in the ultimate.
 
-* README roster/full-field information
-* architecture comments that say seven
-* testing documentation
-* project-layout asset list
+It must verify Mind Control immediately stops manual fire, bot fire, ultimate auto-fire, and rocket salvo generation.
 
-Document:
+It must verify one bullet produces exactly one -0.10× stack, multiple bullets stack, independently expire, never create negative speed, compose with ordinary Slow/boost/ultimate/Cole-related generic pace logic correctly, clear on cleanse, and clear on wreck/new race.
 
-* v_dhaval.PNG
-* Dhaval as eighth racer
-* Dhaval’s five-level Obscurity
-* hazard escalation
-* immunity of ulting Rhosyn
-* immunity of ulting Verdant
-* ulting Lolanthe → Cleansed interaction
-* meaning of Cleansed
-* Dhaval’s measured hitbox/race-scale decisions
+It must verify ordinary bullet range and exact 2.00× ultimate bullet range.
 
-Prefer adding a focused QA record such as:
+It must verify bullets expire at their range even if nothing is hit.
 
-docs/DHAVAL-QA.md
+It must verify rocket salvos contain exactly two rockets, one left and one right.
 
-with the measured source bounds, chosen race scale, hitbox reasoning, interaction matrix, visual-level expectations, and test evidence.
+It must verify the 2.0-second rocket salvo cooldown and that rockets consume no yellow meter.
 
-⸻
+It must verify rockets are ultimate-only and armed-form-only.
 
-41. Important implementation invariants
+It must verify dynamic target priority is the closest racer ahead by canonical race progress and changes when racers overtake each other while a rocket is already in flight.
 
-Treat these as non-negotiable:
+It must verify rockets never reverse to a racer behind the owner.
 
-1. Dhaval is a real eighth racer, not just an asset/menu entry.
-2. v_dhaval.PNG is measured rather than guessed.
-3. Dhaval has its own precise traced hitbox.
-4. Render size and collision size always agree.
-5. Dhaval uses the shared ultimate charge/duration/pace lifecycle.
-6. Dhaval Obscurity begins at Level 1.
-7. Accepted hazard contacts raise it one level, capped at 5.
-8. Level 5 makes the race barely visible.
-9. The visual is made from large white, purple, red, and green light circles.
-10. Only the affected racer’s own view receives those circles.
-11. An ulting Rhosyn is immune.
-12. An ulting Verdant is immune.
-13. An ulting Lolanthe converts Dhaval’s attempted Obscurity into Cleansed.
-14. Cleansed immediately removes all debuffs.
-15. Cleansed blocks all debuffs for its complete duration.
-16. Cleansed is not physical Invulnerability and does not make a racer intangible.
-17. Dhaval destroys contacted road hazards while ulting.
-18. AI cannot see perfectly through severe Dhaval Obscurity.
-19. Reduced motion keeps the obstruction but removes aggressive movement.
-20. All eight-car, split-screen, localization, and existing-racer regressions must pass.
+It must verify rocket lifetime/self-destruction when no collision occurs.
 
-Do not implement shortcuts that satisfy the appearance while breaking these systemic rules.
+It must verify each rocket removes exactly one half shield, including the expected total of two half-units if both rockets in one salvo hit the same ordinary target.
+
+It must verify correct wreck behavior if rocket shield damage reaches zero.
+
+It must verify both projectile types self-destruct/do nothing against ulting Flann.
+
+It must verify both projectile types consume themselves and call Verdant’s canonical reveal behavior against ulting Verdant without slowing or damaging it.
+
+It must verify an ulting Rhosyn cannot be hit or selected by either projectile type.
+
+It must verify bullets cannot hit airborne Saffron, while rockets can dynamically target, visually follow, and damage airborne Saffron.
+
+It must verify projectiles destroy every intended destructible hazard they physically intersect and never destroy/trigger water puddles merely by flying over them.
+
+It must verify Aureolin itself clears the same solid hazards as the appropriate existing ultimate cars in both normal and armed form while ulting, but remains affected by puddles.
+
+It must verify projectile collision does not use loose generic boxes and cannot tunnel through racer/hazard geometry at high speed.
+
+It must verify projectiles never hit their owner.
+
+It must verify projectiles already in flight survive the owner switching form or the ultimate ending.
+
+It must verify no stale bullets, rockets, heat, overheat, cooldown, or projectile-slow stacks leak into a new race.
+
+It must verify all nine starting racer hit polygons are non-overlapping at representative view widths and for every selected player car.
+
+It must verify the ninth standings row, ninth-place localization, selection card, garage card, English/French labels, local-player bot counts, HUD action widths, yellow meter placement, shield/action separation, and four-way split HUD geometry.
+
+Final implementation standard
+
+Do not stop once Aureolin “basically works.”
+
+The finished feature must feel native to SEREN.
+
+The normal and armed cars must be sized and collided from their real artwork. The muzzle and launchers must be measured, not guessed. Bullets must visibly leave the turret. The two rockets must visibly leave their respective bazookas. Weapon timing must not depend on FPS. Every player/bot/local-human route must use the same mechanics. Nine-car races must remain correctly laid out. Special ultimate interactions must be resolved before ordinary projectile effects. The yellow meter must work in both DOM and split-screen Canvas HUDs. Existing racers must retain their behavior.
+
+Do not replace the provided Aureolin art, redraw the vehicles, or modify the four PNGs to make implementation easier.
+
+Finish only when all existing tests plus the new Aureolin-focused tests pass and the code/documentation no longer contains stale eight-racer assumptions that affect gameplay or UI.
