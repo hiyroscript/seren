@@ -164,19 +164,15 @@ function tickSaffron(who, dt){
 }
 /* Falling rocks occupy the air; ground blast and ground hazards do not.
    Sweep the rock through this frame's descent to avoid tunnelling at low FPS. */
-function interceptSaffronMeteor(rock, previousAlt){
+function interceptSaffronMeteor(rock, before, frame){
   for(const a of racers()){
     const who = a.me ? "me" : a.obj;
     if(!saffronDragonActive(who) || a.out) continue;
-    const altitude = saffronAltitude(who), alt = rockAlt(rock);
-    const depth = racerDims(who).h*.18;
-    if(alt > altitude + depth || previousAlt < altitude - depth) continue;
-    const y = racerY(who) - altitude;
-    const hull = carHit(who, undefined, y);
-    const ry = clamp(y, rock.y - previousAlt, rock.y - alt);
-    const p = nearestOnCar(hull, rock.x, ry);
-    if(Math.hypot(p.x-rock.x, p.y-ry) > rock.mr) continue;
-    smashFx(rock.x, ry, rock.mr, "#FF8A24", "saffron");
+    const until = rock.fall <= 0 && frame.dt ? clamp(before.fall/frame.dt,0,1) : 1;
+    const t = trapContact(rock,before,who,frame,"air",until);
+    if(t === null) continue;
+    const pose = trapPoseAt(rock,before,frame,t);
+    smashFx(pose.x,pose.y-rockAlt(pose),meteorRockRadius(pose),"#FF8A24","saffron");
     return true;
   }
   return false;
@@ -1879,12 +1875,17 @@ function slickSplash(o){
   }
 }
 
+function nextTrapGap(){
+  return rand(TRAP_GAP_MIN, TRAP_GAP_MAX)*lerp(1, TRAP_GAP_MAX_SCALE, clamp(G.tier/MAX_TIER, 0, 1));
+}
+function weedBodyRadius(o){ return o.r*WEED_BODY_SCALE; }
+
 function spawnTrap(){
   if(!ruleOn("traps")) return;             /* a race that asked for a clean road */
   if(G.seam !== null) return;              /* leave the handover clear */
   const b = G.biome, lane = randi(0, 2);
   if(b === "city"){
-    const rx = rand(laneW*0.30, laneW*0.48), ry = rx*rand(0.52, 0.82);
+    const rx = rand(laneW*0.30, laneW*0.48)*PUDDLE_SIZE_SCALE, ry = rx*rand(0.52, 0.82);
     G.traps.push({ b:b, kind:"puddle", x:onRoad(laneCX(lane) + rand(-laneW*0.16, laneW*0.16), rx),
                    y:VW_TOP - ry - 50, rx:rx, ry:ry, s:Math.random(), hit:0, nm:0 });
   } else if(b === "space"){
@@ -1901,10 +1902,10 @@ function spawnTrap(){
     const max = clamp((aim - y)/pace, METEOR_MIN_T, METEOR_MAX_T);
     G.traps.push({ b:b, kind:"meteor", x:onRoad(laneCX(lane) + rand(-laneW*0.06, laneW*0.06), 6),
                    y:y, fall:max, max:max,
-                   r:laneW*rand(0.42, 0.60), mr:rand(13, 21)*SCENE,
+                   r:laneW*rand(0.42, 0.60)*METEOR_SIZE_SCALE, mr:rand(13, 21)*SCENE*METEOR_SIZE_SCALE,
                    s:Math.random(), phase:0, t:0, nm:0 });
   } else {
-    const dir = Math.random() < 0.5 ? 1 : -1, r = rand(15, 25)*SCENE;
+    const dir = Math.random() < 0.5 ? 1 : -1, r = rand(15, 25)*SCENE*WEED_SIZE_SCALE;
     G.traps.push({ b:b, kind:"weed", r:r, s:Math.random(), age:0, rot:rand(0, 6.28),
                    x: dir > 0 ? roadX - 46*SCENE : roadX + roadW + 46*SCENE,
                    y: VW_TOP - 70*SCENE, nm:0,
@@ -2007,6 +2008,64 @@ function sweptY(o, moved, cy){
   return clamp(cy, Math.min(prev, o.y), Math.max(prev, o.y));
 }
 
+/* Reuse the pre-movement racer poses captured for dodge prediction. Hulls still
+   come from the current model, so a form switch never leaves a stale hitbox. */
+function trapCarAt(who, frame, t){
+  const end = carHit(who);
+  const start = frame && frame.racers.find(function(a){ return a.who === who; });
+  const racer = who === "me" ? G : who;
+  // A guarded exchange is a teleport, not a drive through the intervening road.
+  if(!start || racer.swapGuard > 0) return end;
+  return carHit(who, lerp(start.x, end.x, t), lerp(start.y, end.y, t),
+                lerp(start.tilt, racer.tilt || 0, t));
+}
+function trapPoseAt(o, before, frame, t){
+  return Object.assign({}, o, {
+    x:lerp(before.x, o.x, t), y:lerp(before.y, o.y, t),
+    fall:o.kind === "meteor" ? Math.max(0, before.fall - frame.dt*t) : o.fall
+  });
+}
+/* Broad phase uses enclosing circles along relative motion; narrow phase keeps
+   the traced hull and actual puddle perimeter. Sample at <=1 logical pixel and
+   <=1/240s, bounded by this frame's motion, never by render FPS or padded hulls.
+   Return the first contact fraction so a meteor blast happens at its impact
+   pose, not wherever the road happens to end the rendered frame. */
+function trapContact(o, before, who, frame, mode, until){
+  const endT = until === undefined ? 1 : until;
+  const first = trapCarAt(who, frame, 0), last = trapCarAt(who, frame, 1);
+  const dim = racerDims(who), body = Math.hypot(dim.w, dim.h);
+  const rock = mode === "rock" || mode === "air";
+  const radius = rock ? Math.max(meteorRockRadius(before), meteorRockRadius(o)) :
+    o.kind === "puddle" ? Math.hypot(o.rx, o.ry)*1.24 : weedBodyRadius(o);
+  const lift = mode === "air" ? saffronAltitude(who) : 0;
+  const ax = before.x-first.x, bx = o.x-last.x;
+  const lowY = Math.min(before.y-first.y,o.y-last.y)-(rock ? rockAlt(before) : 0)+lift;
+  const highY = Math.max(before.y-first.y,o.y-last.y)-(rock ? rockAlt(o) : 0)+lift;
+  if(Math.min(ax,bx) > body+radius || Math.max(ax,bx) < -body-radius ||
+     lowY > body+radius || highY < -body-radius) return null;
+  const start = frame.racers.find(function(a){ return a.who === who; });
+  const racer = who === "me" ? G : who;
+  const turn = start ? Math.abs((racer.tilt || 0)-start.tilt)*body : 0;
+  const travel = Math.hypot(bx-ax,(o.y-last.y)-(before.y-first.y))+turn+
+    (rock ? frame.dt*(METEOR_ALT+o.mr*0.5)/rockLead(o) : 0);
+  const n = Math.max(1, Math.ceil(Math.max(frame.dt*240, travel)*endT));
+  for(let i=0;i<=n;i++){
+    const t = endT*i/n, h = trapPoseAt(o,before,frame,t);
+    let box = trapCarAt(who,frame,t);
+    if(rock){
+      const alt = rockAlt(h);
+      if(h.fall >= rockLead(h)) continue;
+      if(mode === "air"){
+        if(Math.abs(alt-lift) > dim.h*0.18) continue;
+        box = {x:box.x,y:box.y-lift,points:box.points.map(function(p){return {x:p.x,y:p.y-lift};})};
+      } else if(alt >= dim.h*0.55) continue;
+      if(dodgeCircleHits(box,h.x,h.y-alt,meteorRockRadius(h))) return t;
+    } else if(o.kind === "puddle" ? puddleHits(h,box) :
+              dodgeCircleHits(box,h.x,h.y,weedBodyRadius(h))) return t;
+  }
+  return null;
+}
+
 /* While an ultimate is running the meter is its remaining duration, so
    rewards and penalties wait until it has finished rather than cutting it
    short or extending it. */
@@ -2072,7 +2131,7 @@ function perfectDodgeThreat(o, a, worldSpeed){
     if(o.kind === "puddle"){
       if(puddleHits(o, box, hy)) return true;
     } else if(o.kind === "weed"){
-      if(dodgeCircleHits(box, hx, hy, o.r*Math.sqrt(0.86))) return true;
+      if(dodgeCircleHits(box, hx, hy, weedBodyRadius(o))) return true;
     } else if(o.kind === "meteor"){
       const fall = Math.max(0, o.fall - t);
       if(fall <= 0){
@@ -2083,10 +2142,10 @@ function perfectDodgeThreat(o, a, worldSpeed){
           a.y + (worldSpeed-a.speed)*o.fall, a.tilt);
         return dodgeCircleHits(impactBox, o.x, impactY, o.r);
       }
-      const alt = rockAlt(Object.assign({}, o, {fall:fall}));
-      // updateTraps' early roof detonation is driven by the camera racer.
-      if(a.who === "me" && fall < rockLead(o) && alt < racerDims(a.who).h*0.55 &&
-         dodgeCircleHits(box, hx, hy-alt, o.mr)) return true;
+      const rock = Object.assign({}, o, {fall:fall});
+      const alt = rockAlt(rock);
+      if(fall < rockLead(rock) && alt < racerDims(a.who).h*0.55 &&
+         dodgeCircleHits(box, hx, hy-alt, meteorRockRadius(rock))) return true;
     }
   }
   return false;
@@ -2138,83 +2197,75 @@ function nearestOnCar(c, px, py){
   return nearest;
 }
 
-function updateTraps(dt, d, st){
-  /* A racer that has left the shared road for Aero-Glow is not on it to be
-     hit, and a rock must not detonate because a car that is not there passed
-     under it - so the departure is part of "is this car racing on this road
-     right now?" rather than an extra clause bolted on to the damage test. */
-  const racing = st === "running" && G.dead <= 0 && !rhosynElsewhere("me") && !saffronAirborne("me");
-  const live = racing && !invulnerableMe() && !finishedMe();
-  const c = carHit();
+/* Move before bot perception, resolve after the whole field has moved. */
+function updateTraps(dt, d, st, frame){
+  const motion = {dt:dt, racers:(frame || beginPerfectDodges()).racers, traps:[]};
+  for(const o of G.traps){
+    motion.traps.push({live:o,before:Object.assign({},o)});
+    if(o.kind === "weed"){
+      o.age += dt; o.x += o.vx*dt; o.y += d*o.fall; o.rot += o.vx*dt/o.r;
+    } else {
+      o.y += d;
+      if(o.kind === "meteor"){
+        o.t += dt;
+        if(o.phase === 0) o.fall = Math.max(0,o.fall-dt);
+        else if(o.phase === 1 && o.t > 0.4){ o.phase = 2; o.t = 0; }
+      }
+    }
+  }
+  if(!frame) resolveTraps(motion,st);
+  return motion;
+}
+function resolveTraps(frame, st){
   for(let i=G.traps.length-1;i>=0;i--){
     const o = G.traps[i];
-    if(o.kind === "weed"){
-      o.age += dt;
-
-      o.x += o.vx*dt;
-      o.y += d*o.fall;
-      o.rot += o.vx*dt/o.r;
-      if(o.x < roadX-100 || o.x > roadX+roadW+100 || o.y > VW_BOT+100){ G.traps.splice(i,1); continue; }
-      if(live && !(o.hit & 1)){
-        const wy = sweptY(o, d*o.fall, c.y);
-        const p = nearestOnCar(c, o.x, wy);
-        const dx = p.x - o.x, dy = p.y - wy;
-        if(dx*dx + dy*dy <= o.r*o.r*0.86){
-          hitWeed(o);
+    const entry = frame.traps.find(function(e){return e.live === o;});
+    const before = entry ? entry.before : o;
+    if(o.kind === "meteor"){
+      if(o.phase === 0){
+        // Air interception keeps priority over roof contact and ground blast.
+        if(st === "running" && interceptSaffronMeteor(o,before,frame)){
           G.traps.splice(i,1); continue;
         }
-      }
-      continue;
-    }
-    if(o.kind === "meteor"){
-      /* The ring scrolls with the road; the falling rock uses elapsed seconds. */
-
-      o.y += d; o.t += dt;
-      if(o.phase === 0){
-        const previousAlt = rockAlt(o);
-        o.fall = Math.max(0, o.fall - dt);
-        if(st === "running" && interceptSaffronMeteor(o, previousAlt)){ G.traps.splice(i,1); continue; }
-        if(o.fall <= 0) detonate(o, live);
-        else if(racing && o.fall < rockLead(o)){
-          const alt = rockAlt(o);
-          if(alt < racerDims("me").h*0.55){           /* a rock straight on the roof */
-            const my = o.y - alt;
-            const p2 = nearestOnCar(c, o.x, my);
-            const dx = p2.x - o.x, dy = p2.y - my;
-            if(dx*dx + dy*dy <= o.mr*o.mr){
-              /* An ultimate with the solid-hazard privilege goes through the
-                 rock rather than under it: it is taken off the road here and
-                 now, so it never reaches the ground and never detonates. The
-                 ultimate itself is untouched. */
-              if(clearsSolidHazards("me")){
-                showShieldHit("me");
-                smashFx(o.x, my, o.mr, "#C6482A", G.car);
-                G.traps.splice(i,1); continue;
-              }
-              detonate(o, live);
-            }
-          }
+        let impact = o.fall <= 0 ? (frame.dt ? clamp(before.fall/frame.dt,0,1) : 0) : null;
+        let striker = null;
+        if(st === "running" && before.fall > 0) for(const who of ["me"].concat(G.rivals)){
+          const racer = who === "me" ? G : who;
+          if(racer.dead > 0 || rhosynElsewhere(who) || saffronAirborne(who)) continue;
+          const t = trapContact(o,before,who,frame,"rock",impact === null ? 1 : impact);
+          if(t !== null && (impact === null || t < impact)) { impact=t; striker=who; }
         }
-      } else if(o.phase === 1){
-        if(o.t > 0.4){ o.phase = 2; o.t = 0; }
-      } else if(o.t > 1.6){ G.traps.splice(i,1); continue; }
-      if(o.y > VW_BOT + 400) G.traps.splice(i,1);
-      continue;
+        if(impact !== null){
+          const pose = trapPoseAt(o,before,frame,impact);
+          if(striker !== null && clearsSolidHazards(striker)){
+            showShieldHit(striker);
+            smashFx(pose.x,pose.y-rockAlt(pose),meteorRockRadius(pose),"#C6482A",
+                    striker === "me" ? G.car : striker.car);
+            G.traps.splice(i,1); continue;
+          }
+          detonate(o,st === "running" && !noContact("me"),frame,impact,pose);
+        }
+      }
+    } else if(st === "running" && !noContact("me") && !(o.hit & 1)){
+      if(trapContact(o,before,"me",frame) !== null){
+        if(o.kind === "weed") { hitWeed(o); G.traps.splice(i,1); continue; }
+        o.hit |= 1; hitPuddle();
+      }
+      markPassed(o,carHit(),1);
     }
-
-    o.y += d;                                  /* world-fixed: always scrolls with the road */
-    if(o.y > VW_BOT + 260){ G.traps.splice(i,1); continue; }
-    if(!live || (o.hit & 1)) continue;
-    if(puddleHits(o, c, sweptY(o, d, c.y))){
-      o.hit |= 1;
-      hitPuddle();
-    }
-    markPassed(o, c, 1);
   }
+  if(st === "running" || st === "over") for(const R of G.rivals) hitRivalTraps(R,frame);
+  // Cull only after swept contact, and across every split-screen viewport.
+  G.traps = G.traps.filter(function(o){
+    if(o.kind === "weed") return o.x >= roadX-100-o.r && o.x <= roadX+roadW+100+o.r && o.y <= VW_BOT+100+o.r;
+    if(o.kind === "meteor") return !(o.phase === 2 && o.t > 1.6) && o.y <= VW_BOT+trapReach(o);
+    return o.y <= VW_BOT+260+o.ry*1.4;
+  });
 }
 
 /* The rock always reaches the ground. Anything caught in the blast goes with it. */
-function detonate(o, live){
+function detonate(o, live, frame, impact, pose){
+  const blast = pose || o;
   o.phase = 1; o.t = 0;
   G.shake = 18;
   for(let i=0;i<26;i++){
@@ -2229,20 +2280,13 @@ function detonate(o, live){
      solid-hazard privilege does not do is die in it. Everybody else inside the
      radius is destroyed on exactly the terms they always were. */
   if(live && !noContact("me")){
-    const c2 = carHit();
-    const p3 = nearestOnCar(c2, o.x, o.y);
-    const dx = p3.x - o.x, dy = p3.y - o.y;
-    if(dx*dx + dy*dy <= o.r*o.r){
+    if(dodgeCircleHits(trapCarAt("me",frame,impact),blast.x,blast.y,blast.r)){
       if(clearsSolidHazards("me")) showShieldHit("me"); else destroyCar();
     }
   }
-  for(let n=0;n<G.rivals.length;n++){
-    const R = G.rivals[n];
+  for(const R of G.rivals){
     if(safeCar(R)) continue;
-    const rc = carHit(R);
-    const p4 = nearestOnCar(rc, o.x, o.y);
-    const rx = p4.x - o.x, ry = p4.y - o.y;
-    if(rx*rx + ry*ry <= o.r*o.r){
+    if(dodgeCircleHits(trapCarAt(R,frame,impact),blast.x,blast.y,blast.r)){
       if(clearsSolidHazards(R)) showShieldHit(R); else wreckRival(R);
     }
   }

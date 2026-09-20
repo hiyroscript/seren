@@ -362,6 +362,11 @@ because Aero-Glow is never a track the race is on.
 
 | Constant | Value | Means |
 | --- | --- | --- |
+| `TRAP_GAP_MIN`, `TRAP_GAP_MAX` | `430`, `900` | initial random road-distance gap, in logical pixels |
+| `TRAP_GAP_MAX_SCALE` | `1.18` | gap multiplier at maximum base tier |
+| `PUDDLE_SIZE_SCALE`, `WEED_SIZE_SCALE` | `1.08`, `1.08` | modest footprint increase, applied at spawn |
+| `METEOR_SIZE_SCALE` | `1.06` | warning/blast and falling-rock size increase |
+| `WEED_BODY_SCALE` | `sqrt(0.86)` | dense-body collision radius relative to twig artwork |
 | `BLIND_TIME` | `2.6` | puddle: seconds the view stays fouled |
 | `SLOW_TIME` | `1.7` | tumbleweed: seconds at half speed |
 | `DEAD_TIME` | `3` | seconds wrecked |
@@ -376,8 +381,46 @@ in **seconds** — so boosting or being slowed moves where it lands, not when.
 The fall uses elapsed seconds, unaffected by ultimates. `rockAlt()` is the single answer to "how
 high is it", read by the fall, the roof test and the drawing alike.
 
-Spawn spacing is inline in `race.js`: a hazard every `rand(430, 900)` of road, and
-none while a track seam is crossing.
+`nextTrapGap()` is the only spacing calculation: the existing random road-distance
+range is multiplied by `lerp(1, TRAP_GAP_MAX_SCALE, clamp(G.tier/MAX_TIER, 0, 1))`.
+It never reads temporary pace, Boost, Ultimate, Slow, wrecks, shunts or Cole's
+form. The first gap remains 620; the seam and custom traps-off gates are unchanged.
+
+| Base speed | Road-distance gap |
+| --- | --- |
+| 1.00× | 430–900 |
+| 1.50× | 449–941 |
+| 2.00× | 469–981 |
+| 2.50× | 488–1022 |
+| 3.00× | 507–1062 |
+
+At maximum tier this is approximately 15.3% fewer hazards per road pixel
+(`1 - 1/1.18`), not fewer hazards per second: faster road still carries hazards
+past the field faster. Sizes do not change with tier. Puddles preserve their
+random aspect ratios and seeded quadratic outline, enlarged by 8%; detached
+droplets stay cosmetic. Weeds grow 8% with a shared `weedBodyRadius()` for their
+dense mass, retaining the old conservative inset from porous twig tips.
+Meteors grow 6%; even the largest ring is only 0.636 lane widths in radius.
+A clean move into the neighboring lane remains safe for every grounded form.
+
+`meteorRockRadius()` supplies both the drawn rock's size and its direct-contact
+radius, including fall-progress scaling. `rockAlt()` remains the altitude
+authority. Glow, trail, shadow and expanding explosion artwork do not extend
+either the rock contact radius or the ground blast circle. The ground blast
+uses `o.r`, exactly the warning ring, once at impact.
+
+Live hazard contact uses `trapContact()` for players, local seats and bots.
+After a conservative broad phase, relative translation and hull rotation are
+sampled at at most one logical pixel / 1/240 second. Puddles still use the
+subdivided drawn perimeter against `carHit()`; circular contacts use shared
+radii against the same current, rotated model hull. The meteor blast checks
+interpolated racer positions at the impact time within the frame, not the
+entire warning ring sweep. Guarded Neela exchanges are treated as teleports.
+
+Run `node tools/hazard-check.mjs` for gap/size, model-edge, lane-safety,
+30/60/120 FPS and 50ms-clamp crossings, meteor timing, immunity and culling
+regressions. Existing hitbox, shield, progression, Cole, sprite and Ultimate
+checks cover the preserved vehicle and consequence rules.
 
 ## Mystery bubbles and items
 
