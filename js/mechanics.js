@@ -64,6 +64,43 @@ function sweepDebuffs(){
   }
 }
 
+/* Cole's permanent vehicle choice. Every input route uses this gate. */
+function coleCar(who){ const o = who === "me" ? G : who; return !!o && o.car === "cole"; }
+function coleBikeActive(who){ const o = who === "me" ? G : who; return coleCar(who) && !!o.coleBike; }
+function coleUltActive(who){ const o = who === "me" ? G : who; return coleCar(who) && !!o.ultOn; }
+function canColeSwitch(who){
+  const o = who === "me" ? G : who;
+  return coleCar(who) && G.state === "running" && !(o.coleSwitchT > 0) &&
+         !(o.dead > 0) && o.finished === null && !controlsLocked(who);
+}
+function switchColeForm(who){
+  if(!canColeSwitch(who)) return false;
+  const o = who === "me" ? G : who;
+  o.coleBike = !o.coleBike;
+  o.coleSwitchT = COLE_SWITCH_COOLDOWN;
+  startWhiteout(who); startMorph(who);
+  return true;
+}
+function tickCole(who, dt){
+  const o = who === "me" ? G : who;
+  if(G.state === "running" && o.coleSwitchT > 0){
+    o.coleSwitchT = Math.max(0, o.coleSwitchT - dt);
+    if(o.coleSwitchT < 1e-9) o.coleSwitchT = 0;
+  }
+}
+/* One form-aware target for player, local human and AI, including all ordinary
+   stacking effects. Intrinsic bike pace never grants a temporary Condition. */
+function racerPace(who){
+  const o = who === "me" ? G : who, bike = coleBikeActive(who);
+  let pace = BASE_SPEED*speedMult()*(bike ? COLE_BIKE_BASE_SPEED : 1);
+  if(o.ultOn) pace *= bike ? COLE_BIKE_ULT_SPEED : ULT_SPEED;
+  if((who === "me" ? G.slowT : o.slow) > 0) pace *= 0.5;
+  if(o.boosting) pace *= bike ? COLE_BIKE_BOOST_SPEED : BOOST_SPEED;
+  if(o.canT > 0) pace *= CAN_SPEED;
+  if(o.shuntT > 0) pace *= SHUNT_BOOST;
+  return pace;
+}
+
 /* Saffron's altitude is presentation, never a second race coordinate. */
 function saffronCar(who){ const o = who === "me" ? G : who; return !!o && o.car === "saffron"; }
 function saffronDragonActive(who){
@@ -228,12 +265,11 @@ function rearContact(who){
   return front;
 }
 
-/* ---------------- the five car-specific ultimates ----------------
+/* ---------------- shared ultimate predicates --------------------
    Every car runs the same ultimate: eighty-five seconds to charge, fifteen
-   seconds long, double pace, and the lifecycle in startUlt/tickUlt/endUlt
-   below is shared by all six. Five of them add something on top of it, and
-   only while that shared lifecycle is running. Saffron is the one left with the
-   plain fifteen seconds and nothing else.
+   seconds long, and the lifecycle in startUlt/tickUlt/endUlt below is shared
+   by all seven. Individual powers use the same clock. racerPace() applies
+   double pace, or Cole’s motorcycle multiplier, without another lifecycle.
 
    These are the predicates that say which car is which, and they are the only
    place in the game a racer's `car` is compared to a name. Everything else -
@@ -366,7 +402,7 @@ function aeroHideK(who){
    hazards in this file and the rivals' in race.js. */
 function clearsSolidHazards(who){
   return flannUltActive(who) || neelaUltActive(who) ||
-         lolantheUltActive(who) || verdantUltActive(who);
+         lolantheUltActive(who) || verdantUltActive(who) || coleUltActive(who);
 }
 /* And whether this racer is a Neela that still has its one exchange to spend.
    The form has to be up, the swap has to be unspent, and the contact must not
@@ -467,7 +503,7 @@ function whiteoutActive(who){
 }
 /* ---- the flash on the body ----
    Cosmetic, and generic: it is played on whichever car was transformed or
-   teleported, and the victim of a swap can be any of the six. It changes no
+   teleported, and the victim of a swap can be any of the seven. It changes no
    hitbox and no race state. */
 function startMorph(who){
   const o = who === "me" ? G : who;
@@ -1396,7 +1432,7 @@ function leaderOf(who){
    whole bubble world was an eighty metre band strapped to your car: anyone
    further ahead than that was already past the row before it existed and never
    met a bubble in their life, and anyone dropped behind lost every row before it
-   reached them. The road has to be the same road for all six, so a row is now
+   reached them. The road has to be the same road for all seven, so a row is now
    planted the same distance ahead of whoever leads and kept until whoever trails
    is through it. When you are the one in front both come out exactly where they
    always did. */
@@ -1884,8 +1920,7 @@ function spawnTrap(){
        The shape is in logical car units and the size it is multiplied up by is
        the racer's own, out of carDims() - so a car drawn larger on the road is
        collided larger by exactly the same factor, and there is never a big car
-       carrying a small hull. Five of the six are carW/carH as they always
-       were. */
+       carrying a small hull. Every sprite carries its own measured geometry. */
 function carHit(who, xAt, yAt, tiltAt){
   const me = who === undefined || who === "me", o = me ? G : who;
   const x = xAt === undefined ? o.x : xAt;

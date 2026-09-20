@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import {fixture} from './game-fixture.mjs';
 import './progression-check.mjs';
+import './cole-check.mjs';
 let checks = 0;
 const f = fixture(), {run} = f;
 f.images.forEach(image => image.load());
@@ -100,7 +101,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
     /* Nothing reaches a car that is not there, so the solid-hazard privilege
        is neither given to Rhosyn nor needed by it. */
     equal('clearsSolidHazards(who)',
-          ['flann','neela','lolanthe','verdant'].indexOf(car) >= 0);
+          ['flann','neela','lolanthe','verdant','cole'].indexOf(car) >= 0);
     equal('neelaCanSwap(who)',car === 'neela');
     equal('racerDetectable(who)',car !== 'verdant' && car !== 'rhosyn');
     /* And none of them takes its own driver's controls away. */
@@ -210,7 +211,7 @@ for(const car of cars) for(const kind of ['player','bot','local']){
        not, for anybody. Rhosyn smashes none of them and is caught by none of
        them: it is not on the road the hazard is lying on, so the hazard is
        still there afterwards for whoever does drive over it. */
-    const smashed = ['flann','neela','lolanthe','verdant'].indexOf(car) >= 0 &&
+    const smashed = ['flann','neela','lolanthe','verdant','cole'].indexOf(car) >= 0 &&
                     (type === 'weed' || type === 'meteor');
     test(label + (away ? ' is not on the road to meet the '
                        : smashed ? ' smashes ' : ' vulnerable to ') + type,()=>{
@@ -857,7 +858,7 @@ function duo(nSide, vSide, ulting = true){
   const vExpr = vSide === 'me' ? '"me"'
               : (nSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
   run(`G.local = false; G.car = ${nSide === 'me' ? '"neela"' : '"saffron"'};
-       G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
+       G.rules = defaultRules(); G.rules.bots = 6; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
        G.traps = []; G.slicks = []; G.missiles = []; G.boxes = []; G.fx = [];
@@ -1449,7 +1450,7 @@ test('teleporting player one leaves every other absolute position exactly alone'
   equal('order().length',run('FIELD_SIZE'));
   equal('order().every((a,i,all) => i === 0 || all[i-1].m >= a.m - 1e-9)',true);
   equal('placeOf("me")',run('order().findIndex(a => a.me) + 1'));
-  for(let i=0;i<5;i++)
+  for(let i=0;i<6;i++)
     equal(`placeOf(G.rivals[${i}])`,run(`order().findIndex(a => a.who === G.rivals[${i}]) + 1`));
   /* Nobody was wrecked to do any of it. */
   equal('G.dead',0);equal('N.dead',0);
@@ -1518,7 +1519,7 @@ function pair(aSide, bSide, aCar, bCar){
   const aExpr = aSide === 'me' ? '"me"' : 'G.rivals[0]';
   const bExpr = bSide === 'me' ? '"me"' : (aSide === 'me' ? 'G.rivals[0]' : 'G.rivals[1]');
   run(`G.local = false; G.car = "saffron";
-       G.rules = defaultRules(); G.rules.bots = 5; G.rules.boost = false;
+       G.rules = defaultRules(); G.rules.bots = 6; G.rules.boost = false;
        G.rules.bubbles = false; G.mode = 'endless'; startRace(); clearTimers();
        G.state = 'running'; G.nextTrap = 1e9; G.nextRow = 1e9;
        G.traps = []; G.slicks = []; G.missiles = []; G.boxes = []; G.fx = [];

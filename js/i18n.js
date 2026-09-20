@@ -97,10 +97,16 @@ const STR = {
      deliberately not a TRACKS entry: Aero-Glow is never a track the race is
      on, so it has no place in the track list the garage and the HUD read. */
   aeroGlow:     {en:"Aero-Glow",                   fr:"Aero-Glow"},
+  cole: {en:"Cole", fr:"Cole"},
+  coleUlt: {en:"Switch between car and motorcycle with Q, L1 or the swap button; two-second cooldown. The motorcycle runs at 1.5× base pace, with 1.8× boost instead of 1.5× and a 2.3× ultimate instead of 2.0×. In either form, the ultimate breaks tumbleweeds and meteors; puddles still affect you.", fr:"Passez de la voiture à la moto avec Q, L1 ou le bouton d’échange ; délai de deux secondes. La moto roule à 1,5× l’allure de base, avec un turbo à 1,8× au lieu de 1,5× et un ultime à 2,3× au lieu de 2,0×. Dans les deux formes, l’ultime brise les virevoltants et les météores ; les flaques vous affectent toujours."},
+  hudColeSwitch: {en:"Switch Cole’s vehicle (Q / L1)", fr:"Changer le véhicule de Cole (Q / L1)"},
+  coleNormal: {en:"Car", fr:"Voiture"},
+  coleMotorcycle: {en:"Motorcycle", fr:"Moto"},
+  place7: {en:"7th", fr:"7e"},
   saffron:        {en:"Saffron",                       fr:"Saffron"},
   saffronUlt: {en:"Fifteen seconds at double pace as a metal dragon, flying above racers and road hazards. Mind Control still reaches you; falling meteors break against the dragon. Transform back, drop, and wreck racers directly underneath at touchdown.", fr:"Quinze secondes à double allure en dragon de métal, au-dessus des pilotes et des obstacles au sol. Le contrôle mental peut toujours vous atteindre ; les météores qui vous frappent en vol se brisent. Redevenez une voiture, puis chutez : les pilotes directement sous vous à l’atterrissage sont détruits."},
   /* ---- conditions ----
-     The six names, the two pages the garage splits them across, and the
+     The condition names, the two pages the garage splits them across, and the
      paragraph each one gets on its reference card. The garage is the only
      place a Condition is named on screen - in a race it is the badge and
      nothing else - so the description has to carry the whole meaning. */
@@ -129,8 +135,8 @@ const STR = {
   /* ---- standard / custom play ---- */
   chooseStyle:  {en:"How do you want to race?", fr:"Comment voulez-vous courir\u00a0?"},
   standardPlay: {en:"Standard play",           fr:"Partie standard"},
-  standardDesc: {en:"The full game. Six cars, every trap, every pickup. Pick how hard the bots push and go.",
-                 fr:"Le jeu complet. Six voitures, tous les pi\u00e8ges, tous les bonus. Choisissez le niveau des bots et c'est parti."},
+  standardDesc: {en:"The full game. Seven cars, every trap, every pickup. Pick how hard the bots push and go.",
+                 fr:"Le jeu complet. Sept voitures, tous les pi\u00e8ges, tous les bonus. Choisissez le niveau des bots et c'est parti."},
   customPlay:   {en:"Custom play",             fr:"Partie personnalis\u00e9e"},
   customDesc:   {en:"Set the road up your way: how many bots, and which of the toys are on the table.",
                  fr:"La route \u00e0 votre fa\u00e7on\u00a0: combien de bots, et lesquels des gadgets restent en jeu."},
@@ -168,8 +174,8 @@ const STR = {
                  fr:"Affich\u00e9 par tout ce qui vous ralentit, quelle qu'en soit la cause."},
   invulnerableInfo:{en:"Nothing can reach you: no debuff, hazard, trap or attack. You pass through everything, and any debuff still on you is cleared at once. Respawning after a wreck is what grants it, and it lasts two seconds.",
                  fr:"Plus rien ne vous atteint\u00a0: aucun malus, danger, pi\u00e8ge ni attaque. Vous traversez tout, et les malus en cours sont effac\u00e9s aussit\u00f4t. C'est la r\u00e9apparition apr\u00e8s une destruction qui l'accorde, pour deux secondes."},
-  obscuredInfo: {en:"Your view of the road is gone for a moment: water from a puddle thrown over your screen, or the white flash of a Neela transformation. You keep driving throughout.",
-                 fr:"Vous perdez la route des yeux un instant\u00a0: l'eau d'une flaque sur votre \u00e9cran, ou l'\u00e9clair blanc d'une transformation de Neela. Vous continuez \u00e0 conduire pendant ce temps."},
+  obscuredInfo: {en:"Your view of the road is gone for a moment: water from a puddle thrown over your screen, or the white flash of a vehicle transformation (such as Neela or Cole). You keep driving throughout.",
+                 fr:"Vous perdez la route des yeux un instant\u00a0: l'eau d'une flaque sur votre \u00e9cran, ou l'\u00e9clair blanc d'une transformation de véhicule (comme Neela ou Cole). Vous continuez \u00e0 conduire pendant ce temps."},
   mindControlledInfo:{en:"Somebody else has your car. For three seconds you cannot steer, boost, use an item or fire your ultimate \u2014 the car keeps driving, and everything already happening to it keeps happening, but none of it answers to you. Lolanthe's ultimate is what applies it, and a fresh application resets the three seconds rather than adding another three.",
                  fr:"Quelqu'un d'autre a votre voiture. Pendant trois secondes vous ne pouvez ni tourner, ni acc\u00e9l\u00e9rer, ni utiliser d'objet, ni d\u00e9clencher votre ultime \u2014 la voiture continue de rouler, et tout ce qui lui arrive d\u00e9j\u00e0 continue, mais plus rien ne vous ob\u00e9it. C'est l'ultime de Lolanthe qui l'applique, et une nouvelle emprise remet les trois secondes \u00e0 z\u00e9ro au lieu d'en ajouter trois."},
   boostedInfo:  {en:"Shown by anything that makes you go faster, whatever put it there: the boost meter, a boost can, an ultimate, or the shove a rear-end gives you.",
@@ -212,14 +218,14 @@ const STR = {
   localDesk:    {en:"Local play needs a computer and a controller for each player.",
                  fr:"Le jeu local demande un ordinateur et une manette par joueur."},
   chooseCount:  {en:"How many playing?",           fr:"Combien de joueurs ?"},
-  countLede:    {en:"The screen is split evenly between you. Six cars race either way, so the bots fill whatever is left.",
-                 fr:"L\u2019\u00e9cran est partag\u00e9 \u00e0 parts \u00e9gales. Six voitures courent dans tous les cas : les bots compl\u00e8tent la grille."},
+  countLede:    {en:"The screen is split evenly between you. Seven cars race either way, so the bots fill whatever is left.",
+                 fr:"L\u2019\u00e9cran est partag\u00e9 \u00e0 parts \u00e9gales. Sept voitures courent dans tous les cas : les bots compl\u00e8tent la grille."},
   p2:           {en:"2 players",                   fr:"2 joueurs"},
   p3:           {en:"3 players",                   fr:"3 joueurs"},
   p4:           {en:"4 players",                   fr:"4 joueurs"},
-  p2Desc:       {en:"Two screens, four bots.",     fr:"Deux \u00e9crans, quatre bots."},
-  p3Desc:       {en:"Three screens, three bots.",  fr:"Trois \u00e9crans, trois bots."},
-  p4Desc:       {en:"Four screens, two bots.",     fr:"Quatre \u00e9crans, deux bots."},
+  p2Desc:       {en:"Two screens, five bots.",     fr:"Deux \u00e9crans, cinq bots."},
+  p3Desc:       {en:"Three screens, four bots.",  fr:"Trois \u00e9crans, quatre bots."},
+  p4Desc:       {en:"Four screens, three bots.",     fr:"Quatre \u00e9crans, trois bots."},
   checkPads:    {en:"Controllers",                 fr:"Manettes"},
   padsLede:     {en:"Pair each controller over Bluetooth, then press a button on it. The browser only sees a pad once it has been used.",
                  fr:"Appairez chaque manette en Bluetooth, puis appuyez sur un bouton. Le navigateur ne voit une manette qu\u2019une fois utilis\u00e9e."},
@@ -235,8 +241,8 @@ const STR = {
   picksCar:     {en:"picks a car",                 fr:"choisit une voiture"},
   localOver:    {en:"Race over",                   fr:"Course termin\u00e9e"},
   localWon:     {en:"wins",                        fr:"gagne"},
-  padCtrls:     {en:"Sticks steer and boost \u00b7 click both sticks for ultimate \u00b7 R2 item",
-                 fr:"Sticks : direction et boost \u00b7 clic des deux sticks pour l\u2019ultime \u00b7 R2 objet"},
+  padCtrls:     {en:"Sticks steer and boost \u00b7 click both sticks for ultimate \u00b7 R2 item · L1 Cole switch",
+                 fr:"Sticks : direction et boost \u00b7 clic des deux sticks pour l\u2019ultime \u00b7 R2 objet · L1 transformation de Cole"},
   padGone:      {en:"Player {n}\u2019s controller dropped out. Reconnect it to carry on.",
                  fr:"La manette du joueur {n} s\u2019est d\u00e9connect\u00e9e. Reconnectez-la pour continuer."},
   botShort:     {en:"Bot",                         fr:"Bot"},

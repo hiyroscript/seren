@@ -38,7 +38,7 @@ for(const kind of ['player','bot','local']){
     collide('puddle');eq('o.shield',6);
   });
   test(kind+': active ultimate preserves full and partial shields, with puddle effects and feedback',()=>{
-    for(const car of ['flann','neela','lolanthe','verdant','rhosyn','saffron']){
+    for(const car of ['flann','neela','lolanthe','verdant','rhosyn','saffron','cole']){
       for(const halves of [6,3]){
         setup(kind,car);run(`o.shield=${halves};o.ult=1;startUlt(who);`);
         // Flight/absence have no road contact. Other ultimates retain Obscured.
@@ -67,7 +67,7 @@ for(const kind of ['player','bot','local']){
     }
     setup(kind);collide('meteor');eq('o.dead',3);eq('o.shield',6);
   });
-  for(const car of ['flann','neela','lolanthe','verdant'])test(kind+'/'+car+': cleared hazards cost no shield',()=>{
+  for(const car of ['flann','neela','lolanthe','verdant','cole'])test(kind+'/'+car+': cleared hazards cost no shield',()=>{
     for(const type of ['weed','meteor']){
       setup(kind,car);run('o.ult=1;startUlt(who);');collide(type);
       eq('o.shield',6);eq('o.dead',0);eq('o.shieldHitT',1);if(type==='weed')eq('G.traps.length',0);

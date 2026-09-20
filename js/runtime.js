@@ -34,8 +34,19 @@ let CT = 0, CB = 0;         /* what this view can see, in master screen coords *
 let VOWN = "me";            /* whose view is being drawn */
 let VW_TOP = 0, VW_BOT = 0; /* the union of every view: what the world must cover */
 
-/* Where a car's own view sits relative to the master frame. */
-function camDy(who){ return who === "me" ? 0 : playerY - who.y; }
+/* Where a car's own view sits relative to the master frame. After the flag,
+   ease toward the middle of the parking area so all seven places stay visible.
+   This changes only the camera, never a racer's canonical world position. */
+function camDy(who){
+  const o = who === "me" ? G : who;
+  const dy = who === "me" ? 0 : playerY - who.y;
+  if(o.finished === null || !G.finishAt) return dy;
+  const m = who === "me" ? G.meters : o.m;
+  const span = parkMeters(o.finished) - G.finishAt;
+  const k = clamp((m - G.finishAt)/Math.max(.001, span), 0, 1);
+  const middle = (parkY(parkMeters(1)) + parkY(parkMeters(G.rivals.length + 1)))/2;
+  return lerp(dy, H*.55 - middle, k*k*(3 - 2*k));
+}
 
 /* The union of every drawn view, in master screen coords. In a single-view
    game that is exactly the screen. In local play it stretches to cover the
@@ -43,7 +54,7 @@ function camDy(who){ return who === "me" ? 0 : playerY - who.y; }
    spread rather than for player one's window alone - otherwise a player half a
    screen up the road drives through an empty white world. */
 function viewBounds(){
-  if(!G.local){ VW_TOP = 0; VW_BOT = H; return; }
+  if(!G.local){ const dy = camDy("me"); VW_TOP = -dy; VW_BOT = H - dy; return; }
   let lo = 0, hi = H;
   for(let i=0;i<G.humans.length;i++){
     const dy = camDy(G.humans[i]);
@@ -86,6 +97,7 @@ const G = {
      because any car can be the one teleported. `swapGuard` is a single step's
      worth of "this contact has already been dealt with". */
   saffronPhase:"off", saffronT:0, saffronLift:0,
+  coleBike:false, coleSwitchT:0,
   neelaForm:false, neelaOrigin:null, neelaSwapped:false,
   whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
   /* ---- Lolanthe's and Verdant's ultimates, on the racer holding one ----
@@ -147,7 +159,7 @@ const G = {
    object is never a special case bolted onto local play, it is the thing the
    race has always been reading and simply could not be changed before.
 
-   bots is -1 for "fill the grid", which is what six-cars-whatever-happens has
+   bots is -1 for "fill the grid", which is what seven-cars-whatever-happens has
    always meant; a custom race can name a number instead, down to nobody. */
 function defaultRules(){
   return { bots:-1, traps:true, bubbles:true, boost:true, ults:true };
@@ -208,7 +220,7 @@ function racerModel(who){
   if(!c) return CARS.flann;
   /* Asked with the racer itself rather than the argument, so carHit() calling
      this with nothing at all still means player one. */
-  return c.altForm && (neelaFormActive(o) || saffronDragonActive(o)) ? c.altForm : c;
+  return c.altForm && (neelaFormActive(o) || saffronDragonActive(o) || coleBikeActive(o)) ? c.altForm : c;
 }
 /* A model may be drawn larger or smaller than the racer's own box; only an
    alternate form uses it, and only to keep the shape it turns into the size

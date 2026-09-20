@@ -90,28 +90,29 @@ function switchTrack(){
 }
 
 /* ================================================================
-   RACERS  -  two rivals that drive the way a person would
+   RACERS  -  shared human and AI racers
    ================================================================ */
 function spawnRivals(){
   /* Whoever is being driven by a person gets the car that person chose, in
-     seat order; the bots take what is left. The field is always six cars, so
-     two players leave four bots, three leave three and four leave two - and
+     seat order; the bots take what is left. The full field has seven cars, so
+     two players leave five bots, three leave four and four leave three - and
      every car in the game is on the road in every local race. */
   const taken = G.local ? G.picks.slice(0, G.players) : [G.car];
   const spare = CAR_IDS.filter(function(id){ return taken.indexOf(id) < 0; });
   const seats = G.local ? G.picks.slice(1, G.players) : [];
   /* People first, always; the bots take what is left of the grid. How much is
-     left is the rule, and the standard rule is "all of it" - which is the six
+     left is the rule, and the standard rule is "all of it" - which is the seven
      cars this has always put on the road. A custom race can ask for fewer, or
      for none at all, and then the field is just the people. */
   const others = seats.concat(spare.slice(0, botsWanted())).slice(0, FIELD_SIZE - 1);
   /* front row alongside you, the rest lined up behind */
   const front = [0, 1, 2].filter(function(l){ return l !== G.lane; });
-  const grid = front.concat([0, 1, 2]);          /* row one beside you, row two behind */
-  const rows = [0, 0, 1, 1, 1];
+  const grid = front.concat([0, 1, 2, 1]);          /* two beside you, three behind, one in row three */
+  const rows = [0, 0, 1, 1, 1, 2];
+  const rowHeight = Math.max(...CAR_IDS.map(id => carDims(id).h))*1.3;
   G.rivals = others.map(function(id, i){
     const lane = grid[i];
-    const back = rows[i]*carH*1.6;
+    const back = rows[i]*rowHeight;
     return {
       car:id, lane:lane, dodgeLane:lane, x:laneCX(lane), m:G.meters - back*0.075, tilt:0,
       /* Camera projection only: movement, contact and teleports write m.
@@ -127,6 +128,7 @@ function spawnRivals(){
       /* Neela's ultimate, carried by every racer so nothing downstream has to
          ask which kind of object it is holding. See G in runtime.js. */
       saffronPhase:"off", saffronT:0, saffronLift:0,
+      coleBike:false, coleSwitchT:0,
       neelaForm:false, neelaOrigin:null, neelaSwapped:false,
       whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
       /* Lolanthe's and Verdant's, carried by every racer for the same
@@ -196,6 +198,7 @@ function startRace(){
   G.dead = 0; resetShield("me"); G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
+  G.coleBike = false; G.coleSwitchT = 0;
   clearSaffronState("me");
   clearNeelaState("me"); G.trail = [];     /* nothing of the last race's ultimate */
   clearLolantheState("me"); clearVerdantState("me");
@@ -421,7 +424,7 @@ function finishRace(){
     gateFocus();
   }, 700);
 }
-function placeWord(n){ return t("place" + clamp(n, 1, 6)); }
+function placeWord(n){ return t("place" + clamp(n, 1, FIELD_SIZE)); }
 /* Whoever came first out of the people in the room - and if the whole podium
    went to bots, the race is simply over. */
 function localWinner(){
@@ -432,7 +435,7 @@ function localWinner(){
   }
   return t("localOver");
 }
-/* The whole grid as it finished: six cars in order, the ones with people in
+/* The whole grid as it finished: seven cars in order, the ones with people in
    them wearing their colour and their number. A single line of "P1 3rd" told
    you your place and nothing about the race. */
 function localBoard(){
@@ -490,6 +493,9 @@ function update(dt){
   if(G.swipeLock > 0) G.swipeLock = Math.max(0, G.swipeLock - dt);
   if(st === "paused" || st === "idle") return;
 
+  tickCole("me", dt);
+  for(const R of G.rivals) tickCole(R, dt);
+
   const dodgeFrame = st === "running" ? beginPerfectDodges() : null;
 
   /* speed */
@@ -519,12 +525,7 @@ function update(dt){
   else if(G.dead > 0) target = 0;   /* wrecked: you stop,
                                                  the race goes on without you */
   else {
-    target = BASE_SPEED*speedMult();
-    if(G.ultOn) target *= ULT_SPEED;
-    if(G.slowT > 0) target *= 0.5;
-    if(G.boosting) target *= BOOST_SPEED;
-    if(G.canT > 0) target *= CAN_SPEED;          /* the can is free speed */
-    if(G.shuntT > 0) target *= SHUNT_BOOST;      /* shoved along by a rear-ender */
+    target = racerPace("me");
   }
   /* Everywhere else the car chases its target. The run-out after the flag
      takes its target outright instead, so the car settles on its mark rather
@@ -754,6 +755,7 @@ function updateRival(R, dt, st){
      ladder, the targeting and the contact rules all read - it simply does not
      act on it. Everything below that decides is skipped; everything that runs
      the mechanic is not. */
+  botColeForm(R);
   botLook(R, dt);
   const s = R.sense;
 
@@ -817,12 +819,7 @@ function updateRival(R, dt, st){
   }
 
   /* pace: identical to everyone else unless something is acting on it */
-  let want = BASE_SPEED*speedMult();
-  if(R.ultOn) want *= ULT_SPEED;
-  if(R.slow > 0) want *= 0.5;
-  if(R.boosting) want *= BOOST_SPEED;
-  if(R.canT > 0) want *= CAN_SPEED;
-  if(R.shuntT > 0) want *= SHUNT_BOOST;                   /* shoved along by a rear-ender */
+  const want = racerPace(R);
   R.abs = lerp(R.abs, want, 1 - Math.pow(0.001, dt));     /* same throttle response as you */
   if(Math.abs(R.abs - want) < 1.5) R.abs = want;
 

@@ -278,7 +278,7 @@ elsewhere.
 - `setupSummary()` reads the mode, player count, style, bots and difficulty from
   `G`. It is presentation only. `paintCustom()` still writes through the original
   rules and restores focus after rebuilding controls.
-- `paintPicks()` keeps the six direct-pick buttons, taken states and player roster
+- `paintPicks()` keeps the seven direct-pick buttons, taken states and player roster
   current. `previewCar()` renders the focused/hovered vehicle at showroom size
   using the same `paintCarIcon()` / `drawCar()` path as the other car artwork.
   Previewing never commits a pick. The board remains three columns for gamepads.
@@ -357,7 +357,7 @@ of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
 `startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
-for every driver, and that lifecycle is shared by all six cars. Five cars add a
+for every driver, and that lifecycle is shared by all seven cars. Five cars add a
 power on top of it. Four of those five are applied at the consequence or at the
 view rather than through `noContact()`: an ulting Flann, Neela or Lolanthe still
 has to physically meet a racer or a hazard for anything to happen, an ulting
@@ -582,7 +582,7 @@ lifecycle (`startRace`, countdown, `pause`, `leave`), the finish
 and the frame loop.
 
 ### `render.js`
-All Canvas 2D drawing. Six car models, three tracks' worth of scenery and road,
+All Canvas 2D drawing. Seven car models, three tracks' worth of scenery and road,
 hazards, particles, and the Conditions that sit over them.
 
 **Draw order here is behaviour** — it decides what covers what. `renderView(dy)`
@@ -606,7 +606,7 @@ writes none. Aero-Glow is deliberately not a `TRACKS` entry and its name is
 drawn inside the view rather than written into `#trackName`, which is the page's
 one HUD and in split-screen belongs to whoever is not in there.
 
-All six cars use their root `v_*.PNG` sprite assets. Neela and Saffron also register their `vtm_*.PNG` alternate sheets in the shared cache. All eight car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
+All seven cars use their root `v_*.PNG` sprite assets. Neela and Saffron also register their `vtm_*.PNG` alternate sheets in the shared cache. All eight car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
 
 Showroom, garage, player, bot and local columns all use this same dispatch, and
 the menus paint from `CARS` directly, so a preview is always the car and never
@@ -665,7 +665,7 @@ running right now, and for Flann alone it adds `drawFlannUltFire(w, h, p)`, a
 set of restrained flame tongues laid down both sills and around the tail inside
 the car's own translated and rotated space. `white` is the transformation flash,
 drawn by `drawMorphFlash` from the model's own hull so it is the car's
-silhouette that goes white — which is why it works on whichever of the six a
+silhouette that goes white — which is why it works on whichever of the seven a
 Neela exchange happens to catch, without a line of per-car code. Ordinary boost
 and a boost can never trigger either, and menus pass none of the three. The
 fire's only moving part is read off the clock, exactly as the exhaust pulse is,
@@ -800,10 +800,8 @@ actually exists.
 2. `CAR_IDS` — append the id; add a temperament in `TEMPERS`.
 3. `render.js` — a body drawing function and a `drawCar` style branch. A sprite
    car needs neither: it goes through `drawSpriteCar` already.
-4. `i18n.js` — its name and `<id>Ult` describing the shared 15-second double-pace
-   boost in both languages. Four of the six say exactly that and nothing more;
-   `flannUlt` and `neelaUlt` are longer because those two ultimates do more, and
-   a new car's should match the four unless it is given a power of its own.
+4. `i18n.js` — its name and `<id>Ult` describing its complete behavior in both
+   languages, including any form-specific multiplier exceptions.
 5. `index.html` — its selection button and preview canvas; wire selection in
    `main.js`.
 
@@ -819,8 +817,11 @@ somewhere else, it goes through `racerWorldPose` and `teleportRacerToPose` and
 never through raw `x`/`y`; if it needs a second body, it goes in an `altForm`
 and comes out through `racerModel()`.
 
-Note `FIELD_SIZE` is 6 and local play hands every car in the game to the grid, so
-a seventh car changes the shape of a local race.
+`FIELD_SIZE` is 7. Standard races include all seven identities; custom rules
+can request fewer bots. Two, three and four local humans leave five, four and
+three bot slots respectively. Cole’s permanent alternate form is selected by
+`racerModel()`; `switchColeForm()` handles input eligibility and `racerPace()`
+centralizes form-aware speed for players and bots.
 
 ### A track
 

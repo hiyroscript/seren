@@ -482,4 +482,31 @@ test('Saffron base and dragon geometry are distinct, rotated and available befor
   assert.equal(fresh.run('racerModel("me").key'),'saffron');
 });
 
+
+test('Cole forms have independent measured hulls before load, rotate and follow the active model',()=>{
+  const c=fixture();c.boot();c.run(`G.car='cole';G.local=false;G.rules=defaultRules();startRace();G.state='running';
+    carW=100;carH=186;G.x=200;playerY=300;G.tilt=0;`);
+  for(const bike of [false,true]){
+    if(bike)c.run('switchColeForm("me");');
+    assert.equal(c.run('racerModel("me").sprite'),bike?'vtm_cole.PNG':'v_cole.PNG');
+    const shape=c.run('JSON.stringify(racerModel("me").hitShape)');
+    for(const other of ['CAR_HIT_RECT','CARS.flann.hitShape','CARS.neela.hitShape',bike?'CARS.cole.hitShape':'CARS.cole.altForm.hitShape'])
+      assert.notEqual(shape,c.run(`JSON.stringify(${other})`));
+    const [x,y,w,h]=bike?[415,4,420,1255]:[276,14,702,1222];
+    const k=Math.min(100/w,186/h)*1.12*(bike?1.12:1);
+    const solid=bike?[[624,40],[624,1190],[500,545],[746,920],[626,670]]:[[627,40],[315,260],[930,940],[400,1080],[627,1160]];
+    const empty=bike?[[430,20],[805,240],[805,1130],[450,850]]:[[290,40],[945,80],[950,1150],[290,600]];
+    for(const tilt of [-.28,0,.28]){
+      c.run(`G.tilt=${tilt};`);
+      for(const [points,inside] of [[solid,true],[empty,false]])for(const [px,py] of points){
+        const dx=(px-x-w/2)*k,dy=(py-y-h/2)*k;
+        const wx=200+dx*Math.cos(tilt)-dy*Math.sin(tilt),wy=300+dx*Math.sin(tilt)+dy*Math.cos(tilt);
+        assert.equal(c.run(`insideHitPolygon(carHit().points,${wx},${wy})`),inside,`${bike?'bike':'car'} source point ${px},${py}`);
+      }
+    }
+    c.run(`G.rivals[0].car='cole';G.rivals[0].coleBike=${bike};`);
+    assert.equal(c.run('JSON.stringify(carHit(G.rivals[0],200,300,G.tilt).points)'),c.run('JSON.stringify(carHit().points)'));
+  }
+});
+
 console.log(`\n${checks} hitbox checks passed.`);
