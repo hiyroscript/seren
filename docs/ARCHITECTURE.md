@@ -143,18 +143,9 @@ frame(ts)                       race.js — requestAnimationFrame loop
 5. the race clock and track/speed-tier timers
 6. your ultimate: charge, tick, fire
 7. your status timers, then `sweepDebuffs`
-8. `updateBubbles` → `updateSlicks` → `updateMissiles` → `updateTraps` (move hazards)
-9. your rear-end check, then `updateRivals` (defer hazard contact), then `resolveTraps`
+8. `updateBubbles` → `updateSlicks` → `updateMissiles` → `updateTraps`
+9. your rear-end check, then `updateRivals` (each rival's whole frame)
 10. `lolantheAuras`, `checkFinish`, `updateFx`, seam handover
-
-Hazard resolution consumes poses captured before movement and the settled
-positions of every racer. `trapContact()` owns the swept narrow phase for
-puddles, weeds and falling rocks, and `trapCarAt()` evaluates the current
-model's traced hull along that motion. Meteor blasts use the precise impact
-fraction within the frame. `hitRivalTraps()` retains the rival consequences
-and per-racer masks; isolated `updateRival()` calls also use that same helper.
-Dodge prediction shares `puddleHits()`, `weedBodyRadius()`, `meteorRockRadius()`
-and `rockAlt()` with live contact. No separate bot collision shape exists.
 
 Two things follow from that order and are easy to break:
 
@@ -511,7 +502,7 @@ column is looking at.
   meter has run out.
 - The paths that tested `dead`/`finished` directly rather than asking
   `noContact()` were audited and now ask: the player's hazards in `updateTraps`,
-  the rivals' in `hitRivalTraps`, both halves of the bubble sweep in
+  the rivals' in `updateRival`, both halves of the bubble sweep in
   `updateBubbles`, `seekerTarget` and `markShielded`. `useItem()` refuses and
   **keeps** the item rather than spending it into a world its owner is not in.
 
