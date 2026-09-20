@@ -1,852 +1,808 @@
-Implement a complete three-bar car shield / durability system in the Seren game repository.
+Work directly in the hiyroscript/seren repository on the current main implementation.
 
-Before changing anything, inspect the current implementation carefully and preserve the game’s existing architecture, coding style, rendering style, racer parity, collision semantics, HUD layout, accessibility behavior, local multiplayer behavior, and existing gameplay mechanics.
+Implement a focused shield-system visual and behavior update. Preserve the existing architecture, game feel, six-half durability model, wreck/respawn lifecycle, split-screen behavior, car-specific ultimate mechanics, accessibility, and dependency-free Canvas/DOM design.
 
-This is a plain JavaScript / Canvas 2D browser game with no framework and no build system. Do not introduce dependencies, libraries, frameworks, asset pipelines, or unnecessary abstractions.
+Do not redesign unrelated HUD systems, hazards, ultimates, collisions, or car mechanics.
 
-The shield system must work for every racer equally: the main player, bots, and human racers in local multiplayer.
+Goal
 
-Core gameplay requirement
+Make four coordinated changes:
 
-Every racer starts with three full shield bars.
+1. Change shield depletion order so damage begins with the third/cyan bar instead of the first/pink bar.
+2. Restyle all shield bars to remove outlines and half-divider lines and give the colored fill a polished gradient.
+3. When a non-view-owner racer survives a hazard collision, briefly show its current shield bar/color and half-state directly above the car for exactly about one second.
+4. While a racer’s ultimate is actively running, ordinary shield-consuming hazard contact must not consume a shield half.
 
-The three bars are separate colored bars in this exact damage order:
+These changes must work identically for player one, bots, and local multiplayer racers.
 
-1. Pink
-2. Yellow
-3. Cyan
+⸻
 
-Each individual bar has two halves.
+Existing implementation to preserve
 
-Therefore every racer effectively has:
+The current durability system is already centralized and should remain that way.
 
-* 3 bars
-* 2 shield hits per bar
-* 6 half-bar shield units total
+Important existing definitions:
 
-Every valid ordinary hazard collision removes exactly one half-bar.
+* SHIELD_COLORS in js/data.js is currently:
+    * pink #FF8CE1
+    * yellow #FFEB96
+    * cyan #78EBFF
+* SHIELD_BARS = 3
+* SHIELD_HALVES_PER_BAR = 2
+* SHIELD_MAX = 6
+* every puddle/tumbleweed durability hit removes one half
+* the sixth durability hit wrecks the racer
+* respawn restores all six halves
+* meteor/combat destruction bypasses durability and does not decrement it
+* hitShield(who) in js/mechanics.js is the shared durability mutation
+* shieldBarFill(halves, bar) is the shared fill calculation
+* player and rivals both use the same shield model
+* the DOM HUD uses paintShield()
+* local/split-screen HUD uses Canvas hudShield()
+* VOWN in the renderer identifies the owner of the current viewport
+* condition badges already use the correct per-view pattern: do not draw the owner’s world-space status over their own car
+* o.ultOn is the canonical shared flag for an actively running ultimate
+* ultDelta() already ignores charge penalties/rewards while an ultimate is active
 
-The depletion sequence must be:
+Do not introduce a second durability system.
 
-* Start: Pink 100%, Yellow 100%, Cyan 100%
-* First valid hazard hit: Pink 50%, Yellow 100%, Cyan 100%
-* Second hit: Pink 0%, Yellow 100%, Cyan 100%
-* Third hit: Pink 0%, Yellow 50%, Cyan 100%
-* Fourth hit: Pink 0%, Yellow 0%, Cyan 100%
-* Fifth hit: Pink 0%, Yellow 0%, Cyan 50%
-* Sixth hit: Pink 0%, Yellow 0%, Cyan 0%, and the racer is immediately wrecked/destroyed through Seren’s existing wreck lifecycle
+⸻
 
-Do not require a seventh hit after the shield reaches zero.
+1. Reverse shield depletion order
 
-The sixth shield-damaging hit empties the final half of the cyan bar and destroys the car.
+Keep the visible bar order exactly:
 
-What damages the shield
+pink | yellow | cyan
 
-Only genuine collisions with Seren’s ordinary non-meteor track hazards should consume shield durability.
+Do not reorder the DOM elements and do not swap the colors.
 
-In the current game these are:
+Instead, change the shared fill calculation so durability is removed from right to left:
 
-* City puddle
-* Desert tumbleweed
+cyan → yellow → pink
 
-A successful collision with one of these hazards removes exactly one half-bar.
+The progression must be exactly:
 
-Do not drain shield for:
+Shield halves remaining	Pink	Yellow	Cyan
+6	100%	100%	100%
+5	100%	100%	50%
+4	100%	100%	0%
+3	100%	50%	0%
+2	100%	0%	0%
+1	50%	0%	0%
+0	0%	0%	0%
 
-* meteors
-* meteor blast damage
-* car-to-car contact
-* rear-end shunts
-* barriers
-* offensive ultimates
-* seeker hits
-* oil slicks
-* mind control
-* Conditions
-* any non-hazard gameplay interaction
-* a hazard that the racer destroys instead of being hit by
-* a hazard while the racer is protected/unreachable and the existing game would reject the collision
+The sixth hit still destroys the racer exactly as it currently does.
 
-The rule must be based on the actual hazard contact result, not merely proximity.
+shieldBarFill() should remain the single source of truth for both DOM and Canvas HUDs.
 
-A hazard must never drain multiple shield halves from one collision because several frames overlap the same collision.
+With the current color array ordered [pink, yellow, cyan], the calculation should conceptually become equivalent to:
 
-Use the existing per-racer hit bookkeeping and contact protections rather than inventing a second collision model.
+fill = clamp((halves - bar * SHIELD_HALVES_PER_BAR) / SHIELD_HALVES_PER_BAR, 0, 1)
 
-Meteors are explicitly excluded
+Do not create separate reversed calculations in paintShield() and hudShield().
 
-Meteors must NOT use this shield system.
+⸻
 
-Preserve Seren’s existing meteor behavior.
+2. Restyle the shield bars
 
-Currently meteors have their own fall, roof-contact and detonation logic, and a meteor blast can destroy racers through the existing destroyCar() / wreckRival() paths.
+Apply the same visual treatment to:
 
-Leave that behavior intact.
+* the normal DOM HUD
+* the Canvas/local multiplayer HUD
+* the new temporary above-car shield indicator described below
 
-A racer can therefore still be destroyed by a meteor even if all three shield bars are full.
+Remove the outline
 
-A meteor must consume zero pink/yellow/cyan shield durability.
+The bars should no longer have a visible border/stroke.
 
-Example:
+For the DOM HUD, .shield-bar currently has:
 
-A racer has:
+border:1px solid var(--line-2)
 
-* Pink 50%
-* Yellow 100%
-* Cyan 100%
+Remove that border.
 
-The racer is then destroyed by a meteor.
+For the Canvas local HUD, hudShield() currently calls hudGlass(), which deliberately draws a border and highlight stroke.
 
-Do not change those shield values simply because the meteor struck.
+Do not use the stroked hudGlass() treatment for the shield tracks anymore.
 
-When that racer subsequently respawns, the normal respawn reset described below restores all three bars to full.
+Instead, draw a simple rounded dark/translucent track with no stroke, then render the colored gradient fill over it.
 
-Destroying hazards must not cost shield
+Do not change hudGlass() globally because the rest of the HUD still uses it.
 
-This is critical.
+Only the shield bars should lose their outline.
 
-Seren already has ultimate mechanics that allow certain racers to destroy solid hazards through clearsSolidHazards(who).
+Remove the half-divider
 
-For example, a racer with the appropriate active ultimate may smash a tumbleweed rather than suffer its normal collision result.
+The visual line through the center of every two-hit bar must disappear completely.
 
-That interaction must consume ZERO shield durability.
+DOM currently creates it with:
 
-The order of operations matters.
+.shield-bar::after
 
-For a tumbleweed collision:
+Remove/disable this pseudo-element.
 
-1. Determine whether the racer can destroy/clear the solid hazard using the existing logic.
-2. If the hazard is destroyed by the racer:
-    * preserve the current destruction effect
-    * remove the hazard as currently implemented
-    * do not reduce the shield
-    * do not accidentally run the normal shield-hit path afterward
-3. Only if the racer genuinely takes the normal hazard hit should one shield half be removed.
+Canvas currently explicitly draws:
 
-The same principle applies to any future ordinary hazard that can be destroyed.
+ctx.fillRect(x + w/2, ...)
 
-Destroying a meteor also consumes no shield, although meteors are excluded from the shield system regardless.
+Remove that divider.
 
-Do not make merely shooting/removing a hazard somewhere else on the road affect anyone’s shield.
+The 50% state must be communicated purely by the width of the colored fill.
 
-Preserve existing hazard effects
+There should be no center tick, seam, black divider, or other half marker.
 
-The shield is a durability/life system layered onto Seren’s current hazard mechanics.
+Add gradients
 
-Do not silently rewrite what puddles and tumbleweeds currently do.
+Replace each shield bar’s flat fill with a subtle polished gradient while keeping its existing color identity.
 
-A surviving non-meteor hazard hit should still perform its existing gameplay consequence:
+Do not change the bars into unrelated colors.
 
-* Puddle continues to apply its existing Obscured/water-on-screen behavior.
-* Tumbleweed continues to apply its existing Slow behavior.
-* Existing ultimate-meter consequences of a hazard collision should continue using the current shared helpers.
-* Existing particles, sound, shake, perfect-dodge bookkeeping and hazard cleanup should continue to work.
+Use the current pink/yellow/cyan colors as the central/base hues and give each one a restrained brighter-to-base-to-deeper treatment.
 
-However, when the shield-depleting hit takes the racer to zero and destroys them, stop further unnecessary debuff processing for that collision because the normal wreck lifecycle already clears/deactivates relevant state.
+For example, a vertical gradient can conceptually be:
 
-Do not create duplicate penalties or duplicate collision effects merely to implement the shield.
+* lighter highlight near the top
+* existing shield color through the middle
+* slightly deeper version near the bottom
 
-Use the existing paths wherever possible.
+Keep it clean and game-like rather than glossy/chrome.
 
-Use integer half-bar durability
+A reasonable palette direction is:
 
-Do not represent this as floating-point values such as 2.5 bars if that can be avoided.
+* Pink: pale/light pink → #FF8CE1 → deeper pink
+* Yellow: pale cream-yellow → #FFEB96 → deeper golden yellow
+* Cyan: pale ice-cyan → #78EBFF → deeper cyan
 
-Use one authoritative integer value per racer representing remaining half-bars.
+Prefer defining shared gradient-stop data next to SHIELD_COLORS in js/data.js, then consume those same stops from both Canvas and DOM rendering.
 
-Recommended concept:
+Do not duplicate three unrelated palettes in CSS and JavaScript if it can be avoided.
 
-shield = 6
+For DOM rendering, paintShield() currently assigns a flat SHIELD_COLORS[i] background. Replace that with the corresponding CSS linear-gradient(...).
 
-where:
+For Canvas, construct the equivalent ctx.createLinearGradient(...) from the same stop definitions.
 
-* 6 = three full bars
-* 5 = pink half depleted
-* 4 = pink empty
-* 3 = yellow half depleted
-* 2 = yellow empty
-* 1 = cyan half depleted
-* 0 = no shield remaining
+The full and half-filled versions of a given bar must use the exact same gradient; only width changes.
 
-Define named constants rather than scattering magic numbers.
+The empty portion should remain the existing subtle dark/translucent track.
 
-For example, conceptually:
+⸻
 
-* maximum shield halves = 6
-* halves per bar = 2
-* number of bars = 3
+3. Add a temporary shield-state indicator above other racers
 
-The exact naming can follow Seren’s existing conventions.
+When a racer physically collides with a hazard and survives the encounter, show a compact shield indicator directly above that racer’s car.
 
-Do not store three independent mutable percentages if one integer can be the authoritative gameplay state.
+It lasts approximately 1.0 second from the latest qualifying collision, then disappears.
 
-The HUD should derive its three fill amounts from this state.
+Repeated qualifying collisions while it is visible should refresh/restart the one-second timer.
 
-Shared shield helpers
+Critical view-owner rule
 
-Keep the logic centralized.
+Do NOT show this indicator above the car being driven by the owner of the current viewport.
 
-Add small shared helpers in the appropriate gameplay file rather than manually decrementing state in several collision branches.
+That racer’s bottom HUD shield bars are enough.
 
-The system should have one authoritative way to:
+Use the renderer’s actual viewport-owner concept:
 
-* get a racer’s shield state
-* reset a racer’s shield
-* consume one shield half
-* determine whether the shield depletion caused a wreck
+VOWN !== who
 
-The helper must support both:
+Do not simply test:
 
-* "me"
-* a rival racer object
+who !== "me"
 
-This matches Seren’s existing shared helpers such as wreckRacer(who, by), noContact(who), clearsSolidHazards(who), etc.
+because in local multiplayer, player 2/3/4 are represented by rival objects but are still the owners of their own split-screen columns.
 
-When shield durability reaches zero, use the existing shared wreck lifecycle.
+The desired rule is:
 
-Do not create a separate “shield death” implementation.
+* normal single-player view: no floating shield indicator over "me"
+* normal single-player view: rivals may display it
+* local player 1’s column: player 1 gets no floating indicator; other racers may
+* local player 2’s column: player 2 gets no floating indicator; other racers may
+* same for players 3 and 4
 
-For example, the final depletion should ultimately go through the same established behavior as:
+This should mirror the architectural pattern already used by drawConditionStack().
 
-* destroyCar() for the primary racer
-* wreckRival() for rivals
+Indicator design
 
-Prefer using wreckRacer(who, by) where appropriate so player/bot/local-human behavior cannot drift apart.
+Do not draw all three shield bars over the car.
 
-Racer state
+Show one small compact bar representing the racer’s current active durability stage.
 
-Add shield state to every racer.
+The indicator should communicate:
 
-Main racer
+1. which shield color the racer is currently on
+2. whether that current color has one or two halves remaining
 
-G is defined in js/runtime.js.
+Use the same color/gradient language as the bottom shield HUD.
 
-Add the full shield state there so a new/uninitialized main racer begins with the correct value.
+Suggested appearance:
 
-Rivals and local humans
+* horizontally centered above the car
+* approximately 30–40 logical px wide at normal scale
+* approximately 5–7 px high
+* small rounded corners
+* dark translucent empty track
+* no border
+* no center divider
+* current shield gradient as fill
+* full width = both halves of the current color remain
+* 50% width = only one half remains
 
-Rival racer objects are constructed in js/race.js.
+Scale naturally with the existing scene/HUD scaling conventions rather than hard-coding device pixels.
 
-Those objects are also used for human racers in local multiplayer, so add the same shield state to every created rival racer.
+Do not add text, numbers, icons, labels, or a shield badge.
 
-Do not add a special local-human-only shield field.
+The bar itself is enough.
 
-Every racer object should expose the same concept.
+Exact state mapping
 
-Race start reset
+After a surviving collision, derive the indicator from the racer’s current shield state:
 
-Starting a new race must reset every racer to full shield.
+* shield = 6 → cyan, 100%
+* shield = 5 → cyan, 50%
+* shield = 4 → yellow, 100%
+* shield = 3 → yellow, 50%
+* shield = 2 → pink, 100%
+* shield = 1 → pink, 50%
+* shield = 0 → no indicator because that racer has been destroyed
 
-The existing race reset currently restores values such as:
+A clean helper would derive this instead of scattering conditionals.
 
-* charge
-* dead
-* invulnerability
-* debuffs
-* ultimate state
-* item state
-* etc.
+For halves > 0, the bar index can conceptually be derived from the remaining half count, and the fill is:
 
-Include shield state in that lifecycle.
+* even remaining count → full
+* odd remaining count → half
 
-A previous race must never leak shield damage into a new one.
+Keep the logic general enough to derive from the shield constants where practical.
 
-Respawn reset
+Timing state
 
-This is an explicit gameplay requirement:
+Add one small cosmetic timer per racer, for example:
 
-Every respawn restores all three shield bars completely.
+shieldHitT
 
-When the player’s existing G.dead countdown finishes:
+or another similarly clear name.
 
-* set shield back to 6
-* restore the existing respawn invulnerability
-* preserve the current respawn effect/audio behavior
+Add it consistently to:
 
-When a rival/local-human R.dead countdown finishes:
+* G in js/runtime.js
+* newly spawned rivals in spawnRivals() in js/race.js
 
-* set that racer’s shield back to 6
-* preserve the existing R.invuln = INVULNERABLE_TIME behavior
+Reset it on a new race.
 
-This must happen for every kind of wreck, not only wrecks caused by shield depletion.
+Advance/decrement it alongside the other short-lived racer status/cosmetic timers:
+
+* player-one update path
+* rival update path
+
+Use a shared constant such as:
+
+SHIELD_HIT_TIME = 1
+
+in js/data.js.
+
+A qualifying surviving hazard contact should reset it to SHIELD_HIT_TIME.
+
+The timer is visual feedback only. It must never influence collision, AI, protection, durability, targeting, or race state.
+
+Destroyed racers
+
+If the hazard collision destroys the racer, do not show the temporary bar.
 
 Examples:
 
-* six puddle/tumbleweed hits → shield reaches zero → wreck → respawn → 6/6
-* meteor wreck while shield was 4/6 → respawn → 6/6
-* another racer wrecks you while shield was 1/6 → respawn → 6/6
+* sixth durability hit reduces shield to 0 and invokes the wreck lifecycle → no popup
+* meteor destroys a racer → no popup
+* any other direct wrecking hazard outcome → no popup
 
-The reset belongs to respawn, not specifically to the shield-destruction branch.
+Also clear the timer when appropriate during wreck/restart lifecycle so stale state cannot reappear after respawn.
 
-During the wreck delay, do not prematurely refill it. The refill should correspond to the actual respawn event.
+Respawning still restores all six shield halves normally.
 
-Invulnerability interaction
+⸻
 
-The existing respawn invulnerability must continue to prevent immediate repeated hazard damage.
+4. Active ultimates must preserve shield durability
 
-If the existing collision system considers a racer unreachable/protected through:
+Add one universal rule:
 
-* noContact
-* refusesDebuffs
-* invulnerableMe
-* invulnerableCar
-* finished state
-* dead state
-* airborne/off-road ultimate states where appropriate
+While o.ultOn is true, an ordinary hazard contact must not remove a shield half.
 
-then an ordinary hazard must not secretly reduce shield durability.
+This applies equally to:
 
-Do not bypass Seren’s existing protection predicates.
-
-HUD — required position
-
-Add the shield HUD at the bottom-left of the race screen, directly above the boost meter.
-
-It should visually belong to Seren’s existing restrained HUD.
-
-Do not place it in the center of the road.
-
-Do not move the boost meter to a different location.
-
-Do not put the shield beside the ultimate/item boxes on the right.
-
-The shield belongs on the bottom-left, immediately above the bottom boost rail.
-
-Seren already uses the bottom-left for Condition badges, so integrate the shield carefully into the available vertical gap rather than allowing the two systems to overlap.
-
-Maintain clear spacing between:
-
-1. boost rail at the very bottom
-2. new shield bars just above it
-3. Condition badges above/around that corner
-
-The layout must work on narrow/mobile layouts and the shorter-height layout as well as desktop.
-
-HUD — visual design
-
-Display exactly three small horizontal bars.
-
-Order from left to right:
-
-Pink | Yellow | Cyan
-
-They should be visually separate bars with a small consistent gap between them.
-
-Each bar represents two hits.
-
-Each bar should visibly support exactly these states:
-
-* full
-* half
-* empty
-
-A full bar displays 100% colored fill.
-
-A half bar displays 50% colored fill.
-
-An empty bar keeps its subtle dark track/frame visible but has no colored fill.
-
-Do not replace the bars with:
-
-* hearts
-* shield icons
-* circles
-* numbers only
-* six tiny pips
-* one large health bar
-* a radial meter
-
-They must remain three distinct bars.
-
-A subtle midpoint divider may be used so the two-hit structure is easy to understand at a glance.
-
-Keep the design minimal.
-
-Use Seren’s existing:
-
-* dark glass surfaces
-* thin hairlines
-* compact geometry
-* restrained effects
-* small radii
-* peripheral HUD placement
-
-Do not add large labels such as SHIELD over the road unless necessary for accessibility markup rather than visible presentation.
-
-Shield colors must match the Mystery Bubble palette
-
-Use the three existing Mystery Bubble thin-film colors as the shield hues.
-
-The current bubble renderer in js/render.js uses these RGB colors:
-
-* Cyan: rgb(120, 235, 255) / #78EBFF
-* Pink: rgb(255, 140, 225) / #FF8CE1
-* Yellow: rgb(255, 235, 150) / #FFEB96
-
-The shield bar order must be:
-
-1. Pink #FF8CE1
-2. Yellow #FFEB96
-3. Cyan #78EBFF
-
-Use appropriate alpha levels for the HUD if needed, but do not change the underlying hues.
-
-Prefer one canonical palette definition rather than maintaining two unrelated sets of magic RGB values.
-
-If clean within the current architecture, extract the Mystery Bubble tint palette into an appropriate shared constant in js/data.js so both:
-
-* drawBubbles() in js/render.js
-* the shield HUD
-
-read the same source colors.
-
-Do not perform a large unrelated refactor merely for this.
-
-Single-player DOM HUD
-
-The normal one-player HUD is DOM-based.
-
-Update index.html with a compact shield container inside the existing race HUD.
-
-It should have three bar tracks and three fills.
-
-Keep the markup simple.
-
-For accessibility, expose the overall durability as a meaningful meter/progress value such as 0 through 6 remaining shield halves.
-
-Do not require the user to distinguish state by color alone in accessibility metadata.
-
-If adding an accessible name such as “Shield”, use Seren’s existing localization architecture and add the necessary English/French key to js/i18n.js rather than hardcoding English-only interface text.
-
-Update css/app.css so it:
-
-* anchors at the same --side inset used by the rest of the lower HUD
-* remains above #meterRail
-* does not collide with #condList
-* respects safe-area insets
-* keeps the bars readable against every track
-* fits short-height and narrow screens
-* retains Seren’s current glass/hairline visual language
-
-Update the existing HUD paint/sync path in js/hud.js so the three fills are derived directly from G.shield.
-
-Do not create timers for this.
-
-The displayed state should simply reflect authoritative game state whenever the HUD paints.
-
-Local multiplayer / split-screen HUD
-
-This feature is not complete unless local multiplayer also works.
-
-Seren does not use the DOM race HUD for each local multiplayer seat. Each local player’s instruments are painted directly into their Canvas column through js/hud.js.
-
-The current path includes:
-
-* drawSeatHud(who, seat)
-* hudMeters(o)
-* hudActions(o)
-* hudConditions(who)
-
-Add a Canvas shield renderer for this path.
-
-It must display the shield belonging to that specific view owner.
-
-Examples:
-
-* Player 1’s column shows Player 1’s shield.
-* Player 2’s column shows Player 2’s shield.
-* Player 3’s column shows Player 3’s shield.
-* Player 4’s column shows Player 4’s shield.
-
-Do not accidentally draw G.shield in every split-screen column.
-
-The function must receive/read the o associated with that seat.
-
-The Canvas version should visually match the DOM version as closely as practical:
-
-* same three bars
-* same Pink → Yellow → Cyan order
-* same full/half/empty states
-* same relative lower-left position
-* same approximate bar dimensions
-* same dark tracks
-* same colors
-* same spacing
-
-Use the existing shared HUD constants and geometry philosophy.
-
-The page HUD and Canvas HUD are intentionally maintained as one design in Seren; preserve that contract.
-
-Bottom HUD geometry
-
-The current boost rail geometry in js/hud.js uses values such as:
-
-* HUD_RAIL_BOT
-* HUD_RAIL_H
-* HUD_RAIL_PAD
-* HUD_BAR
-* hudSide()
-
-Use these rather than hardcoding a completely independent screen position for split-screen.
-
-The shield group should sit a small fixed gap above the top edge of the boost tray.
-
-Make sure hudZones() and any collision/edge-badge layout calculations that depend on occupied HUD regions continue to receive sensible lower-screen bounds.
-
-If the new shield group expands the area considered occupied by the bottom-left HUD, update that geometry rather than allowing edge indicators or Condition badges to overlap it.
-
-Condition badge coexistence
-
-Seren’s own Conditions are currently displayed in the lower-left corner.
-
-Do not remove or replace them.
-
-The shield system is separate from the existing Invulnerable Condition.
-
-Specifically:
-
-* three colored durability bars = permanent per-life shield durability
-* Invulnerable Condition = temporary respawn protection
-
-Do not conflate the two.
-
-Do not turn the durability bars gold during invulnerability.
-
-Do not reuse G.invuln as shield health.
-
-Do not remove the existing Invulnerable badge or gold view border.
-
-Both systems should coexist correctly after respawn:
-
-* shield immediately returns to 6/6
-* temporary Invulnerable Condition remains active for its existing duration
-
-Player hazard integration
-
-In js/mechanics.js, integrate shield consumption into the actual player puddle/tumbleweed collision paths.
-
-Current relevant code includes:
-
-* updateTraps(...)
-* hitWeed(o)
-* hitPuddle()
-* clearsSolidHazards("me")
-
-For tumbleweed:
-
-* an ultimate that clears the weed must still destroy it without shield damage
-* otherwise a genuine weed collision consumes exactly one shield half
-* if shield remains above zero, preserve existing Slow behavior
-* if that hit takes shield to zero, wreck the racer and do not leave a Slow debuff hanging on the wreck
-
-For puddle:
-
-* a genuine puddle collision consumes exactly one shield half
-* if shield remains above zero, preserve existing Obscured behavior
-* if it reaches zero, wreck the racer and avoid applying meaningless post-wreck obscuring state
-
-The existing hazard hit bit/bookkeeping must continue preventing duplicate consumption.
-
-Rival and local-human hazard integration
-
-js/race.js currently performs ordinary rival hazard collision handling inside the racer update path.
-
-The relevant branch:
-
-* skips meteors
-* handles puddle/tumbleweed collisions
-* respects clearsSolidHazards(R)
-* uses per-racer hazard hit bits
-* applies Slow or Blind state
-
-Integrate the same shield logic there.
-
-Do not duplicate a second version of the shield algorithm.
-
-Call the shared shield helper.
-
-For a normal rival or local human:
-
-* cleared tumbleweed → 0 shield damage
-* valid puddle/weed hit → −1 half
-* shield > 0 → current hazard behavior continues
-* shield == 0 → wreckRacer(R) / existing equivalent
-* meteor handling remains outside this path
-
-Bots must follow exactly the same durability rules as humans.
-
-Difficulty settings must not secretly give bots extra shield unless an existing game rule explicitly says so. This feature should start everyone at the same 6/6.
-
-Do not alter perfect-dodge logic incorrectly
-
-Seren has perfect-dodge detection and ultimate-charge rewards tied to predicted real hazard collisions.
-
-Preserve that.
-
-A hazard that actually hits the racer and removes a shield half must still count as a hit, not a dodge.
-
-A properly dodged hazard consumes no shield.
-
-A hazard cleared by an ultimate consumes no shield and should preserve the current perfect-dodge bookkeeping behavior.
-
-Do not rewrite the perfect-dodge geometry just for the shield feature.
-
-Do not make the shield a custom-race toggle
-
-This is a core racer durability mechanic.
-
-Do not add:
-
-* a setup toggle
-* a custom-race rule switch
-* a settings preference
-
-The bars should exist for racers in normal gameplay automatically.
-
-If a custom race has hazards turned off, the shield naturally remains full because there are no ordinary hazards to damage it.
-
-No world-space shield bubble
-
-Do not add a glowing force field around each car.
-
-Do not add new sprite art.
-
-Do not add a shield icon over cars.
-
-The requested visual representation is the three-bar HUD system.
-
-Any hit feedback should remain very restrained and consistent with the current game.
-
-Optional restrained hit feedback
-
-If a tiny shield-hit response is useful, it may be implemented as a very short HUD-only flash or pulse on the specific bar/half that was lost.
-
-This is optional.
-
-If implemented:
-
-* do not obscure gameplay
-* do not add screen-filling flashes
-* obey reduced-motion settings
-* keep the authoritative state independent from animation
-* never delay the actual durability reduction waiting for an animation
-
-The gameplay state must change immediately.
-
-Documentation
-
-Update the README so the feature is documented accurately.
-
-Update the existing HUD description to mention the three shield bars at the lower-left above the boost rail.
-
-Update the Hazards section to explain:
-
-* puddles and tumbleweeds remove half a shield bar on hit
-* six such hits exhaust a fresh shield
-* the sixth hit destroys the racer
-* meteors bypass the shield entirely and preserve their current destruction behavior
-* a hazard destroyed by an applicable ultimate does not consume shield
-* respawning fully restores all three bars
-
-Do not rewrite unrelated README sections.
-
-Regression requirements
-
-Do not break:
-
-* single-player
-* local multiplayer
+* player one
 * bots
-* split-screen rendering
-* custom races
-* disabled boost
-* disabled mystery bubbles
-* disabled hazards
-* ultimate mechanics
-* Flann hazard clearing
-* Neela hazard clearing
-* Lolanthe hazard clearing
-* Verdant hazard clearing
-* Saffron airborne meteor interception
-* Rhosyn off-road/Aero-Glow behavior
-* Conditions
-* respawn invulnerability
+* local human racers
+* every car
+
+Use ultOn, not car-name checks.
+
+Do not create six separate ultimate exceptions.
+
+The best place for this protection is at or immediately around the shared hitShield(who) boundary so that the invariant applies consistently to player and rival durability paths.
+
+The logic should conceptually be:
+
+1. reject contacts already rejected by noContact()
+2. obtain the racer object
+3. if its ultimate is active:
+    * do not decrement shield
+    * treat the durability result as survived
+    * trigger the temporary shield-state feedback for non-owner render views
+    * return without wrecking
+4. otherwise perform the existing half-bar decrement
+5. if the shield reaches zero:
+    * wreck using the existing lifecycle
+    * do not start the temporary indicator
+6. if it survives:
+    * start/refresh the temporary indicator
+
+Do not change the shield maximum or add regenerative behavior.
+
+Important: this is NOT universal invulnerability
+
+An active ultimate protecting durability does not mean every hazard effect disappears.
+
+Preserve all existing car-specific and hazard-specific behavior unless it conflicts specifically with shield loss.
+
+In particular:
+
+Puddles
+
+For a racer whose ultimate does not otherwise remove puddle consequences:
+
+* shield half is preserved while ultOn
+* the existing BLIND_TIME
+* puddle spray
+* Obscured condition
+* visual/audio effects
+
+should continue normally.
+
+The current ultDelta() already ignores the trap meter penalty during an active ultimate, so do not create another ultimate-duration modification.
+
+Tumbleweeds
+
+For cars whose existing ultimate behavior already smashes a tumbleweed through clearsSolidHazards(who), preserve that behavior:
+
+* weed breaks
+* no Slow
+* no shield loss
+* ultimate continues
+
+For any active-ultimate case in which the weed still reaches the racer normally, preserve the normal surviving hazard consequence such as Slow, but do not decrement durability.
+
+Meteors
+
+Do not convert shield durability into meteor protection.
+
+Meteors currently bypass durability entirely.
+
+Keep the existing direct destruction / ultimate-specific meteor interactions intact.
+
+The new ultOn shield rule is specifically about hazards that would otherwise call the durability/half-bar system.
+
+An active ultimate must not accidentally become a new generic meteor invulnerability mechanic.
+
+Existing physical absence/protection
+
+Do not produce fake collision feedback for racers that did not actually get contacted because of existing mechanics.
+
+Examples:
+
+* dead racer
+* finished racer
+* respawn Invulnerable racer
+* Saffron physically above road-level hazards
+* Rhosyn absent from the shared road in Aero-Glow
+
+If noContact() or the existing architecture means no contact happened, do not flash the shield indicator.
+
+⸻
+
+5. Trigger the above-car indicator on the correct contacts
+
+The temporary shield display should correspond to a real non-destructive hazard contact.
+
+The ordinary durability path can start it through hitShield().
+
+Also account for existing ultimate-specific solid-hazard contact paths that bypass hitShield() entirely because the hazard is smashed.
+
+For example, an ulting car using clearsSolidHazards(who) can physically meet a tumbleweed without shield damage.
+
+That is still a hazard contact and may refresh the temporary shield display, showing the shield state unchanged.
+
+Likewise, if a protected solid meteor is physically struck and smashed by an applicable existing ultimate path without destroying the racer, it can count as surviving hazard contact feedback.
+
+However:
+
+* do not flash on a perfect dodge
+* do not flash because a hazard merely passes nearby
+* do not flash for a hazard removed elsewhere before reaching the racer
+* do not flash for no-contact states
+* do not flash for a destroyed racer
+
+Centralize this as much as practical so every hazard does not invent its own timer behavior.
+
+⸻
+
+6. Rendering requirements
+
+The temporary indicator belongs in Canvas world rendering, not as one global DOM element.
+
+This is required because Seren can render two to four separate views of the same race at once.
+
+Add an appropriately named Canvas helper in the same HUD/rendering layer that currently owns racer-attached status presentation.
+
+A good architectural fit is js/hud.js, near drawConditionStack(), with js/render.js invoking it while drawing racers.
+
+It must:
+
+* read state only
+* never mutate shield state
+* respect VOWN
+* respect the racer’s current per-view visibility alpha
+* never reveal an invisible Verdant to another player
+* remain positioned with the racer if the camera/view is offset
+* remain inside the current split-screen viewport
+* use the current measured racer dimensions instead of assuming every sprite is identical
+
+Pass/use the same racerViewAlpha(who) result already used for the car, notes, seat marker and Conditions.
+
+If a Verdant is invisible in a particular view, its shield flash must also be invisible.
+
+Do not allow this new feedback to leak the location of a hidden car.
+
+Draw it above the body silhouette and keep enough spacing that it does not visually merge with the roof sprite.
+
+Condition stacks are already placed beside cars; keep the shield flash centered over the racer so the two systems remain visually distinct.
+
+The indicator should also work for racers drawn through the airborne pass if an active timer legitimately exists, while still respecting owner/visibility rules.
+
+⸻
+
+7. DOM HUD requirements
+
+index.html currently contains:
+
+* #shieldPink
+* #shieldYellow
+* #shieldCyan
+
+inside three .shield-bar tracks.
+
+Keep this markup unless there is a compelling reason to change it.
+
+Do not add separate half elements.
+
+Continue controlling half state through width:
+
+* 100%
+* 50%
+* 0%
+
+Keep the existing meter semantics:
+
+* role="meter"
+* aria-valuemin="0"
+* aria-valuemax="6"
+* aria-valuenow reflecting actual shield halves
+
+Do not remove or weaken localization of the accessible shield label.
+
+The visual gradient does not change the accessible value.
+
+⸻
+
+8. Local/split-screen HUD requirements
+
+hudShield(o) is the Canvas equivalent used by local multiplayer.
+
+It must visually match the normal DOM HUD:
+
+* same bar order: pink, yellow, cyan
+* same cyan-first depletion
+* same gradients
+* no outline
+* no center divider
+* same 100/50/0 fills
+* same dark empty track
+
+Do not allow the regular browser HUD and the local Canvas HUD to communicate different shield states.
+
+⸻
+
+9. State lifecycle requirements
+
+The new temporary timer must not leak between races/lives.
+
+Ensure:
+
+* new race → timer 0
+* spawn rivals → timer 0
+* surviving hazard contact → timer 1 second
+* another surviving hazard contact during that second → timer resets to 1 second
+* timer naturally counts down to 0
+* wreck → no visible indicator / timer cleared
+* respawn → no stale indicator
+* finishing race → no stale shield indicator attached to parked/finished state
+* restarting race → clean state
+
+Do not use setTimeout() for racer-attached shield feedback.
+
+Use the existing frame-driven timer pattern so pause/game state behavior stays deterministic and local multiplayer remains synchronized.
+
+⸻
+
+10. Preserve existing mechanics
+
+Do not accidentally change any of the following:
+
+* six total shield halves
+* sixth ordinary durability hit causes wreck
+* three-second wreck lifecycle
+* full durability reset on respawn
+* respawn Invulnerable condition
+* meteor bypass of durability
+* combat wrecks preserving partial shield until respawn
+* puddle overlap consuming at most one durability half per encounter
+* tumbleweed Slow behavior
+* puddle Obscured behavior
 * perfect-dodge rewards
-* mystery bubble collection
-* item logic
-* finish protection
-* car-to-car collision
-* seeker behavior
-* existing HUD responsiveness
-* high contrast
-* reduced motion
-* English/French localization
+* ultimate charge/duration logic
+* ultDelta() active-ultimate behavior
+* Flann ram
+* Neela exchange
+* Lolanthe Mind Control
+* Verdant invisibility/contact rules
+* Rhosyn Aero-Glow
+* Saffron flight
+* clearsSolidHazards()
+* noContact()
+* local multiplayer ownership
+* AI
+* finishing/parking
+* accessibility
+* mystery bubble colors
 
-Required validation cases
+The shield colors are shared with BUBBLE_TINTS; do not unintentionally change mystery-bubble presentation merely to create shield gradients.
 
-Manually verify all of the following before considering the task complete.
+Add separate shield gradient data if necessary.
 
-Basic shield sequence
+⸻
 
-Fresh race:
+11. Tests
 
-Pink 100%
-Yellow 100%
-Cyan 100%
+Update tools/shield-check.mjs comprehensively rather than weakening it.
 
-After first puddle/weed hit:
+Reverse progression
 
-Pink 50%
-Yellow 100%
-Cyan 100%
+Change the expected six-hit fill progression from the existing pink-first behavior to:
 
-Second:
+6: [1,   1,   1]
+5: [1,   1,  .5]
+4: [1,   1,   0]
+3: [1,  .5,   0]
+2: [1,   0,   0]
+1: [.5,  0,   0]
+0: [0,   0,   0]
 
-Pink 0%
-Yellow 100%
-Cyan 100%
+The array order remains:
 
-Third:
+[pink, yellow, cyan]
 
-Pink 0%
-Yellow 50%
-Cyan 100%
+Do not reverse the array itself.
 
-Fourth:
+DOM regression
 
-Pink 0%
-Yellow 0%
-Cyan 100%
+At G.shield = 3, the DOM expectation must now be:
 
-Fifth:
+* pink 100%
+* yellow 50%
+* cyan 0%
 
-Pink 0%
-Yellow 0%
-Cyan 50%
+Continue asserting aria-valuenow="3" and the localized label.
 
-Sixth:
+Also verify that the DOM fill uses the intended gradient instead of silently reverting to solid colors.
 
-Pink 0%
-Yellow 0%
-Cyan 0%
+Canvas/local regression
 
-The racer immediately enters the existing wreck state.
+The current Canvas test identifies shield fills by comparing ctx.fillStyle against the three flat hex colors.
 
-After the existing 3-second wreck/respawn period:
+That assertion will become invalid when fillStyle is a CanvasGradient.
 
-Pink 100%
-Yellow 100%
-Cyan 100%
+Update the test so it validates:
 
-Existing respawn invulnerability is active normally.
+* three shield tracks still render
+* fill widths match shieldBarFill()
+* the cyan-first progression is respected
+* gradients are actually created/used
+* local seats still own independent shield counts
 
-Mixed hazard sequence
+Do not remove Canvas coverage merely because the implementation now uses gradients.
 
-Puddle → Weed → Puddle → Weed → Puddle → Weed
+Ultimate durability regression
 
-must remove exactly six halves and wreck the racer.
+Add coverage for player, bot, and local-human paths showing that:
 
-Meteor
+* start with shield 6
+* activate an ultimate
+* collide with an ordinary shield-consuming hazard that genuinely reaches the racer
+* shield remains 6
 
-With 6/6 shield:
+Also test a partially damaged racer, for example:
 
-Meteor hit → existing meteor wreck behavior.
+* shield = 3
+* activate ultimate
+* collide
+* shield remains 3
 
-Shield did not absorb the meteor.
+This ensures active ultimate protection preserves the current state rather than restoring it.
 
-After respawn → shield is 6/6.
+For a puddle, verify the relevant surviving non-durability consequence can still occur where existing mechanics allow it.
 
-Ultimate-cleared tumbleweed
+Do not turn this test into generic invulnerability.
 
-With 6/6 shield and an ultimate currently allowed by clearsSolidHazards:
+Indicator timer regression
 
-Hit and destroy tumbleweed.
+Add state tests demonstrating:
 
-Expected:
+* ordinary surviving hazard hit starts the timer
+* active-ultimate surviving hazard contact starts/refreshes the timer while leaving shield unchanged
+* another qualifying collision resets the timer
+* timer decays to 0 after roughly one second of game updates
+* sixth shield hit/wreck does not leave a live popup timer
+* respawn does not restore an old popup timer
 
-* tumbleweed destruction effect occurs
-* shield remains 6/6
-* no accidental half-bar loss
+Current-stage helper regression
 
-Destroyed meteor
+If a helper is introduced for the floating indicator, test the complete mapping:
 
-A racer that destroys/intercepts a meteor through existing ultimate behavior must lose zero shield.
+* 6 → cyan/full
+* 5 → cyan/half
+* 4 → yellow/full
+* 3 → yellow/half
+* 2 → pink/full
+* 1 → pink/half
+* 0 → none
 
-Invulnerability
+View-owner regression
 
-Immediately after respawning, overlap an ordinary hazard while existing invulnerability still protects the racer.
+Add at least a focused renderer/helper test ensuring the temporary indicator is suppressed for VOWN === who.
 
-Expected:
+This must cover the local-seat case where who is a rival object, not merely "me".
 
-* no additional shield loss
-* no spawn-chain depletion
+Also ensure an invisible racer cannot be revealed by the indicator if its per-view alpha is zero.
 
-One collision, many frames
+⸻
 
-Remain overlapping a puddle for several rendered frames.
+12. Documentation consistency
 
-Expected:
+Seren’s README and architecture/tuning documents describe these mechanics in detail, so update relevant documentation after the implementation.
 
-* only one half is consumed for that hazard encounter
+At minimum review:
 
-Local multiplayer
+* README.md hazard/shield section
+* README.md ultimate/hazard descriptions where puddles are described as “unchanged”
+* docs/ARCHITECTURE.md
+* docs/TUNING.md
 
-Damage Player 2 while Player 1 remains safe.
+Document these distinctions accurately:
 
-Expected:
+* visual order is still pink → yellow → cyan
+* durability is now consumed cyan → yellow → pink
+* active ultimate prevents ordinary shield-half consumption
+* this does not automatically suppress Slow/Obscured or create universal invulnerability
+* existing car-specific solid-hazard behavior remains intact
+* meteors still bypass durability
 
-* Player 2’s Canvas HUD changes
-* Player 1’s does not
+Do not rewrite unrelated documentation.
 
-Repeat independently for every local seat.
+⸻
 
-Bots
+13. Files expected to be involved
 
-Allow a bot to collide with puddles/tumbleweeds repeatedly.
+Likely files:
 
-Expected:
+js/data.js
 
-* it follows the same six-half durability progression
-* it wrecks on depletion
-* its shield returns to full after respawn
+* gradient definitions
+* one-second shield-feedback duration constant
 
-Non-hazard destruction
+js/runtime.js
 
-Destroy a racer through an existing non-hazard wreck source while it has partially depleted shield.
+* player-one temporary shield-feedback timer state
 
-Expected:
+js/race.js
 
-* the shield does not prevent that destruction unless the existing mechanic already does
-* after respawn the shield is restored to 6/6
+* rival timer initialization
+* race reset
+* player/rival timer ticking
+* rival hazard-contact integration as needed
 
-Hazard disabled race
+js/mechanics.js
 
-Run a custom race with traps/hazards disabled.
+* reverse shieldBarFill()
+* generic active-ultimate durability preservation
+* surviving-contact feedback trigger
+* player hazard paths
+* clean wreck/reset behavior
 
-Expected:
+js/hud.js
 
-* no shield damage occurs
-* no errors occur
-* HUD remains stable
+* gradient helpers
+* borderless/dividerless Canvas shield HUD
+* DOM gradient application
+* temporary over-car shield renderer/helper
 
-Implementation quality
+js/render.js
 
-Do not solve this with scattered special cases.
+* invoke the temporary indicator for non-view-owner racers using the same visibility rules as other racer-attached presentation
 
-The final implementation should have:
+css/app.css
 
-* one authoritative shield durability value per racer
-* one shared shield damage/reset implementation
-* existing hazard collision detection reused
-* existing wreck lifecycle reused
-* player/bot/local-human parity
-* single-player DOM HUD and local Canvas HUD parity
-* no duplicate timer loops
-* no dependency additions
-* no unrelated redesigns
-* no new image assets
-* clear comments where the new gameplay contract is not self-evident
+* remove shield border
+* remove center divider
+* retain rounded clipping and dark empty track
 
-Inspect the surrounding code before editing each integration point and follow the existing Seren conventions rather than replacing working systems.
+tools/shield-check.mjs
 
-The final result should feel as though the three-bar shield system was part of Seren’s original architecture, not bolted on afterward.
+* reverse progression expectations
+* gradient-aware Canvas checks
+* ultimate shield preservation
+* timer/state mapping
+* viewport-owner behavior where practical
+
+documentation
+
+* update only statements made obsolete by this change
+
+Do not scatter new durability rules into unrelated files if the existing shared helpers can own them.
+
+⸻
+
+14. Acceptance criteria
+
+The implementation is complete only when all of these are true:
+
+1. Starting a race shows three full bars in the existing left-to-right order:
+    pink, yellow, cyan.
+2. First ordinary shield hit:
+    * cyan becomes 50%
+    * pink and yellow remain full.
+3. Second hit:
+    * cyan empties.
+4. Third/fourth hits:
+    * yellow goes 50% then empty.
+5. Fifth hit:
+    * pink goes 50%.
+6. Sixth hit:
+    * racer is wrecked
+    * all bars are empty
+    * no floating shield indicator remains on the destroyed racer.
+7. Respawn:
+    * restores all three full bars
+    * no stale floating shield timer.
+8. Every shield bar:
+    * has no border/outline
+    * has no center half-divider
+    * uses a subtle gradient
+    * still clearly communicates 100%, 50%, and empty states.
+9. DOM and Canvas/local HUDs match visually and logically.
+10. A rival/bot surviving a puddle or tumbleweed collision displays a compact temporary shield bar above the car for about one second.
+11. The temporary bar uses the current stage mapping:
+    cyan → yellow → pink as durability declines.
+12. The current viewport owner never receives this floating indicator over their own car.
+13. In local split-screen, each human’s own column suppresses the indicator for that human specifically.
+14. Other racers can still show the indicator in that column.
+15. The indicator respects racer visibility and cannot reveal an invisible Verdant.
+16. A racer with an active ultOn does not lose a durability half from an ordinary shield-consuming hazard.
+17. Active-ultimate durability protection works for player one, bots, and local humans.
+18. Ultimate protection does not refill previously lost shield.
+19. Puddle/weed non-durability effects remain intact where the existing ultimate mechanics do not already negate them.
+20. Meteors remain direct-destruction hazards governed by their existing rules rather than suddenly becoming normal shield damage.
+21. Saffron/Rhosyn states where no physical road-hazard contact occurs do not produce fake shield flashes.
+22. node tools/shield-check.mjs passes with updated assertions.
+23. node tools/check.mjs still passes.
+24. Existing ultimate/hazard regression checks remain passing after updating only expectations genuinely changed by this feature.
+25. No unrelated gameplay, UI, AI, collision, accessibility, or local-multiplayer behavior regresses.
+
+Keep the implementation centralized, deterministic, frame-driven, and consistent with Seren’s existing architecture.
