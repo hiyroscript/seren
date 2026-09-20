@@ -120,7 +120,7 @@ function spawnRivals(){
       pk:newPadKeys(),
       wantBoost:false, blindPts:[],
       abs:0, changeT:rand(0.2, 0.7),          /* standing start: everyone from zero */
-      slow:0, blind:0, dead:0, invuln:0, shuntT:0, bumpCD:0, slip:0,
+      slow:0, blind:0, dead:0, shield:SHIELD_MAX, invuln:0, shuntT:0, bumpCD:0, slip:0,
       /* Neela's ultimate, carried by every racer so nothing downstream has to
          ask which kind of object it is holding. See G in runtime.js. */
       saffronPhase:"off", saffronT:0, saffronLift:0,
@@ -190,7 +190,7 @@ function startRace(){
   G.shake = 0;
   G.traps = []; G.fx = []; G.trapGap = 0; G.nextTrap = 620;
   G.tier = 0; G.speedT = SPEED_SECONDS; G.blind = 0; G.blindPts = [];
-  G.dead = 0; G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
+  G.dead = 0; resetShield("me"); G.invuln = 0; G.slowT = 0; G.swipeLock = 0;
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
   clearSaffronState("me");
@@ -654,7 +654,7 @@ function update(dt){
   sweepDebuffs();
   if(G.dead > 0){
     G.dead -= dt;
-    if(G.dead <= 0){ G.dead = 0; G.invuln = INVULNERABLE_TIME; respawnFx(); }
+    if(G.dead <= 0){ G.dead = 0; resetShield("me"); G.invuln = INVULNERABLE_TIME; respawnFx(); }
   }
   updateBubbles(dt, d, st);
   updateSlicks(dt, d, st);
@@ -722,7 +722,7 @@ function updateRival(R, dt, st){
 
   if(R.dead > 0){
     R.dead -= dt;
-    if(R.dead <= 0){ R.dead = 0; R.invuln = INVULNERABLE_TIME; }
+    if(R.dead <= 0){ R.dead = 0; resetShield(R); R.invuln = INVULNERABLE_TIME; }
     R.abs = 0;
     R.y += G.speed*dt;
     return;
@@ -871,8 +871,9 @@ function updateRival(R, dt, st){
       if(o.kind === "weed" && clearsSolidHazards(R)){
         smashWeed(o, R.car); G.traps.splice(i,1); break;
       }
-      ultDelta(R, ULT_ON_TRAP);
       if(refusesDebuffs(R)){ puffFx(o.x, o.y); if(o.kind === "weed") G.traps.splice(i,1); break; }
+      if(hitShield(R)){ if(o.kind === "weed") G.traps.splice(i,1); break; }
+      ultDelta(R, ULT_ON_TRAP);
       if(o.kind === "weed"){ R.slow = SLOW_TIME; puffFx(o.x, o.y); G.traps.splice(i,1); }
       else { R.blind = BLIND_TIME; R.blindPts = blindSpray(); puffFx(o.x, o.y); }
       break;

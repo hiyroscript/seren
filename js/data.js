@@ -5,6 +5,13 @@
    Loaded before runtime.js because the global state object is built from
    some of these. Nothing here has behaviour of its own. */
 
+/* Mystery Bubble film and durability HUD share the same three hues. */
+const BUBBLE_TINTS = { pink:"#FF8CE1", yellow:"#FFEB96", cyan:"#78EBFF" };
+const SHIELD_COLORS = [BUBBLE_TINTS.pink, BUBBLE_TINTS.yellow, BUBBLE_TINTS.cyan];
+const SHIELD_BARS = SHIELD_COLORS.length;
+const SHIELD_HALVES_PER_BAR = 2;
+const SHIELD_MAX = SHIELD_BARS*SHIELD_HALVES_PER_BAR;
+
 const CARS = {
   flann: {
     key:"flann", style:"sprite", sprite:"v_flann.PNG", accent:"#FF4A50",

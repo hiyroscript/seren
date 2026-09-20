@@ -8,6 +8,7 @@
 
 /* ---------------- language --------------------------------------- */
 const STR = {
+  hudShield:    {en:"Shield (remaining half-bars)", fr:"Bouclier (demi-barres restantes)"},
   tagline:      {en:"Endless city run",           fr:"Course urbaine sans fin"},
   best:         {en:"Best run",                    fr:"Meilleure course"},
   start:        {en:"Start race",                  fr:"Lancer la course"},
