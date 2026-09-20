@@ -577,6 +577,9 @@ const SPEED_SECONDS = 20;                 /* the road speeds up on this clock */
 const BASE_SPEED = 420;                   /* 1.00x */
 const MULT_STEP = 0.10, MAX_MULT = 3.00;  /* +0.10x every 20s, up to triple */
 const MAX_TIER = Math.round((MAX_MULT - 1)/MULT_STEP);
+const TRAP_GAP_MIN = 430, TRAP_GAP_MAX = 900, TRAP_GAP_MAX_SCALE = 1.18;
+const PUDDLE_SIZE_SCALE = 1.08, WEED_SIZE_SCALE = 1.08, METEOR_SIZE_SCALE = 1.06;
+const WEED_BODY_SCALE = Math.sqrt(0.86);  /* dense ball; loose twig tips are cosmetic */
 const BLIND_TIME = 2.6;                   /* puddle: how long the view stays fouled */
 const DEAD_TIME = 3, INVULNERABLE_TIME = 2;   /* destroy: wreck, then respawn untouchable */
 const SLOW_TIME = 1.7;                    /* tumbleweed: how long it drags you down */
@@ -604,6 +607,8 @@ function rockLead(o){ return Math.max(0.2, (o.max || METEOR_MAX_T)*METEOR_ROCK_K
 /* How high it still is. The fall, the roof test and the drawing all read this
    one number, so they cannot disagree about where the rock is. */
 function rockAlt(o){ return METEOR_ALT*clamp(o.fall/rockLead(o), 0, 1); }
+/* Solid rock only: no flame, glow or ground shadow. */
+function meteorRockRadius(o){ return o.mr*(1 + clamp(o.fall/rockLead(o), 0, 1)*0.5); }
 const TRACKS = {
   city:   { key:"trackCity",   ground:"#C9CCD3", shoulder:"#EDEEF1", road:"#16171B",
             mark:"rgba(237,238,241,0.86)", edge:"rgba(237,238,241,0.5)", accent:"#E21B22" },
