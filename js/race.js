@@ -496,8 +496,7 @@ function update(dt){
   tickCole("me", dt);
   for(const R of G.rivals) tickCole(R, dt);
 
-  const hazardFrame = beginPerfectDodges();
-  const dodgeFrame = st === "running" ? hazardFrame : null;
+  const dodgeFrame = st === "running" ? beginPerfectDodges() : null;
 
   /* speed */
   let target, braking = false;
@@ -613,7 +612,7 @@ function update(dt){
     G.trackT -= dt;
     if(G.trackT <= 0 && G.seam === null && G.finishAt === 0) switchTrack();
     G.trapGap += d;
-    if(G.trapGap >= G.nextTrap){ G.trapGap = 0; spawnTrap(); G.nextTrap = nextTrapGap(); }
+    if(G.trapGap >= G.nextTrap){ G.trapGap = 0; spawnTrap(); G.nextTrap = rand(430, 900); }
   }
 
   /* ultimate: charges slowly, then counts down over its fifteen seconds */
@@ -665,13 +664,12 @@ function update(dt){
   updateBubbles(dt, d, st);
   updateSlicks(dt, d, st);
   updateMissiles(dt, d);
-  const trapFrame = updateTraps(dt, d, st, hazardFrame);
+  updateTraps(dt, d, st);
   if(st === "running" && G.dead <= 0){
     const inFront = rearContact("me");
     if(inFront && inFront.y < playerY) rearEnd("me", inFront);
   }
-  updateRivals(dt, st, true);
-  resolveTraps(trapFrame, st);
+  updateRivals(dt, st);
   /* Every Lolanthe's aura, once, after the whole field has moved and before
      the flag is tested - so it reads one settled picture of the road rather
      than a half-updated one, and the answer does not depend on where a racer
@@ -694,10 +692,9 @@ function update(dt){
   if(G.stepFlash > 0) G.stepFlash = Math.max(0, G.stepFlash - dt);
 }
 
-function updateRival(R, dt, st, deferTraps){
+function updateRival(R, dt, st){
   if(st !== "running" && st !== "over") return;   /* still let them reach the flag */
   const D = diff();
-  const hazardFrame = deferTraps ? null : beginPerfectDodges();
 
   if(R.slow > 0)   R.slow   = Math.max(0, R.slow - dt);
   if(R.shieldHitT > 0) R.shieldHitT = Math.max(0, R.shieldHitT - dt);
@@ -849,10 +846,6 @@ function updateRival(R, dt, st, deferTraps){
   R.tilt = clamp((nx - R.x)/dt/2600, -0.28, 0.28) || 0;
   R.x = nx;
 
-  if(!deferTraps) hitRivalTraps(R,{dt:dt,racers:hazardFrame.racers,traps:hazardFrame.traps});
-}
-
-function hitRivalTraps(R, frame){
   /* hazards, on exactly the terms the player gets them - which now includes
      not being on this road at all. noContact() is the one answer to that, and
      it adds nothing else here: a wrecked rival has already returned above. */
@@ -862,9 +855,12 @@ function hitRivalTraps(R, frame){
     for(let i=G.traps.length-1;i>=0;i--){
       const o = G.traps[i];
       if(o.kind === "meteor") continue;
+      const p = nearestOnCar(rc, o.x, o.y);
+      const dx = p.x - o.x, dy = p.y - o.y;
       if(o.hit & bit) continue;                        /* already soaked this one */
-      const entry = frame.traps.find(function(e){return e.live === o;});
-      const hit = trapContact(o,entry ? entry.before : o,R,frame) !== null;
+      const hit = o.kind === "puddle"
+        ? puddleHits(o, rc)
+        : dx*dx + dy*dy <= o.r*o.r*0.86;
       if(!hit){ markPassed(o, rc, bit); continue; }
       o.hit |= bit;
       /* A rival holding an ultimate with the solid-hazard privilege smashes the
@@ -885,8 +881,8 @@ function hitRivalTraps(R, frame){
   }
 }
 
-function updateRivals(dt, st, deferTraps){
-  for(let i=0;i<G.rivals.length;i++) updateRival(G.rivals[i], dt, st, deferTraps);
+function updateRivals(dt, st){
+  for(let i=0;i<G.rivals.length;i++) updateRival(G.rivals[i], dt, st);
 }
 
 /* ---------------- loop ------------------------------------------- */

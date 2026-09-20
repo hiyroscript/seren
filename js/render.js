@@ -629,8 +629,8 @@ function drawMeteor(o){
 
     if(o.fall < rockLead(o)){
       const k = clamp(o.fall/rockLead(o), 0, 1);
-      const alt = rockAlt(o);
-      const mx = o.x, my = o.y - alt, mr = meteorRockRadius(o);
+      const alt = rockAlt(o), sc = 1 + k*0.5;
+      const mx = o.x, my = o.y - alt, mr = o.mr*sc;
 
       ctx.save();
       ctx.globalAlpha = 0.14 + (1-k)*0.3;                    /* shadow closing in */
@@ -732,14 +732,13 @@ function drawWeed(o){
    player one - the mark is always at or above their row - which is the whole
    reason this only ever showed up on somebody else's half of the split. */
 function trapReach(o){
-  if(o.kind === "meteor") return Math.max(o.r*1.5 + 6, METEOR_ALT + 190 + meteorRockRadius(o)*1.7);
-  return o.kind === "puddle" ? o.ry*1.4 + 6 : o.r*1.02 + 4;
+  return o.kind === "meteor" ? METEOR_ALT + 190 + o.mr*1.6 : 40;
 }
 function drawTraps(id){
   for(let i=0;i<G.traps.length;i++){
     const o = G.traps[i];
     if(o.b !== id) continue;
-    const up = trapReach(o), down = o.kind === "meteor" ? o.r*1.5 + 6 : up;
+    const up = trapReach(o), down = (o.r || o.ry || 0) + 60;
     if(o.y - up > CB || o.y + down < CT) continue;
     if(o.kind === "puddle") drawPuddle(o);
     else if(o.kind === "meteor") drawMeteor(o);
