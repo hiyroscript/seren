@@ -142,13 +142,9 @@ $("#customBody").addEventListener("click", function(e){
   paintCustom();
 });
 
-$("#carFlann").addEventListener("click", function(){ pickCar("flann"); });
-$("#carNeela").addEventListener("click", function(){ pickCar("neela"); });
-$("#carLolanthe").addEventListener("click", function(){ pickCar("lolanthe"); });
-$("#carVerdant").addEventListener("click", function(){ pickCar("verdant"); });
-$("#carRhosyn").addEventListener("click", function(){ pickCar("rhosyn"); });
-$("#carSaffron").addEventListener("click", function(){ pickCar("saffron"); });
-$("#carCole").addEventListener("click", function(){ pickCar("cole"); });
+CAR_IDS.forEach(function(id){
+  carEl(id).addEventListener("click", function(){ pickCar(id); });
+});
 $("#btnGarage").addEventListener("click", function(){ garageTab = "cars"; setTab(); show("garage"); });
 $("#btnCloseGarage").addEventListener("click", function(){ show("home"); });
 

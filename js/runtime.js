@@ -35,7 +35,7 @@ let VOWN = "me";            /* whose view is being drawn */
 let VW_TOP = 0, VW_BOT = 0; /* the union of every view: what the world must cover */
 
 /* Where a car's own view sits relative to the master frame. After the flag,
-   ease toward the middle of the parking area so all seven places stay visible.
+   ease toward the middle of the parking area so all eight places stay visible.
    This changes only the camera, never a racer's canonical world position. */
 function camDy(who){
   const o = who === "me" ? G : who;
@@ -77,6 +77,7 @@ const G = {
   biome:"city", next:null, seam:null, trackT:60, seamPts:[], seamBits:[],
   traps:[], fx:[], trapGap:0, nextTrap:600,
   tier:0, speedT:SPEED_SECONDS, blind:0, blindPts:[], dead:0, shield:SHIELD_MAX, shieldHitT:0, invuln:0, slowT:0,
+  cleanseT:0, dhavalObscureT:0, dhavalObscureLevel:0, dhavalObscureAge:0,
   car:"flann", ult:0, ultOn:false, ultKey:false, ultArmed:true,
   /* The active meter displays seconds remaining / the fixed duration. */
   ultT:0, ultMax:ULT_TIME,
@@ -159,7 +160,7 @@ const G = {
    object is never a special case bolted onto local play, it is the thing the
    race has always been reading and simply could not be changed before.
 
-   bots is -1 for "fill the grid", which is what seven-cars-whatever-happens has
+   bots is -1 for "fill the grid", which is what eight-cars-whatever-happens has
    always meant; a custom race can name a number instead, down to nobody. */
 function defaultRules(){
   return { bots:-1, traps:true, bubbles:true, boost:true, ults:true };

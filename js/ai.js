@@ -9,9 +9,19 @@
    `far` reads the extra distance a difficulty buys; `at` projects the whole
    test forward by that many seconds, which is how the better drivers see a
    hazard arriving rather than a hazard arrived. */
+/* Obscurity reduces information and reaction quality, never vehicle physics.
+   A nested sight range is deterministic: stronger levels cannot reveal more. */
+function botSight(who){
+  return [1, .88, .68, .46, .28, .12][dhavalObscureLevel(who)];
+}
+function botSeesRacer(observer, target){
+  if(!racerDetectable(target)) return false;
+  if(!observer || observer === "me" || !dhavalObscured(observer)) return true;
+  return Math.abs(racerY(observer) - racerY(target)) <= carH*10*botSight(observer);
+}
 function laneRisk(R, far, at){
   const D = diff();
-  const look = far ? 360 + D.look : 360;
+  const look = (far ? 360 + D.look : 360)*botSight(R);
   /* Where the road will have carried everything by then. The car's own drift
      goes in too - a bot sliding backwards through the field meets a hazard
      sooner than one pulling away from it. */
@@ -43,9 +53,9 @@ function laneRisk(R, far, at){
     const who = a.me ? "me" : a.obj;
     if(a.out || a.obj === R) continue;
     if(noContact(who)) continue;                      /* nothing to run into */
-    if(!racerDetectable(who)) continue;               /* and nothing a driver could see */
+    if(!botSeesRacer(R, who)) continue;               /* and nothing a driver could see */
     const ahead = R.y - a.y;
-    if(ahead > 0 && ahead < 300) risk[a.lane] = 1;    /* held up behind them */
+    if(ahead > 0 && ahead < 300*botSight(R)) risk[a.lane] = 1;    /* held up behind them */
   }
   return risk;
 }
@@ -86,7 +96,7 @@ function fieldView(self){
          still the truth about contact, so a bot can still run into what it
          cannot see; `seen` is what every deliberate decision below reads, so
          nothing is aimed at a car a person would not know was there. */
-      seen:racerDetectable(me ? "me" : obj),
+      seen:botSeesRacer(self, me ? "me" : obj),
       ultOn:!!o.ultOn, ult:o.ultOn ? 1 : (o.ult || 0),
       slow:me ? G.slowT : obj.slow,
       slip:me ? G.slipT : obj.slip,
@@ -250,7 +260,7 @@ function laneScore(R, l, s){
       const row = G.boxes[i];
       if(row.gone & (1 << l)) continue;
       const gy = R.y - row.y;
-      if(gy < carH*0.5 || gy > 620) continue;
+      if(gy < carH*0.5 || gy > 620*botSight(R)) continue;
       v += (12 + D.skill*16)*(1 - gy/620);
       break;
     }
@@ -265,7 +275,7 @@ function laneScore(R, l, s){
 /* Value the opportunity to gain distance with the shared speed boost. */
 /* What the fifteen seconds are worth beyond the pace, for the four cars that
    get something beyond the pace. Everything above is the shared read of the
-   road and applies to all seven; this is an adjustment on top of it, and it is
+   road and applies to all eight; this is an adjustment on top of it, and it is
    nothing for the two cars that have no power to value. No branch assumes the
    others do not exist, and each of them values its own power rather than a
    copy of somebody else's - a ram wants traffic in front, an exchange wants
@@ -273,6 +283,19 @@ function laneScore(R, l, s){
    wants people close enough to be a problem. */
 function botUltExtra(R, s){
   const M = s.M, D = s.D;
+  if(dhavalCar(R)){
+    let near = 0, exposed = 0;
+    for(const a of s.all){
+      if(a.out || !a.seen || !dhavalTakes(R, a.who)) continue;
+      if(Math.abs(a.y - R.y) > dhavalRange()) continue;
+      near++;
+      if(G.traps.some(function(o){
+        return !(o.kind === "meteor" && o.phase !== 0) &&
+               Math.abs(o.x-a.x) < laneW*.6 && a.y-o.y >= 0 && a.y-o.y < carH*5;
+      })) exposed++;
+    }
+    return (Math.min(.72, near*.18) + Math.min(.3, exposed*.10))*(.5 + M.spite*.5 + D.hunt*.5);
+  }
   if(flannCar(R)){
     /* A ram is worth exactly what there is to ram, which is traffic in front -
        and a driver that would rather hurt somebody wants it sooner. */
@@ -552,7 +575,7 @@ function rivalThink(R, dt){
 function botLook(R, dt, force){
   if(!force && R.sense && R.senseT > 0) return R.sense;
   const D = diff();
-  R.senseT = rand(D.tick[0], D.tick[1])*0.4;
+  R.senseT = rand(D.tick[0], D.tick[1])*0.4*(1 + dhavalObscureLevel(R)*.4);
   R.sense = botSense(R);
   return R.sense;
 }

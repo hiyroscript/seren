@@ -38,7 +38,7 @@ to that tier from `G.tier` and `G.speedT`, then the remaining track transitions.
 | --- | --- | --- |
 | `FINAL_TRACKS` | `3` | track changes after reaching 3.00×, then the flag is planted |
 | `FINISH_STRETCH` | `900` | metres of the last track before the line |
-| `FIELD_SIZE` | `7` | cars on the road, however they are driven |
+| `FIELD_SIZE` | `8` | cars on the road, however they are driven |
 | `LOCAL_MAX` | `4` | most people on one screen |
 | `PARK_BASE` | `0.70` | car heights past the line for the last car home |
 | `PARK_STEP` | `0.48` | car heights between one finishing place and the next |
@@ -46,7 +46,7 @@ to that tier from `G.tier` and `G.speedT`, then the remaining track transitions.
 
 `PARK_STEP` follows the lane cycle: three steps separate racers in the same
 lane. At `3 × 0.48` shared car heights, the largest ordinary form clears its
-neighbor. The finish camera frames the whole seven-place parking area.
+neighbor. The finish camera frames the whole eight-place parking area.
 
 ## Boost
 
@@ -112,7 +112,7 @@ All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
 
-All seven cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
+All eight cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
 
 ### Flann's ram
 
@@ -326,7 +326,7 @@ update loop so a pause pauses it:
 | --- | --- |
 | Any racer contact, either way | None. `noContact()` is true, so there is no body at that position to meet and none to meet with |
 | Flann's ram, Neela's exchange, Verdant's defence | None of them, in either direction — they all settle contacts that cannot happen |
-| Lolanthe's aura | Refused. `mindTakes()` asks `refusesDebuffs()`, which is `noContact()` |
+| Lolanthe's aura | Refused. `mindTakes()` asks `refusesDebuffs()`, the debuff protection gate |
 | Tumbleweed, meteor, puddle, oil, seeker | None reach it, and none are spent on it: the hazard is still there afterwards for whoever does drive over it |
 | Shared bubble rows | Not collected. It cannot see the row it is driving through |
 | Its own items | Refused and **kept**, not silently spent into a world it is not in |
@@ -431,7 +431,7 @@ reached from a bubble.
 
 ## Conditions
 
-`CONDITIONS` in `data.js` is the whole model: six entries, and the key order is
+`CONDITIONS` in `data.js` is the whole model: seven entries, and the key order is
 the priority order a stack of badges is drawn in.
 
 | Condition | Colour | Type | Icon | Comes from |
@@ -519,7 +519,7 @@ In `js/local.js`:
 
 ### Sprite artwork and race size
 
-All seven base cars and three alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
+All eight base cars and three alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
 
 | Car | Race scale | Visible bounds (x,y,width,height) | Exhaust source pixels |
 | --- | --- | --- | --- |
@@ -575,4 +575,21 @@ and dodges produce no feedback. This timer has no gameplay effect.
 
 The car has race scale 1.12; the motorcycle has alternate scale 1.12 on top of that (1.2544 of the shared logical box). Both fit their independently measured bounds uniformly. See COLE-QA.md for source dimensions and outlet coordinates.
 
-`FIELD_SIZE = 7`; the start uses two cars beside P1, three in the second row, and one in the third row’s center. Row spacing is 1.3 times the largest base-model height. Parking uses `PARK_BASE = 0.70` and `PARK_STEP = 0.48` shared car heights; three lane-cycling steps separate racers in the same lane. After the flag, each finisher’s camera eases to frame the whole parking area without changing world positions.
+`FIELD_SIZE = 8`; the start uses two cars beside P1, three in the second row, and two in the third row. Row spacing is 1.3 times the largest base-model height. Parking uses `PARK_BASE = 0.70` and `PARK_STEP = 0.48` shared car heights; three lane-cycling steps separate racers in the same lane. After the flag, each finisher’s camera eases to frame the whole parking area without changing world positions.
+
+
+## Dhaval
+
+| Tuning | Initial value | Meaning |
+| --- | --- | --- |
+| `DHAVAL_AURA_LENGTHS` | 4 | Nearby longitudinal range in canonical shared car lengths |
+| `DHAVAL_OBSCURE_TIME` | 3 s | Refreshed tail; severity remains until cleared/expired |
+| `CLEANSED_TIME` | 3 s | Refreshed universal debuff protection, no contact immunity |
+| `DHAVAL_LIGHT_LEVELS` | five entries | Nested light count, radius and opacity |
+| Dhaval `raceScale` | default 1 | Measured 774×1430 body already fills the 1:1.86 car box |
+
+The 85-second charge, 15-second ultimate and 2× pace remain shared. Bot sight
+multipliers for levels 0–5 are 1, .88, .68, .46, .28 and .12. Observation intervals
+increase by .4 per level and reaction delay by .3 per level. These affect
+judgement only; `racerPace()` is unchanged. Actual light coverage measurements and
+manual QA limits are recorded in [DHAVAL-QA.md](DHAVAL-QA.md).

@@ -240,10 +240,23 @@ const CARS = {
       hitShape:[[-0.00296,-0.49363],[0.04002,-0.48645],[0.05335,-0.46892],[0.05335,-0.44582],[0.083,-0.43227],[0.10375,-0.38765],[0.14376,-0.36454],[0.1734,-0.32709],[0.19267,-0.26255],[0.20897,-0.20996],[0.2564,-0.19482],[0.28604,-0.1749],[0.29197,-0.16375],[0.22083,-0.1757],[0.22083,-0.12311],[0.25047,-0.08008],[0.24899,-0.04582],[0.22676,-0.01713],[0.22527,0.02908],[0.19267,0.05538],[0.18674,0.10398],[0.17044,0.12151],[0.19415,0.20598],[0.19415,0.249],[0.14969,0.29124],[0.13783,0.35817],[0.0993,0.37888],[0.08003,0.40996],[0.05928,0.43705],[0.05632,0.46574],[0.03853,0.48566],[-0.00148,0.49363],[-0.04002,0.48566],[-0.06076,0.46574],[-0.06225,0.43705],[-0.083,0.40996],[-0.10226,0.37888],[-0.1408,0.35817],[-0.15265,0.29124],[-0.19563,0.249],[-0.19712,0.20598],[-0.1734,0.12151],[-0.18971,0.10398],[-0.19563,0.05538],[-0.22824,0.02908],[-0.2312,-0.01713],[-0.25343,-0.04582],[-0.25492,-0.08008],[-0.22379,-0.12311],[-0.22379,-0.1757],[-0.29197,-0.16375],[-0.28604,-0.1749],[-0.25492,-0.19482],[-0.21045,-0.20996],[-0.19415,-0.26255],[-0.17488,-0.32709],[-0.14524,-0.36454],[-0.10671,-0.38765],[-0.08596,-0.43227],[-0.05632,-0.44582],[-0.05632,-0.46892],[-0.04298,-0.48645]],
       flame:["#FF7A3A","#FFD9A0"]
     }
+  },
+  /* Dhaval: alpha > 127 bounds (125,54)-(898,1483), 774 x 1430 on
+     a 1024 x 1536 sheet. Width-limited fit fills one shared car box (height
+     0.9933 boxes), so no road enlargement is needed. Full sheet is preserved.
+     Hull follows the nose crown, fenders, waist, wheels and rear body; the
+     side wing endplates and trailing diffuser teeth are decorative.
+     The single circular tailpipe bore is centred at (512,1416). */
+  dhaval: {
+    key:"dhaval", style:"sprite", sprite:"v_dhaval.PNG", accent:"#F2F0FF",
+    spriteBounds:[125/1024,54/1536,774/1024,1430/1536],
+    exhaust:[[512/1024,1416/1536]],
+    hitShape:[[-0.37984496,-0.47303493],[-0.28682171,-0.491095],[-0.28552972,-0.46261565],[-0.19896641,-0.47442416],[-0.18604651,-0.48137034],[-0.05167959,-0.491095],[0.0503876,-0.491095],[0.18475452,-0.48137034],[0.19767442,-0.47442416],[0.28423773,-0.46261565],[0.28552972,-0.491095],[0.37596899,-0.47303493],[0.40697674,-0.40774082],[0.43281654,-0.40635159],[0.45219638,-0.37509377],[0.41989664,-0.36953683],[0.42377261,-0.31396738],[0.42377261,-0.24797866],[0.39922481,-0.17573838],[0.38888889,-0.11322275],[0.3875969,-0.04515018],[0.39664083,0.03125781],[0.40180879,0.08960573],[0.42377261,0.14309133],[0.44186047,0.19657692],[0.46899225,0.20074463],[0.48966408,0.29243422],[0.47028424,0.30007502],[0.44056848,0.30215887],[0.43669251,0.33411131],[0.44444444,0.35772832],[0.44702842,0.41190853],[0.38501292,0.46886722],[0.27002584,0.47720263],[0.21834625,0.47720263],[0.07622739,0.4758134],[0.0,0.47442416],[-0.07622739,0.4758134],[-0.22093023,0.47720263],[-0.27131783,0.47720263],[-0.38501292,0.46886722],[-0.44702842,0.41190853],[-0.44444444,0.35772832],[-0.43540052,0.33411131],[-0.44056848,0.30215887],[-0.46899225,0.30007502],[-0.48966408,0.29243422],[-0.46899225,0.20074463],[-0.44315245,0.19657692],[-0.42377261,0.14309133],[-0.40180879,0.08960573],[-0.39664083,0.03125781],[-0.3875969,-0.04515018],[-0.38888889,-0.11322275],[-0.39922481,-0.17573838],[-0.42377261,-0.24797866],[-0.42377261,-0.31396738],[-0.41731266,-0.36953683],[-0.45090439,-0.37509377],[-0.43152455,-0.40635159],[-0.40697674,-0.40774082]],
+    flame:["#AB55E8","#FFFFFF"]
   }
 };
 const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
-const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","saffron","cole"];
+const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","saffron","cole","dhaval"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -313,7 +326,8 @@ const TEMPERS = {
   verdant:   { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
   rhosyn:    { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
   saffron:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 },
-  cole:        { nerve:0.72, spite:0.32, patience:0.48, guard:0.58 }
+  cole:        { nerve:0.72, spite:0.32, patience:0.48, guard:0.58 },
+  dhaval:      { nerve:0.62, spite:0.70, patience:0.62, guard:0.42 }
 };
 function makeTemper(car){
   const b = TEMPERS[car] || TEMPERS.flann;
@@ -339,6 +353,8 @@ function makeTemper(car){
 
    Debuffs are refused, and cleared, by temporary invulnerability. */
 const CONDITIONS = {
+  cleansed:     { key:"condCleansed", col:"#94F4DD", type:"buff",
+                  icon:"cleanse", ink:"#073F35" },
   invulnerable: { key:"condInvulnerable", col:"#FFD86B", type:"buff",
                   icon:"shield",   ink:"#20180A" },
   boosted:      { key:"condBoosted",      col:"#FF9A4A", type:"buff",
@@ -569,7 +585,20 @@ const FAR_W = 34;                         /* two chevrons and nothing else */
 const PCOLS = ["#FF3B3B", "#3B8CFF", "#35D06B", "#FFCE2B"];
 const PCOL_KEYS = ["pRed", "pBlue", "pGreen", "pYellow"];
 const LOCAL_MAX = 4;
-const FIELD_SIZE = 7;       /* seven cars on the road, however they are driven */
+const DHAVAL_AURA_LENGTHS = 4;
+const DHAVAL_OBSCURE_TIME = 3;
+const CLEANSED_TIME = 3;
+const DHAVAL_LIGHT_COLORS = ["#FFFFFF", "#AE4BE8", "#F32946", "#3FDC78"];
+/* Each level retains the earlier circles and enlarges them, ensuring coverage
+   grows monotonically for a fixed time/seed. Radius is relative to view area. */
+const DHAVAL_LIGHT_LEVELS = [
+  { count:4, radius:.175, opacity:.68 },
+  { count:7, radius:.180, opacity:.76 },
+  { count:11, radius:.190, opacity:.84 },
+  { count:16, radius:.215, opacity:.91 },
+  { count:23, radius:.242, opacity:.97 }
+];
+const FIELD_SIZE = 8;       /* eight cars on the road, however they are driven */
 
 /* ---------------- tracks ----------------------------------------- */
 const TRACK_SECONDS = 60;
@@ -647,7 +676,7 @@ const FINISH_STRETCH = 900;               /* metres of the last track before the
    nothing has to be untangled afterwards.
 
    Places cycle across three lanes. Three steps clear the longest base/bike
-   hull, with a margin. Finish cameras frame the whole seven-car parking area. */
+   hull, with a margin. Finish cameras frame the whole eight-car parking area. */
 const PARK_BASE = 0.70;
 const PARK_STEP = 0.48;
 const PARK_EASE = 3.9;                    /* how hard the roll-out closes on the mark */

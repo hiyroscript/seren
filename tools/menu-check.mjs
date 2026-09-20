@@ -67,7 +67,7 @@ for(const language of ['en','fr']){
     assert.equal($('#condTabDebuff').getAttribute('tabindex'),'-1');
     assert.equal($('#condTabBuff').textContent,run('t("condBuff")'));
     assert.equal($('#condTabDebuff').textContent,run('t("condDebuff")'));
-    assert.deepEqual(Array.from(run('conditionsOfType("buff")')),['invulnerable','boosted']);
+    assert.deepEqual(Array.from(run('conditionsOfType("buff")')),['cleansed','invulnerable','boosted']);
     const html=$('#garageBody').innerHTML;
     for(const id of run('conditionsOfType("buff")')) assert.ok(html.includes(run('t(CONDITIONS["'+id+'"].key)')),id);
     for(const id of run('conditionsOfType("debuff")')) assert.ok(!html.includes(run('t(CONDITIONS["'+id+'"].key)')),id);
@@ -151,7 +151,7 @@ test('touch capability gates Local with native disabled state',()=>{assert.ok(mo
    about to drive, not what it turns into. */
 test('Neela holds the second slot and is not a seventh car',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,7);
+  assert.equal(ids.length,8);
   assert.equal(ids[1],'neela');
   assert.equal(ids.includes('phantom'),false);
   assert.ok(f.$('#carNeela'),'the select screen has a Neela button');
@@ -234,8 +234,8 @@ test('every menu preview is the car model, never the alternate form',()=>{
    of the two cars it replaced survives anywhere a player can read. */
 test('Lolanthe and Verdant hold the third and fourth slots',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,7);
-  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron','cole']);
+  assert.equal(ids.length,8);
+  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron','cole','dhaval']);
   assert.equal(ids.includes('bolt'),false);
   assert.equal(ids.includes('timestamp'),false);
   for(const [id,btn] of [['lolanthe','#carLolanthe'],['verdant','#carVerdant']]){
@@ -307,7 +307,7 @@ test('Mind Controlled is a Condition the garage can show',()=>{
    survive anywhere a player can read - nor anywhere the code can reach. */
 test('Rhosyn holds the fifth slot and is not a seventh car',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,7);
+  assert.equal(ids.length,8);
   assert.equal(ids[4],'rhosyn');
   assert.equal(ids.includes('rose'),false);
   assert.ok(f.$('#carRhosyn'),'the select screen has a Rhosyn button');
@@ -402,4 +402,18 @@ test('Cole is the seventh selection and garage card with complete English and Fr
   }
 });
 
+test('Dhaval is eighth in selection, reference and standings with complete EN/FR copy',()=>{
+  for(const language of ['en','fr']){
+    f.run(`chooseLang('${language}');G.local=false;G.players=1;show('cars');previewCar('dhaval');`);
+    assert.equal(f.$('#carDhaval').querySelector('canvas').getAttribute('data-car'),'dhaval');
+    assert.equal(f.$('#carHeroName').textContent,'Dhaval');
+    assert.equal(f.$('#carHeroPower').textContent,f.run('t("dhavalUlt")'));
+    assert.ok(f.$('#posRow8'));assert.equal(f.run('placeWord(8)'),language==='en'?'8th':'8e');
+    f.run("garageTab='cars';show('garage');buildGarage();");
+    assert.ok(f.$('#garageBody').innerHTML.includes('v_dhaval') || f.$('#garageBody').innerHTML.includes('data-car="dhaval"'));
+    for(const key of ['dhaval','dhavalUlt','condCleansed','cleansedInfo','place8'])assert.ok(f.run(`STR.${key}.${language}.length`)>0);
+    f.run("show('cars');");f.click('carDhaval');assert.equal(f.run('G.car'),'dhaval');
+    assert.equal(f.run('racerModel("me").sprite'),'v_dhaval.PNG');
+  }
+});
 console.log('\n'+checks+' menu behavior checks passed (DOM/Canvas test doubles; visual and hardware checks separate).');
