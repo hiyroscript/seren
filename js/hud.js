@@ -391,12 +391,36 @@ function drawShieldHit(who, cx, cy, alpha){
   drawShieldBar(x, y, w, h, stage.bar, stage.fill);
   ctx.restore();
 }
-function hudShieldWidth(){
-  return Math.max(24, Math.min(HUD_SHIELD_W, W - hudSide()*2 - HUD_ACT*2 - HUD_ACT_GAP - 8));
+const COLE_SWITCH_PATH = "M4 9h16l-3-3 M20 15H4l3 3 M7 11v2 M17 11v2";
+function hudActionCount(o){ return Number(ruleOn("ults")) + Number(ruleOn("bubbles")) + Number(coleCar(o)); }
+function hudActionSize(o){
+  const n = hudActionCount(o);
+  return n > 2 ? Math.min(HUD_ACT, Math.max(28, (W - hudSide()*2 - 32 - HUD_ACT_GAP*(n-1))/n)) : HUD_ACT;
+}
+function hudActionWidth(o){ const n = hudActionCount(o); return n ? n*hudActionSize(o) + (n-1)*HUD_ACT_GAP : 0; }
+function hudShieldWidth(o){
+  return Math.max(24, Math.min(HUD_SHIELD_W, W - hudSide()*2 - hudActionWidth(o || (VOWN === "me" ? G : VOWN)) - 8));
+}
+function coleCooldownText(o){ return o.coleSwitchT > 0 ? (Math.ceil(o.coleSwitchT*10)/10).toFixed(1) : ""; }
+function coleSwitchLabel(who){
+  return t("hudColeSwitch") + " · " + t(coleBikeActive(who) ? "coleMotorcycle" : "coleNormal") +
+    ((who === "me" ? G : who).coleSwitchT > 0 ? " · " + coleCooldownText(who === "me" ? G : who) + "s" : "");
+}
+function paintColeSwitch(){
+  const b = $("#coleSwitch"), on = coleCar("me"), ready = canColeSwitch("me");
+  b.style.display = on ? "" : "none";
+  b.disabled = !ready; b.setAttribute("aria-disabled", String(!ready));
+  b.setAttribute("aria-label", coleSwitchLabel("me"));
+  b.classList.toggle("ready", ready);
+  $("#coleSwitchTime").textContent = coleCooldownText(G);
+  const icon = $("#coleSwitchIcon");
+  if(!icon.firstElementChild) icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + COLE_SWITCH_PATH + '"/></svg>';
+  $("#race").style.setProperty("--hud-action-width", hudActionWidth(G) + "px");
+  $("#race").style.setProperty("--hud-act", hudActionSize(G) + "px");
 }
 function hudShield(o){
   const y = H - HUD_SHIELD_BOT - HUD_SHIELD_H;
-  const w = (hudShieldWidth() - (SHIELD_BARS - 1)*HUD_SHIELD_BAR_GAP)/SHIELD_BARS;
+  const w = (hudShieldWidth(o) - (SHIELD_BARS - 1)*HUD_SHIELD_BAR_GAP)/SHIELD_BARS;
   ctx.save();
   for(let i=0;i<SHIELD_BARS;i++){
     const x = hudSide() + i*(w + HUD_SHIELD_BAR_GAP);
@@ -420,10 +444,25 @@ function paintShield(){
    a shape to read at a glance and a figure to read when you want the exact
    answer. Exactly what the page's own button does. */
 function hudActions(o){
-  const bw = HUD_ACT;
+  const bw = hudActionSize(o);
   const iy = H - hudFoot() - bw;
-  const ix = W - hudSide() - bw;                 /* the item, outermost */
-  const ux = ix - HUD_ACT_GAP - bw;              /* the ultimate, inboard of it */
+  const cx = W - hudSide() - bw;
+  const ix = cx - (coleCar(o) ? bw + HUD_ACT_GAP : 0);
+  const ux = ix - (ruleOn("bubbles") ? bw + HUD_ACT_GAP : 0);
+  if(coleCar(o)){
+    const who = o === G ? "me" : o;
+    ctx.save(); hudGlass(cx, iy, bw, bw, 12);
+    ctx.strokeStyle = canColeSwitch(who) ? "#FFFFFF" : HUD_MID;
+    ctx.lineWidth = 1.7;
+    ctx.save(); ctx.translate(cx + bw/2 - 12, iy + bw/2 - 12);
+    ctx.stroke(new Path2D(COLE_SWITCH_PATH)); ctx.restore();
+    if(o.coleSwitchT > 0){
+      ctx.font = "600 11px " + HUD_MONO; ctx.fillStyle = "#FFFFFF";
+      ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+      ctx.fillText(coleCooldownText(o), cx + bw - 3, iy + bw - 2);
+    }
+    ctx.restore();
+  }
 
   /* A switch that is off takes its meter off the screen with it. A dark square
      that can never fill reads as something broken rather than as something
@@ -660,7 +699,7 @@ function pipColour(id){ return CARS[id].pip || CARS[id].accent; }
 function ladderGeom(){
   /* Sits in the gap the panels leave: under the standings, over the ultimate
      and item squares. Both ends are measured rather than assumed, so a field
-     of two and a field of six each get the longest line that still clears
+     of two and a field of seven each get the longest line that still clears
      everything. */
   const z = hudZones();
   const top = z.readBottom + 18;
@@ -818,7 +857,7 @@ function drawLadder(){
    badge cannot use, and where a badge can go is a question about the page
    rather than about this file. Carrying a copy of the stylesheet's numbers here
    would be wrong the moment a notch inset shifted the block down, the mode
-   dropped the race clock or the six place rows, or the mono font rendered a
+   dropped the race clock or the seven place rows, or the mono font rendered a
    line taller than assumed - and being wrong means a badge printed under the
    standings, which is a badge nobody can read.
 
@@ -832,19 +871,22 @@ function drawLadder(){
    believed, which leaves the arithmetic below as the fallback. */
 let hudZoneCache = null, hudZoneTick = 0;
 function hudZones(){
-  if(--hudZoneTick > 0 && hudZoneCache) return hudZoneCache;
+  const owner = VOWN === "me" ? G : VOWN;
+  const key = [W,H,hudActionCount(owner),G.rivals.length].join(":");
+  if(!G.local && --hudZoneTick > 0 && hudZoneCache && hudZoneCache.key === key) return hudZoneCache;
   hudZoneTick = 120;
   /* The fallback - and, in local play, the whole answer - is the stylesheet's
      own arithmetic, run here. A square that is switched off takes its space
      back with it, so an edge badge can use the corner a missing meter left. */
-  const acts = (ruleOn("ults") || ruleOn("bubbles")) ? HUD_ACT : 0;
+  const acts = hudActionWidth(owner);
   const rail = HUD_SHIELD_BOT + HUD_SHIELD_H;  /* durability stays even without boost */
   const z = {
+    key:key,
     gaugeBottom: HUD_TOP + 42 + 8 + 26,
     readBottom:  HUD_TOP + readHeight(G.rivals.length + 1),
     readLeft:    W - HUD_EDGE - readWidth(),
-    actsTop:     acts ? H - hudFoot() - HUD_ACT : H - rail,
-    actsLeft:    acts ? W - hudSide() - HUD_ACT*2 - HUD_ACT_GAP : W - hudSide()
+    actsTop:     acts ? H - hudFoot() - hudActionSize(owner) : H - rail,
+    actsLeft:    acts ? W - hudSide() - acts : W - hudSide()
   };
   if(G.local){
     /* The columns paint the page's HUD themselves, at the page's own
@@ -1076,11 +1118,12 @@ function paintHUD(force){
   syncConditions();
   paintShield();
   paintItemBox();
+  paintColeSwitch();
   const board = [{ me:true, m:G.meters, car:G.car }].concat(G.rivals.map(function(R){
     return { me:false, m:metersOf(R), car:R.car };
   }));
   board.sort(function(a, b){ return b.m - a.m; });
-  for(let i=0;i<6;i++){
+  for(let i=0;i<FIELD_SIZE;i++){
     const row = $("#posRow" + (i+1));
     if(!row) continue;
     if(!board[i]){ row.style.display = "none"; continue; }

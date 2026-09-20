@@ -205,13 +205,13 @@ body{
    translucent - the layering survives, the readability never depends on it. */
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .panel-card,#langCard,#settingsCard,.hud-btn,#gauges,
-  #ultPct,#itemBox,#meterRail,.count-card{
+  #ultPct,#itemBox,#coleSwitch,#meterRail,.count-card{
     background:linear-gradient(180deg,#1C1F24,#0B0C0E)!important;
   }
   /* Nothing is blurred behind these, so the dim has to do all the separating. */
   #settingsWrap{background:rgba(5,5,6,.94)!important}
   #langWrap{background:rgba(5,5,6,.94)!important}
-  .hud-btn,#gauges,#ultPct,#itemBox,#meterRail,.shield-bar{
+  .hud-btn,#gauges,#ultPct,#itemBox,#coleSwitch,#meterRail,.shield-bar{
     background:#121316!important;
   }
   .readout{background:linear-gradient(180deg,rgba(5,6,7,.88),rgba(5,6,7,.72))!important}
@@ -267,7 +267,7 @@ body{
 .btn:focus-visible,.icon-btn:focus-visible,.mode:focus-visible,
 .car-opt:focus-visible,.step:focus-visible,.tog:focus-visible,
 .tab:focus-visible,.lang-opt:focus-visible,#ultPct:focus-visible,
-#itemBox:focus-visible,.set-reset:focus-visible,.set-range:focus-visible{
+#itemBox:focus-visible,#coleSwitch:focus-visible,.set-reset:focus-visible,.set-range:focus-visible{
   outline:2px solid #fff;
   outline-offset:2px;
   box-shadow:0 0 0 5px rgba(0,0,0,.65);
@@ -553,6 +553,7 @@ body.no-hints .keys{display:none}
 .car-feature-copy{width:100%}.car-feature-copy .display{font-size:32px}.car-feature-copy p{font:13px/1.5 var(--body);margin:10px 0 0;color:var(--ink-2)}
 .car-lineup>.note{margin:0 0 14px;color:var(--ink-2)}
 .car-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.car-grid>.car-opt:last-child:nth-child(3n + 1){grid-column:2}
 .car-opt{appearance:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:0;padding:10px 6px 14px;border:1px solid transparent;border-bottom-color:var(--line-2);border-radius:2px;background:transparent;color:var(--ink);transition:background var(--d-1),border-color var(--d-1)}
 .car-opt:hover,.car-opt.preview{background:var(--wash);border-bottom-color:var(--red)}
 .car-name{font:700 12px var(--display);text-transform:uppercase;line-height:1.2;overflow-wrap:anywhere;max-width:100%}
@@ -705,9 +706,9 @@ body.no-hints .keys{display:none}
   position:absolute;right:calc(var(--side) + var(--safe-r));bottom:calc(46px + var(--safe-b));
   display:flex;align-items:center;gap:var(--s-2);pointer-events:none;
 }
-#ultPct,#itemBox{
+#ultPct,#itemBox,#coleSwitch{
   position:relative;overflow:hidden;pointer-events:auto;
-  width:56px;height:56px;box-sizing:border-box;flex:0 0 auto;
+  width:var(--hud-act,56px);height:var(--hud-act,56px);box-sizing:border-box;flex:0 0 auto;
   appearance:none;-webkit-appearance:none;padding:0;margin:0;
   cursor:pointer;touch-action:manipulation;
   user-select:none;-webkit-user-select:none;
@@ -719,9 +720,9 @@ body.no-hints .keys{display:none}
   transition:border-color var(--d-2) var(--ease),box-shadow var(--d-2) var(--ease),
              background var(--d-2) var(--ease),transform var(--d-1) var(--ease);
 }
-#ultPct::-moz-focus-inner,#itemBox::-moz-focus-inner{border:0;padding:0}
-#ultPct:focus,#itemBox:focus{outline:none}
-#ultPct:active,#itemBox:active{transform:scale(.93)}
+#ultPct::-moz-focus-inner,#itemBox::-moz-focus-inner,#coleSwitch::-moz-focus-inner{border:0;padding:0}
+#ultPct:focus,#itemBox:focus,#coleSwitch:focus{outline:none}
+#ultPct:active,#itemBox:active,#coleSwitch:active{transform:scale(.93)}
 
 /* The charge is the square filling from the bottom: a shape you can read
    without reading the number, with the number still there for the exact
@@ -755,7 +756,7 @@ body.no-hints .keys{display:none}
    Reserve the right-hand action squares even on narrow local views. */
 #shieldHud{
   position:absolute;left:calc(var(--side) + var(--safe-l));bottom:calc(35px + var(--safe-b));
-  width:min(116px,calc(100% - var(--side) - var(--side) - var(--safe-l) - var(--safe-r) - 128px));
+  width:min(116px,calc(100% - var(--side) - var(--side) - var(--safe-l) - var(--safe-r) - var(--hud-action-width,120px) - 8px));
   min-width:24px;display:flex;gap:4px;pointer-events:none;
 }
 .shield-bar{
@@ -1062,3 +1063,9 @@ body.local #shell{width:100vw;height:100dvh;max-width:none;border-radius:0;trans
 }
 
 @media (forced-colors:active){.car-opt.cursor,.car-opt.preview,.step.on,.tab.on{outline:2px solid Highlight}.diff-mark i{border:1px solid CanvasText}.diff .diff-mark i:first-child,.lv2 .diff-mark i:nth-child(-n+2),.lv3 .diff-mark i:nth-child(-n+3),.lv4 .diff-mark i{background:Highlight;forced-color-adjust:none}}
+
+#coleSwitch svg{width:26px;height:26px;display:block}
+#coleSwitch:disabled{cursor:default;color:var(--ink-2)}
+#coleSwitch:disabled svg{opacity:.5}
+#coleSwitch.ready{border-color:var(--ink-2);color:var(--ink)}
+#coleSwitchTime{position:absolute;right:3px;bottom:2px;font:600 11px var(--mono);color:var(--ink);font-variant-numeric:tabular-nums}

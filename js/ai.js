@@ -265,7 +265,7 @@ function laneScore(R, l, s){
 /* Value the opportunity to gain distance with the shared speed boost. */
 /* What the fifteen seconds are worth beyond the pace, for the four cars that
    get something beyond the pace. Everything above is the shared read of the
-   road and applies to all six; this is an adjustment on top of it, and it is
+   road and applies to all seven; this is an adjustment on top of it, and it is
    nothing for the two cars that have no power to value. No branch assumes the
    others do not exist, and each of them values its own power rather than a
    copy of somebody else's - a ram wants traffic in front, an exchange wants
@@ -565,4 +565,9 @@ function botBlame(victim, by){
   if(!victim || !by || victim === by) return;
   victim.hurtBy = by;
   victim.hurtT = 6;
+}
+
+/* A bike has a pure pace advantage. Humans always own their own choice. */
+function botColeForm(R){
+  if(!R.human && R.changeT <= 0 && coleCar(R) && !coleBikeActive(R)) switchColeForm(R);
 }

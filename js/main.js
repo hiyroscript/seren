@@ -148,6 +148,7 @@ $("#carLolanthe").addEventListener("click", function(){ pickCar("lolanthe"); });
 $("#carVerdant").addEventListener("click", function(){ pickCar("verdant"); });
 $("#carRhosyn").addEventListener("click", function(){ pickCar("rhosyn"); });
 $("#carSaffron").addEventListener("click", function(){ pickCar("saffron"); });
+$("#carCole").addEventListener("click", function(){ pickCar("cole"); });
 $("#btnGarage").addEventListener("click", function(){ garageTab = "cars"; setTab(); show("garage"); });
 $("#btnCloseGarage").addEventListener("click", function(){ show("home"); });
 
@@ -160,6 +161,9 @@ $("#carRandom").addEventListener("click", function(){
   pickCar(left[randi(0, left.length-1)]);
 });
 
+$("#coleSwitch").addEventListener("click", function(e){
+  e.stopPropagation(); this.blur(); switchColeForm("me"); paintHUD(true);
+});
 $("#itemBox").addEventListener("click", function(e){ if(e && e.stopPropagation) e.stopPropagation(); useItem("me"); });
 /* Tap the charge square to spend it. fireUlt does all the gating - not running,
    wrecked, pinned, already finished, not charged yet - so a tap that cannot fire

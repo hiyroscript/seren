@@ -1,6 +1,6 @@
 # SEREN
 
-A three-lane arcade racer that runs in a browser tab. Six cars, each with its own
+A three-lane arcade racer that runs in a browser tab. Seven cars, each with its own
 ultimate, race up a road that never stops speeding up — through a city, a desert
 and a rainbow strip of deep space — dodging puddles, meteors and tumbleweeds,
 grabbing items out of mystery bubbles, and barging each other into the barriers.
@@ -39,7 +39,7 @@ it can never drift out of date.
 ![A bot race in progress](docs/img/race.png)
 
 The HUD, clockwise from the top left: the track name and race clock; the distance
-you have covered and the six-car standings, with your row picked out; a ladder
+you have covered and the seven-car standings, with your row picked out; a ladder
 down the right showing how far ahead or behind each racer is; your ultimate meter
 and item box bottom right; your own Conditions as a column of coloured icon
 circles bottom left; three pink, yellow and cyan shield bars immediately above
@@ -99,12 +99,12 @@ getting faster. Drive as far as you can; leaving the race banks the distance as
 your personal best.
 
 **Race against bots** — pick a difficulty, then race the full distance: reach
-3.00×, then three track changes, then 900 metres to the flag. Six cars, every
+3.00×, then three track changes, then 900 metres to the flag. Seven cars, every
 trap, every pickup, and a finishing order at the end.
 
 **Local play** — two to four people on one screen, one controller each, on a
 computer. The screen splits into equal columns and the bots fill whatever seats
-are left, so it is always a six-car field. Local play is offered on phones but
+are left, so it is always a seven-car field. Local play is offered on phones but
 greyed out with the reason, because it needs a keyboard-and-mouse machine with
 pads attached.
 
@@ -122,7 +122,7 @@ never inherit half a custom race by accident.
 
 Every car has the same mechanical ultimate: a **85-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
-boost, never its strength, duration or charge rate. Five of the six do something
+boost, never its strength, duration or charge rate. All seven do something
 else with those fifteen seconds as well.
 
 | Car | Ultimate effect |
@@ -576,7 +576,7 @@ sheet) → each player picks a car in turn with their own pad → race.
   game — its own camera, its own instruments — and the world is built wide enough
   to cover the whole spread of the field, so a player half a screen up the road
   is not driving through nothing.
-- The field is always **six cars**. Bots fill whatever seats the people leave.
+- The field is always **seven cars**. Bots fill whatever seats the people leave.
 - Every human car wears a coloured ring on the road, and the cars that are not
   yours wear a numbered flag, so two players in identical positions on two
   columns can still be told apart.
@@ -816,7 +816,7 @@ Run it before you commit. It takes well under a second.
 DOM/Canvas test doubles, including localization, every Settings preference and
 what it reaches, setup, simulated controllers, car turns and pause/results.
 `node tools/ultimate-check.mjs` runs the ultimate, Condition, hazard, contact and
-Mystery Bubble behaviour for all six cars as player, bot and local seat, plus
+Mystery Bubble behaviour for all seven cars as player, bot and local seat, plus
 Neela's exchange, Lolanthe's aura and forced lane change and Verdant's
 directional defence in every ownership direction, the documented collision
 priority for every pair of ulting cars, the world-position regression that says
@@ -826,7 +826,7 @@ biome continuing through it, the isolation in both directions against every
 contact rule, hazard, pickup and targeting system, the two seconds of
 Invulnerable granted at the frame the car is genuinely back, finishing from
 inside it, pause, a forced wreck and a restart;
-`node tools/sprite-check.mjs` covers race sizes, all six sprite cars' sheets
+`node tools/sprite-check.mjs` covers race sizes, all seven sprite cars' sheets
 and measured emitters, the ultimate fire, the transformation flash, Verdant's
 per-view opacity and Rhosyn's disappearance from every other view in one to four
 columns, and both note effects;
@@ -893,7 +893,7 @@ place.
 It is a plain static site with relative asset paths, so it works under any base
 path. This repository is served by GitHub Pages from `main` — push, and the
 `pages-build-deployment` workflow republishes it. Any static host works the same
-way: copy `index.html`, the six `.PNG` files, `css/` and `js/` and you are done.
+way: copy `index.html`, the vehicle and effect `.PNG` files, `css/` and `js/` and you are done.
 
 ## Known quirks
 
@@ -929,3 +929,16 @@ and race reset clear it. `shieldStage()` selects the current color and half-stat
 including the airborne render pass, suppresses the current viewport owner and
 uses the car's per-view alpha so invisible racers stay hidden. No-contact states
 and dodges produce no feedback. This timer has no gameplay effect.
+
+### Cole — car and motorcycle
+
+Cole is the seventh racer. Tap the swap button beside the item holder, press **Q**, or press **L1 / LB** on a controller to change forms. Switching has a two-second simulation cooldown and works with items and ultimates disabled. It uses the shared transformation flash and preserves position, boost, ultimate time, and the chosen form through a wreck and the finish.
+
+| Form | Base pace | Boost multiplier | Ultimate multiplier |
+| --- | --- | --- | --- |
+| Car | 1.0× | 1.5× | 2.0× |
+| Motorcycle | 1.5× | 1.8× | 2.3× |
+
+These multipliers stack with the ordinary pace effects. Cole’s ultimate clears tumbleweeds and meteors in either form; puddles and opponent attacks retain their usual behavior. Bots switch to the motorcycle after their opening reaction. A new race always begins in car form.
+
+A full field has seven racers: local races with two, three, or four humans have five, four, or three bots. See [Cole measurements and QA](docs/COLE-QA.md). `node tools/cole-check.mjs` runs the focused integration checks; the ultimate suite includes them too.

@@ -218,10 +218,32 @@ const CARS = {
       hitShape:[[-0.00296, -0.2795], [0.04691, -0.20587], [0.03931, -0.15316], [0.10609, -0.13589], [0.21175, -0.18542], [0.45943, -0.16679], [0.49408, -0.0259], [0.41462, -0.06408], [0.27346, -0.08589], [0.18047, -0.08499], [0.15173, -0.05726], [0.21851, -0.04908], [0.23964, -0.01136], [0.16188, -0.02363], [0.11369, -0.03908], [0.08242, -0.00954], [0.15173, 0.0768], [0.21175, 0.10135], [0.18047, 0.12816], [0.11623, 0.10907], [0.06128, 0.06817], [0.0317, 0.14634], [0.04607, 0.22178], [0.00127, 0.28268], [-0.04269, 0.22178], [-0.03085, 0.14634], [-0.06128, 0.06817], [-0.11623, 0.10907], [-0.18047, 0.12816], [-0.21175, 0.10135], [-0.15173, 0.0768], [-0.08242, -0.00954], [-0.11369, -0.03908], [-0.16188, -0.02363], [-0.23964, -0.01136], [-0.21851, -0.04908], [-0.15173, -0.05726], [-0.18047, -0.08499], [-0.27346, -0.08589], [-0.41462, -0.06408], [-0.49408, -0.0259], [-0.45943, -0.16679], [-0.21175, -0.18542], [-0.10609, -0.13589], [-0.03931, -0.15316], [-0.04691, -0.20587]],
       flame:["#FF8A24","#FFF0BA"]
     }
+  },
+  /* Independently measured solid-alpha bounds (alpha > 127), source pixels.
+     Faint detached pixels are excluded. Hulls trace body and wheels, inset
+     from antialiasing; the car mirrors and rear diffuser tips are decorative.
+     Uniform fits: car 1.12 box widths; bike ~0.70 box widths, 1.25 box heights.
+     Four car bores and two bike bores, measured individually inside their rims. */
+  cole: {
+    key:"cole", style:"sprite", sprite:"v_cole.PNG", accent:"#C5CBD3",
+    raceScale:1.12,
+    spriteBounds:[276/1254,14/1254,702/1254,1222/1254],
+    exhaust:[[428/1254,1195/1254],[470/1254,1201/1254],
+             [783/1254,1201/1254],[825/1254,1195/1254]],
+    hitShape:[[-0.12393,-0.46181],[0.11823,-0.46181],[0.16952,-0.44497],[0.27066,-0.42658],[0.37607,-0.37527],[0.39886,-0.33468],[0.44302,-0.33315],[0.46439,-0.31783],[0.46439,-0.18764],[0.41595,-0.17538],[0.40313,-0.11718],[0.39886,0.11871],[0.42593,0.17155],[0.47436,0.18074],[0.48718,0.20295],[0.48718,0.31477],[0.46439,0.33698],[0.42735,0.33851],[0.40456,0.37757],[0.36182,0.4105],[0.32764,0.42352],[0.16382,0.4465],[-0.16097,0.4465],[-0.32764,0.42352],[-0.36325,0.4105],[-0.40456,0.37757],[-0.4302,0.33851],[-0.47436,0.33698],[-0.4886,0.31477],[-0.4886,0.20295],[-0.47293,0.18074],[-0.42735,0.17155],[-0.40598,0.11871],[-0.40883,-0.11718],[-0.41738,-0.17538],[-0.45584,-0.18764],[-0.46581,-0.31783],[-0.44444,-0.33315],[-0.40883,-0.33468],[-0.38889,-0.37527],[-0.28348,-0.42658],[-0.16952,-0.44497]],
+    flame:["#FF7A3A","#FFD9A0"],
+    altForm:{
+      key:"coleBike", style:"sprite", sprite:"vtm_cole.PNG", accent:"#C5CBD3",
+      scale:1.12,
+      spriteBounds:[415/1247,4/1261,420/1247,1255/1261],
+      exhaust:[[557/1247,1048/1261],[691/1247,1048/1261]],
+      hitShape:[[-0.00296,-0.49363],[0.04002,-0.48645],[0.05335,-0.46892],[0.05335,-0.44582],[0.083,-0.43227],[0.10375,-0.38765],[0.14376,-0.36454],[0.1734,-0.32709],[0.19267,-0.26255],[0.20897,-0.20996],[0.2564,-0.19482],[0.28604,-0.1749],[0.29197,-0.16375],[0.22083,-0.1757],[0.22083,-0.12311],[0.25047,-0.08008],[0.24899,-0.04582],[0.22676,-0.01713],[0.22527,0.02908],[0.19267,0.05538],[0.18674,0.10398],[0.17044,0.12151],[0.19415,0.20598],[0.19415,0.249],[0.14969,0.29124],[0.13783,0.35817],[0.0993,0.37888],[0.08003,0.40996],[0.05928,0.43705],[0.05632,0.46574],[0.03853,0.48566],[-0.00148,0.49363],[-0.04002,0.48566],[-0.06076,0.46574],[-0.06225,0.43705],[-0.083,0.40996],[-0.10226,0.37888],[-0.1408,0.35817],[-0.15265,0.29124],[-0.19563,0.249],[-0.19712,0.20598],[-0.1734,0.12151],[-0.18971,0.10398],[-0.19563,0.05538],[-0.22824,0.02908],[-0.2312,-0.01713],[-0.25343,-0.04582],[-0.25492,-0.08008],[-0.22379,-0.12311],[-0.22379,-0.1757],[-0.29197,-0.16375],[-0.28604,-0.1749],[-0.25492,-0.19482],[-0.21045,-0.20996],[-0.19415,-0.26255],[-0.17488,-0.32709],[-0.14524,-0.36454],[-0.10671,-0.38765],[-0.08596,-0.43227],[-0.05632,-0.44582],[-0.05632,-0.46892],[-0.04298,-0.48645]],
+      flame:["#FF7A3A","#FFD9A0"]
+    }
   }
 };
 const CAR_HIT_RECT = [[-0.40,-0.42],[0.40,-0.42],[0.40,0.42],[-0.40,0.42]];
-const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","saffron"];
+const CAR_IDS = ["flann","neela","lolanthe","verdant","rhosyn","saffron","cole"];
 
 /* ---------------- opposition -------------------------------------
    There is deliberately no charge multiplier here any more. Every car on the
@@ -290,7 +312,8 @@ const TEMPERS = {
   lolanthe:  { nerve:0.54, spite:0.64, patience:0.68, guard:0.52 },
   verdant:   { nerve:0.38, spite:0.32, patience:0.88, guard:0.74 },
   rhosyn:    { nerve:0.62, spite:0.58, patience:0.50, guard:0.58 },
-  saffron:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 }
+  saffron:     { nerve:0.46, spite:0.30, patience:0.66, guard:0.80 },
+  cole:        { nerve:0.72, spite:0.32, patience:0.48, guard:0.58 }
 };
 function makeTemper(car){
   const b = TEMPERS[car] || TEMPERS.flann;
@@ -546,7 +569,7 @@ const FAR_W = 34;                         /* two chevrons and nothing else */
 const PCOLS = ["#FF3B3B", "#3B8CFF", "#35D06B", "#FFCE2B"];
 const PCOL_KEYS = ["pRed", "pBlue", "pGreen", "pYellow"];
 const LOCAL_MAX = 4;
-const FIELD_SIZE = 6;       /* six cars on the road, however they are driven */
+const FIELD_SIZE = 7;       /* seven cars on the road, however they are driven */
 
 /* ---------------- tracks ----------------------------------------- */
 const TRACK_SECONDS = 60;
@@ -602,6 +625,10 @@ const PERFECT_DODGE_WINDOW = 0.12;        /* seconds until a genuine collision *
 const ULT_ON_BUBBLE = 0.05;
 
 const BOOST_SPEED = 1.5;
+const COLE_SWITCH_COOLDOWN = 2.0;
+const COLE_BIKE_BASE_SPEED = 1.5;
+const COLE_BIKE_BOOST_SPEED = 1.8;
+const COLE_BIKE_ULT_SPEED = 2.3;
 const BOOST_DRAIN_TIME = 5.5, BOOST_REFILL_TIME = 5.0;
 const BOOST_DRAIN_RATE = 1 / BOOST_DRAIN_TIME;
 const BOOST_REFILL_RATE = 1 / BOOST_REFILL_TIME;
@@ -619,13 +646,8 @@ const FINISH_STRETCH = 900;               /* metres of the last track before the
    so the order the race finished in is the order the field is parked in and
    nothing has to be untangled afterwards.
 
-   The step is set by the lane cycle: consecutive places sit in different lanes,
-   so the only pair that ever shares a lane is three places apart. Three steps
-   is what has to clear a car length, and 3 x 0.44 leaves a third of a car
-   between them. Any larger and sixth place falls off the bottom of the screen
-   when you win. The base is what the last car home gets, and it is a shade over
-   the distance a car coasts on its own, so nobody has to stop harder than the
-   car would have stopped anyway. */
-const PARK_BASE = 0.60;                   /* car heights past the line for the last car in */
-const PARK_STEP = 0.44;                   /* car heights between one place and the next */
+   Places cycle across three lanes. Three steps clear the longest base/bike
+   hull, with a margin. Finish cameras frame the whole seven-car parking area. */
+const PARK_BASE = 0.70;
+const PARK_STEP = 0.48;
 const PARK_EASE = 3.9;                    /* how hard the roll-out closes on the mark */

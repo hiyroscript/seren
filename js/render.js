@@ -333,7 +333,7 @@ function drawSpriteEnergy(p, fr){
    ago, fades through white. It is drawn from the model's own hull, so it is
    the car's silhouette that goes white rather than a disc over the top of it -
    and because every model has a hull, the same code does it for whichever of
-   the six was the one teleported.
+   the seven was the one teleported.
 
    Purely cosmetic: it reads morphT and changes nothing. There is no clock in
    it and no oscillation to take away, so reduced motion gets the same clean
@@ -1244,7 +1244,7 @@ function render(){
   } else shakeX = shakeY = 0;
   if(!G.local || G.humans.length < 2){
     VOWN = "me";
-    renderView(0);
+    renderView(camDy("me"));
     /* One screen, one owner: the white goes over the road here and the page's
        own instruments are taken out of the way by paintHUD(). */
     drawWhiteout("me");

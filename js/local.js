@@ -137,12 +137,13 @@ function carPadTick(dt){
      right stick, held up        boost
      both sticks clicked in      ultimate             (L3 + R3 / LS + RS)
      R2, or Circle               mystery bubble item  (Xbox: RT, or B)
+     L1                          Cole vehicle switch  (Xbox: LB)
      Options                     pause                (Xbox: Menu)
 
    Everything is edge-triggered off a per-player snapshot of the last frame,
    so a held trigger fires once and a held stick walks across the lanes at a
    readable pace instead of crossing the road in three frames. */
-const PAD_CROSS = 0, PAD_CIRCLE = 1, PAD_L2 = 6, PAD_R2 = 7, PAD_START = 9,
+const PAD_CROSS = 0, PAD_CIRCLE = 1, PAD_L1 = 4, PAD_L2 = 6, PAD_R2 = 7, PAD_START = 9,
       PAD_L3 = 10, PAD_R3 = 11, PAD_DU = 12, PAD_DD = 13, PAD_DL = 14, PAD_DR = 15;
 const STICK_ON = 0.55, STICK_OFF = 0.32;   /* pushed / centred, with a gap between */
 const LANE_REPEAT = 0.26;                  /* how fast a held stick keeps stepping */
@@ -177,5 +178,5 @@ function padAxis(p, i){
   return typeof v === "number" ? v : 0;
 }
 function newPadKeys(){
-  return { lane:0, laneT:0, ult:false, item:false, start:false };
+  return { lane:0, laneT:0, ult:false, item:false, form:false, start:false };
 }

@@ -38,16 +38,15 @@ to that tier from `G.tier` and `G.speedT`, then the remaining track transitions.
 | --- | --- | --- |
 | `FINAL_TRACKS` | `3` | track changes after reaching 3.00×, then the flag is planted |
 | `FINISH_STRETCH` | `900` | metres of the last track before the line |
-| `FIELD_SIZE` | `6` | cars on the road, however they are driven |
+| `FIELD_SIZE` | `7` | cars on the road, however they are driven |
 | `LOCAL_MAX` | `4` | most people on one screen |
-| `PARK_BASE` | `0.60` | car heights past the line for the last car home |
-| `PARK_STEP` | `0.44` | car heights between one finishing place and the next |
+| `PARK_BASE` | `0.70` | car heights past the line for the last car home |
+| `PARK_STEP` | `0.48` | car heights between one finishing place and the next |
 | `PARK_EASE` | `3.9` | how hard the roll-out closes on its mark |
 
-`PARK_STEP` is set by the lane cycle: consecutive places sit in different lanes,
-so the only pair that ever shares a lane is three places apart, and `3 × 0.44`
-leaves a third of a car between them. Any larger and sixth place falls off the
-bottom of the screen when you win.
+`PARK_STEP` follows the lane cycle: three steps separate racers in the same
+lane. At `3 × 0.48` shared car heights, the largest ordinary form clears its
+neighbor. The finish camera frames the whole seven-place parking area.
 
 ## Boost
 
@@ -113,7 +112,7 @@ All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
 
-All six cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
+All seven cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
 
 ### Flann's ram
 
@@ -520,7 +519,7 @@ In `js/local.js`:
 
 ### Sprite artwork and race size
 
-All six base cars and both alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
+All seven base cars and three alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
 
 | Car | Race scale | Visible bounds (x,y,width,height) | Exhaust source pixels |
 | --- | --- | --- | --- |
@@ -531,7 +530,7 @@ All six base cars and both alternate forms use measured bounds and source-pixel 
 | Rhosyn | 1.14 | 162,73,701,1363 | 483,1366; 544,1366 |
 | Saffron | 1.25 | 194,45,634,1390 | 473,1359; 552,1359 |
 
-All base sheets are 1024×1536. Saffron’s dragon is 1199×1312; its bounds, six anchors and two-lane sizing are documented in [SAFFRON-QA.md](SAFFRON-QA.md). Neela’s alternate remains scale 1.09 with one energy emitter.
+Most base sheets are 1024×1536; Cole’s car is 1254×1254 and his bike is 1247×1261. Saffron’s dragon is 1199×1312; its bounds, six anchors and two-lane sizing are documented in [SAFFRON-QA.md](SAFFRON-QA.md). Neela’s alternate remains scale 1.09 with one energy emitter.
 
 ### Body hitboxes
 
@@ -569,3 +568,11 @@ and race reset clear it. `shieldStage()` selects the current color and half-stat
 including the airborne render pass, suppresses the current viewport owner and
 uses the car's per-view alpha so invisible racers stay hidden. No-contact states
 and dodges produce no feedback. This timer has no gameplay effect.
+
+### Cole tuning
+
+`COLE_SWITCH_COOLDOWN = 2.0`, `COLE_BIKE_BASE_SPEED = 1.5`, `COLE_BIKE_BOOST_SPEED = 1.8`, and `COLE_BIKE_ULT_SPEED = 2.3`. Global `BOOST_SPEED` and `ULT_SPEED` remain 1.5 and 2.0. `racerPace()` applies the same stacking rules to every driver. Motorcycle pace alone does not grant Boosted.
+
+The car has race scale 1.12; the motorcycle has alternate scale 1.12 on top of that (1.2544 of the shared logical box). Both fit their independently measured bounds uniformly. See COLE-QA.md for source dimensions and outlet coordinates.
+
+`FIELD_SIZE = 7`; the start uses two cars beside P1, three in the second row, and one in the third row’s center. Row spacing is 1.3 times the largest base-model height. Parking uses `PARK_BASE = 0.70` and `PARK_STEP = 0.48` shared car heights; three lane-cycling steps separate racers in the same lane. After the flag, each finisher’s camera eases to frame the whole parking area without changing world positions.

@@ -203,12 +203,12 @@ test('large separations keep standings and physical proximity independent',()=>{
   near('G.rivals[0].y',run('playerY-(10000-G.meters)/0.075'));
   run('playerY-=100;');
 });
-test('starting grid retains its original rows and world distances',()=>{
-  setup('bot');run('G.rules.bots=5;spawnRivals();');
-  equal('G.rivals.length',5);
-  for(let i=0;i<5;i++){
-    near(`G.rivals[${i}].y`,run(`playerY+${i<2?0:1}*carH*1.6`));
-    near(`metersOf(G.rivals[${i}])`,run(`G.meters-${i<2?0:1}*carH*1.6*0.075`));
+test('seven-racer starting grid retains two rows and adds a third',()=>{
+  setup('bot');run('G.rules.bots=6;spawnRivals();');
+  equal('G.rivals.length',6);
+  for(let i=0;i<6;i++){
+    near(`G.rivals[${i}].y`,run(`playerY+${i<2?0:i<5?1:2}*Math.max(...CAR_IDS.map(id=>carDims(id).h))*1.3`));
+    near(`metersOf(G.rivals[${i}])`,run(`G.meters-${i<2?0:i<5?1:2}*Math.max(...CAR_IDS.map(id=>carDims(id).h))*1.3*0.075`));
   }
 });
 test('four local seats and bots progress independently during P1 wreck',()=>{

@@ -77,6 +77,10 @@ function padDrive(who, dt){
   if(item && !k.item) useItem(who);
   k.item = item;
 
+  const form = padBtn(p, PAD_L1);
+  if(form && !k.form) switchColeForm(who);
+  k.form = form;
+
   const start = padBtn(p, PAD_START);
   if(start && !k.start) pause(G.state === "running" || G.state === "countdown");
   k.start = start;
@@ -143,6 +147,7 @@ document.addEventListener("keydown", function(e){
     pause(G.state === "running" || G.state === "countdown");
   }
   else if(k === "shift" || k === " "){ e.preventDefault(); G.ultKey = true; }
+  else if(k === "q"){ e.preventDefault(); if(!e.repeat) switchColeForm("me"); }
   else if(k === "e"){ e.preventDefault(); useItem("me"); }
 });
 document.addEventListener("keyup", function(e){

@@ -543,10 +543,10 @@ head("The car-specific ultimates and race sizes");
   const adhoc = [];
   for (const n of ORDER) {
     if (!sources[n]) continue;
-    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant|rhosyn)["']/g)) {
+    for (const m of sources[n].matchAll(/\.car\s*===?\s*["'](flann|neela|lolanthe|verdant|rhosyn|saffron|cole)["']/g)) {
       const before = sources[n].slice(0, m.index);
       const inPredicate =
-        /function (flannCar|neelaCar|lolantheCar|verdantCar|rhosynCar)\([^)]*\)\s*\{[^}]*$/.test(before);
+        /function (flannCar|neelaCar|lolantheCar|verdantCar|rhosynCar|saffronCar|coleCar)\([^)]*\)\s*\{[^}]*$/.test(before);
       if (!inPredicate) adhoc.push(`js/${n}.js`);
     }
   }

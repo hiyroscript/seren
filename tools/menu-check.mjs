@@ -151,7 +151,7 @@ test('touch capability gates Local with native disabled state',()=>{assert.ok(mo
    about to drive, not what it turns into. */
 test('Neela holds the second slot and is not a seventh car',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,6);
+  assert.equal(ids.length,7);
   assert.equal(ids[1],'neela');
   assert.equal(ids.includes('phantom'),false);
   assert.ok(f.$('#carNeela'),'the select screen has a Neela button');
@@ -234,8 +234,8 @@ test('every menu preview is the car model, never the alternate form',()=>{
    of the two cars it replaced survives anywhere a player can read. */
 test('Lolanthe and Verdant hold the third and fourth slots',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,6);
-  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron']);
+  assert.equal(ids.length,7);
+  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron','cole']);
   assert.equal(ids.includes('bolt'),false);
   assert.equal(ids.includes('timestamp'),false);
   for(const [id,btn] of [['lolanthe','#carLolanthe'],['verdant','#carVerdant']]){
@@ -307,7 +307,7 @@ test('Mind Controlled is a Condition the garage can show',()=>{
    survive anywhere a player can read - nor anywhere the code can reach. */
 test('Rhosyn holds the fifth slot and is not a seventh car',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,6);
+  assert.equal(ids.length,7);
   assert.equal(ids[4],'rhosyn');
   assert.equal(ids.includes('rose'),false);
   assert.ok(f.$('#carRhosyn'),'the select screen has a Rhosyn button');
@@ -386,6 +386,20 @@ test('no Bolt or Timestamp string survives anywhere the player can read',()=>{
     assert.equal(/timestamp/i.test(text),false,'the page still prints Timestamp in '+lang);
   }
   f.run('chooseLang("en");');
+});
+
+
+test('Cole is the seventh selection and garage card with complete English and French descriptions',()=>{
+  for(const lang of ['en','fr']){
+    f.run(`chooseLang('${lang}');G.local=false;G.players=1;show('cars');previewCar('cole');`);
+    assert.equal(f.$('#carCole').querySelector('canvas').getAttribute('data-car'),'cole');
+    assert.match(f.run('t("coleUlt")'),/1[.,]5×/);assert.match(f.run('t("coleUlt")'),/2[.,]3×/);
+    f.run(`garageTab='cars';setTab();show('garage');`);
+    assert.ok(f.$('#garageBody').textContent.includes('Cole'));
+    f.run(`show('cars');pickCar('cole');`);
+    assert.equal(f.run('G.car'),'cole');assert.equal(f.run('G.coleBike'),false);
+    assert.equal(f.run('racerModel("me").sprite'),'v_cole.PNG');
+  }
 });
 
 console.log('\n'+checks+' menu behavior checks passed (DOM/Canvas test doubles; visual and hardware checks separate).');
