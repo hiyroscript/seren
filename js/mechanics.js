@@ -1046,6 +1046,24 @@ function wreckRacer(who, by){
   else wreckRival(who, by);
 }
 
+/* Per-life durability. Only accepted ordinary hazard contacts call this;
+   meteor and combat wrecks leave it untouched until the actual respawn. */
+function shieldOf(who){ return (who === "me" ? G : who).shield; }
+function resetShield(who){ (who === "me" ? G : who).shield = SHIELD_MAX; }
+function shieldBarFill(halves, bar){
+  return clamp((halves - (SHIELD_BARS - 1 - bar)*SHIELD_HALVES_PER_BAR)/SHIELD_HALVES_PER_BAR, 0, 1);
+}
+/* True means this hit wrecked the racer; callers skip the debuff and trap
+   penalty, since the shared wreck lifecycle already applies its own penalty. */
+function hitShield(who){
+  if(noContact(who)) return false;
+  const o = who === "me" ? G : who;
+  o.shield = Math.max(0, shieldOf(who) - 1);
+  if(o.shield > 0) return false;
+  wreckRacer(who);
+  return true;
+}
+
 /* Rear contact shunts the front car and slows the following car. */
 function rearEnd(who, victim){
   const meB = who === "me";
@@ -2196,8 +2214,9 @@ function blindSpray(){
   return out;
 }
 function hitPuddle(){
+  if(noContact("me")) return;
+  if(hitShield("me")) return;
   ultDelta("me", ULT_ON_TRAP);
-  if(refusesDebuffs("me")) return;
   G.blind = BLIND_TIME;
   G.blindPts = blindSpray();
   for(let i=0;i<16;i++){
@@ -2240,9 +2259,10 @@ function hitWeed(o){
   /* An ultimate with the solid-hazard privilege goes straight through it. No
      Slow, no meter penalty, and the weed comes apart on the bonnet rather than
      being politely missed - the caller removes it either way. */
+  if(noContact("me")) return;
   if(clearsSolidHazards("me")){ smashWeed(o, G.car); return; }
+  if(hitShield("me")) return;
   ultDelta("me", ULT_ON_TRAP);
-  if(refusesDebuffs("me")) return;
   G.slowT = SLOW_TIME;
   G.shake = 8;
   for(let i=0;i<14;i++){

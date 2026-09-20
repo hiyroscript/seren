@@ -211,7 +211,7 @@ body{
   /* Nothing is blurred behind these, so the dim has to do all the separating. */
   #settingsWrap{background:rgba(5,5,6,.94)!important}
   #langWrap{background:rgba(5,5,6,.94)!important}
-  .hud-btn,#gauges,#ultPct,#itemBox,#meterRail{
+  .hud-btn,#gauges,#ultPct,#itemBox,#meterRail,.shield-bar{
     background:#121316!important;
   }
   .readout{background:linear-gradient(180deg,rgba(5,6,7,.88),rgba(5,6,7,.72))!important}
@@ -682,7 +682,7 @@ body.no-hints .keys{display:none}
    column-reverse means the list is appended in priority order and reads from
    the corner up, so the stack never reshuffles. */
 #condList{
-  position:absolute;left:calc(var(--side) + var(--safe-l));bottom:calc(46px + var(--safe-b));
+  position:absolute;left:calc(var(--side) + var(--safe-l));bottom:calc(51px + var(--safe-b));
   display:flex;flex-direction:column-reverse;gap:5px;pointer-events:none;
   align-items:flex-start;
 }
@@ -751,6 +751,19 @@ body.no-hints .keys{display:none}
 #itemBox.full{background:linear-gradient(180deg,rgba(10,11,13,.82),rgba(10,11,13,.7))}
 #itemBox svg{width:28px;height:28px;display:block}
 
+/* Three two-hit tracks. Geometry is shared with HUD_SHIELD_* in hud.js.
+   Reserve the right-hand action squares even on narrow local views. */
+#shieldHud{
+  position:absolute;left:calc(var(--side) + var(--safe-l));bottom:calc(35px + var(--safe-b));
+  width:min(116px,calc(100% - var(--side) - var(--side) - var(--safe-l) - var(--safe-r) - 128px));
+  min-width:24px;display:flex;gap:4px;pointer-events:none;
+}
+.shield-bar{
+  position:relative;flex:1;min-width:0;height:8px;overflow:hidden;border-radius:2px;
+  background:var(--glass-3);border:1px solid var(--line-2);
+}
+.shield-bar i{position:absolute;inset:0 auto 0 0;width:100%}
+.shield-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,0,0,.55)}
 /* The boost meter, in its own tray across the foot: one place to look for
    "how much have I got". js/hud.js lays the split-screen copy out from the
    same figures. */
@@ -784,7 +797,7 @@ body.whiteout .hud{opacity:0}
 /* Four sets of instruments are painted on the canvas in local play, so the
    page's single set has to get out of the way completely. */
 body.local .hud .readout,body.local #hudActions,body.local #meterRail,
-body.local #condList{display:none!important}
+body.local #condList,body.local #shieldHud{display:none!important}
 
 /* ============================================================
    12  COUNTDOWN
@@ -898,7 +911,7 @@ body.local #overPanel .stats{display:none}
 /* 14 RESPONSIVE — menu layouts use viewport space; race geometry is unchanged. */
 @media (max-height:480px){
   .readout{padding:7px 10px 8px}.readout .v{font-size:24px}.readout .ladder{margin-top:6px;padding-top:6px;gap:0}.readout .pos .n{font-size:11px}.readout .pos.mine .n{font-size:12px}.readout .b{margin-top:5px}
-  #hudActions,#condList{bottom:calc(40px + var(--safe-b))}
+  #hudActions{bottom:calc(40px + var(--safe-b))}
 }
 @media (max-height:680px){#countNum{font-size:56px}.count-card{padding:var(--s-4) var(--s-6);gap:var(--s-3)}}
 @media (orientation:portrait){

@@ -465,6 +465,12 @@ bubbles</button>
         <button id="itemBox" data-i18n-aria="hudItem" aria-label="Item"><span id="itemIcon"></span></button>
       </div>
 
+      <div id="shieldHud" role="meter" data-i18n-aria="hudShield"
+           aria-label="Shield (remaining half-bars)" aria-valuemin="0" aria-valuemax="6" aria-valuenow="6">
+        <div class="shield-bar" aria-hidden="true"><i id="shieldPink"></i></div>
+        <div class="shield-bar" aria-hidden="true"><i id="shieldYellow"></i></div>
+        <div class="shield-bar" aria-hidden="true"><i id="shieldCyan"></i></div>
+      </div>
       <div id="meterRail">
         <div id="boostWrap"><div id="boostFill"></div></div>
       </div>

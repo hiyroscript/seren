@@ -1457,7 +1457,7 @@ function drawBubbles(){
 
       /* thin-film colour sliding around the rim */
       ctx.lineWidth = 2.4;
-      const tints = ["rgba(120,235,255,0.85)", "rgba(255,140,225,0.7)", "rgba(255,235,150,0.7)"];
+      const tints = [withA(BUBBLE_TINTS.cyan, 0.85), withA(BUBBLE_TINTS.pink, 0.7), withA(BUBBLE_TINTS.yellow, 0.7)];
       for(let k=0;k<3;k++){
         ctx.beginPath();
         ctx.arc(x, y, r - 1, t*0.6 + k*2.1, t*0.6 + k*2.1 + 1.5);

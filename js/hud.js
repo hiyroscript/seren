@@ -261,6 +261,12 @@ const HUD_RAIL_MAX = 680;                  /* how wide the instrument band gets 
 const HUD_RAIL_PAD = 6;
 const HUD_BAR = 5;                         /* the boost meter's track */
 const HUD_RAIL_H = HUD_RAIL_PAD*2 + HUD_BAR;
+const HUD_SHIELD_GAP = 6;                  /* above the boost tray */
+const HUD_SHIELD_H = 8;
+const HUD_SHIELD_W = 116;
+const HUD_SHIELD_BAR_GAP = 4;
+const HUD_SHIELD_BOT = HUD_RAIL_BOT + HUD_RAIL_H + HUD_SHIELD_GAP;
+const HUD_COND_BOT = HUD_SHIELD_BOT + HUD_SHIELD_H + 8;
 const HUD_COND_R = 11;                     /* one condition badge, in the HUD */
 const HUD_COND_GAP = 5;
 
@@ -359,6 +365,36 @@ function hudMeters(o){
     fillRR(bx, by, Math.max(4, bw*clamp(o.charge,0,1)), HUD_BAR, 3,
            o.boostLock ? "rgba(255,255,255,0.30)" : (o.charge > 0.98 ? HUD_RED_HI : HUD_RED));
   ctx.restore();
+}
+
+/* ---- per-life shield, in the same corner in both renderers ---- */
+function hudShieldWidth(){
+  return Math.max(24, Math.min(HUD_SHIELD_W, W - hudSide()*2 - HUD_ACT*2 - HUD_ACT_GAP - 8));
+}
+function hudShield(o){
+  const y = H - HUD_SHIELD_BOT - HUD_SHIELD_H;
+  const w = (hudShieldWidth() - (SHIELD_BARS - 1)*HUD_SHIELD_BAR_GAP)/SHIELD_BARS;
+  ctx.save();
+  for(let i=0;i<SHIELD_BARS;i++){
+    const x = hudSide() + i*(w + HUD_SHIELD_BAR_GAP);
+    hudGlass(x, y, w, HUD_SHIELD_H, 2);
+    const fill = shieldBarFill(o.shield, i);
+    ctx.fillStyle = SHIELD_COLORS[i];
+    ctx.fillRect(x + 1, y + 1, (w - 2)*fill, HUD_SHIELD_H - 2);
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x + w/2, y + 1, 1, HUD_SHIELD_H - 2);
+  }
+  ctx.restore();
+}
+function paintShield(){
+  const meter = $("#shieldHud");
+  meter.setAttribute("aria-valuemax", SHIELD_MAX);
+  meter.setAttribute("aria-valuenow", shieldOf("me"));
+  const fills = [$("#shieldPink"), $("#shieldYellow"), $("#shieldCyan")];
+  for(let i=0;i<SHIELD_BARS;i++){
+    fills[i].style.background = SHIELD_COLORS[i];
+    fills[i].style.width = (shieldBarFill(G.shield, i)*100) + "%";
+  }
 }
 
 /* ---- the ultimate square and the item square ----
@@ -547,7 +583,7 @@ function hudConditions(who){
   const on = activeConditions(who);
   const r = HUD_COND_R, step = r*2 + HUD_COND_GAP;
   const x = hudSide() + r;
-  let y = H - hudFoot() - r;
+  let y = H - HUD_COND_BOT - r;
   for(let i=0;i<on.length;i++){
     drawConditionBadge(on[i], x, y, r);
     y -= step;
@@ -569,6 +605,7 @@ function drawSeatHud(who, seat){
   ctx.save();
   hudReadout(who, o);
   hudMeters(o);
+  hudShield(o);
   hudActions(o);
   hudConditions(who);
   ctx.restore();
@@ -783,7 +820,7 @@ function hudZones(){
      own arithmetic, run here. A square that is switched off takes its space
      back with it, so an edge badge can use the corner a missing meter left. */
   const acts = (ruleOn("ults") || ruleOn("bubbles")) ? HUD_ACT : 0;
-  const rail = ruleOn("boost") ? HUD_RAIL_H + HUD_RAIL_BOT : 10;
+  const rail = HUD_SHIELD_BOT + HUD_SHIELD_H;  /* durability stays even without boost */
   const z = {
     gaugeBottom: HUD_TOP + 42 + 8 + 26,
     readBottom:  HUD_TOP + readHeight(G.rivals.length + 1),
@@ -1019,6 +1056,7 @@ function paintHUD(force){
   $("#boostWrap").classList.toggle("full", G.charge > 0.98);
   $("#boostWrap").classList.toggle("locked", G.boostLock);
   syncConditions();
+  paintShield();
   paintItemBox();
   const board = [{ me:true, m:G.meters, car:G.car }].concat(G.rivals.map(function(R){
     return { me:false, m:metersOf(R), car:R.car };

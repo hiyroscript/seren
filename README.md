@@ -42,7 +42,8 @@ The HUD, clockwise from the top left: the track name and race clock; the distanc
 you have covered and the six-car standings, with your row picked out; a ladder
 down the right showing how far ahead or behind each racer is; your ultimate meter
 and item box bottom right; your own Conditions as a column of coloured icon
-circles bottom left; and the boost bar across the foot. Racers off the top or
+circles bottom left; three pink, yellow and cyan shield bars immediately above
+the boost rail at the lower-left; and the boost bar across the foot. Racers off the top or
 bottom of the screen get an edge badge with their lane and the gap in metres —
 or, past 500m, a pair of chevrons on the ladder.
 
@@ -404,6 +405,21 @@ and hazards. The HUD shows the base multiplier to two decimal places.
 
 ### Hazards
 
+Every racer starts with three full shield bars: **pink → yellow → cyan**. Each
+puddle or tumbleweed hit removes **half a bar**, retaining its normal Obscured
+or Slow effect on a surviving racer. **The sixth hit destroys the racer** through
+the existing 3-second wreck lifecycle; it does not take a seventh hit. During
+the wreck delay the shield stays empty, and **respawning fully restores all three
+bars**, along with the existing temporary invulnerability. This applies equally
+to players, local humans and bots, with each local view showing its owner's bars.
+
+**Meteors bypass durability entirely**: their existing destruction rules still
+apply, even at full shield, and they consume no shield halves. Other wreck sources
+also leave durability untouched until respawn. A hazard **destroyed by an
+applicable ultimate** costs no shield; protected racers and successful dodges
+lose none either. One puddle encounter can only consume one half, however long
+the racer overlaps it.
+
 A **perfect dodge grants +10 percentage points of ultimate charge**: change
 steering with a real hull collision at most **120ms** away, then escape safely.
 Early lane changes, wide or passive misses, hits, and repeated passes do not
@@ -653,7 +669,7 @@ original race layout.
 The race HUD is the same system rather than a second one. The corners hold what
 you consult: the pause button and the track and clock top left, distance and the
 running order top right. The bottom holds what you spend: the boost meter in its
-tray, your Conditions as a column of icon circles on the left, the ultimate and
+tray, three shield bars just above it on the left, your Conditions above those, the ultimate and
 item squares on the right. On a wide window that bottom band closes in on the road
 instead of stretching to the far corners, so it stays in peripheral vision. The
 ultimate square fills from the foot as it charges, so the reading is a shape
