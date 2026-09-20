@@ -1,354 +1,1530 @@
-Work directly in the current SEREN repository and implement a focused hazard-balance pass. Do not redesign the game or rewrite unrelated systems.
+Implement Dhaval as the eighth fully playable racer in Seren, using the existing root-level asset:
+
+v_dhaval.PNG
+
+Do not treat this as a small cosmetic addition. Dhaval must be integrated everywhere the existing seven racers are integrated: car data, measured sprite geometry, collision geometry, race population, menus, garage/reference pages, localization, HUD/rankings, AI, ultimate mechanics, Conditions, hazards, split-screen rendering, lifecycle/reset logic, and automated QA.
+
+Preserve the current architecture and conventions. Do not build a parallel system for Dhaval.
 
-SEREN is a three-lane browser arcade racer. Its road continuously accelerates from 1.00× to 3.00×, stepping upward by 0.10× every 20 seconds. Hazards are biome-specific: city uses puddles, desert uses tumbleweeds, and space uses meteors. The goal of this change is to make the road feel slightly less overcrowded with hazards as the base race speed rises, while making individual hazards slightly larger and improving collision/hitbox accuracy so contacts remain fair and visually trustworthy at high speed.
+1. Existing architecture to preserve
+
+Seren is a build-free Canvas 2D game using ordered classic scripts:
+
+core → i18n → data → audio → runtime → ui → settings → local → ai → mechanics → race → render → hud → input → main
+
+Relevant ownership:
+
+* js/data.js
+    * CARS
+    * CAR_IDS
+    * CONDITIONS
+    * FIELD_SIZE
+    * tuning constants
+* js/runtime.js
+    * shared race state
+    * carDims()
+    * racerDims()
+    * racerModel()
+    * road and split-screen geometry
+* js/ui.js
+    * car-select UI
+    * garage/reference UI
+* js/ai.js
+    * sensing, decision-making, ultimate valuation
+* js/mechanics.js
+    * car predicates
+    * Conditions
+    * ultimate lifecycle
+    * contact
+    * hazards
+    * debuff application
+* js/race.js
+    * initialization/reset
+    * rival creation/update
+    * frame ordering
+    * rival hazard consequences
+* js/render.js
+    * sprite cache
+    * cars
+    * view-specific effects
+* js/hud.js
+    * Condition badges/icons
+    * local-play HUD
+    * standings/race information
+* js/i18n.js
+    * English and French strings
+* index.html
+    * car-select buttons
+    * DOM standings
+* tools/*.mjs
+    * invariant and regression checks
+
+Follow existing patterns instead of scattering Dhaval-specific conditionals throughout unrelated files.
+
+⸻
 
-Core design goal
+2. Make Dhaval racer number eight
 
-As the normal race-speed tier rises, hazard density should gradually decrease. Do not drastically reduce hazards and do not make the fast portion of the race empty. The player should encounter slightly fewer individual hazards per unit of road at high speed, but each hazard should have a little more visual and physical presence.
+The current roster is:
 
-The intended balance trade is:
+1. Flann
+2. Neela
+3. Lolanthe
+4. Verdant
+5. Rhosyn
+6. Saffron
+7. Cole
 
-faster road → slightly more space between hazards → slightly larger hazards → more readable, deliberate dodges instead of increasingly cluttered hazard traffic.
+Add:
 
-This must be tied to the game’s normal speed progression, not temporary effects. Boost, Ultimate, Slow, shunts, Cole’s form-specific pace, wrecks, and other temporary speed modifiers must not dynamically change hazard density. Hazard spacing should follow G.tier / MAX_TIER, because that represents the underlying race-speed progression.
+8. Dhaval
 
-Current behavior to preserve and modify carefully
+Update the authoritative roster:
 
-The current speed tuning in js/data.js is:
+CAR_IDS
 
-BASE_SPEED = 420
+to contain dhaval.
 
-SPEED_SECONDS = 20
+Update:
 
-MULT_STEP = 0.10
+FIELD_SIZE
 
-MAX_MULT = 3.00
+from 7 to 8.
 
-MAX_TIER = 20
+A normal full race must therefore contain eight racers total.
 
-The current hazard spawning in js/race.js accumulates travelled road distance into G.trapGap and spawns when it reaches G.nextTrap. After a spawn, the next gap is currently:
+Expected bot counts when filling the grid:
 
-rand(430, 900)
+* solo: player + 7 bots
+* local 2-player: 2 humans + 6 bots
+* local 3-player: 3 humans + 5 bots
+* local 4-player: 4 humans + 4 bots
 
-This is fixed regardless of speed tier.
+Search for every assumption that the field contains seven cars. Do not merely change FIELD_SIZE and assume everything else is dynamic.
 
-Keep the existing distance-based spawning architecture. Do not convert traps to a timer-based spawn system. Distance-based spawning is appropriate for SEREN and should remain the source of truth.
+Audit:
 
-Instead, make the random road-distance gap gradually larger as G.tier approaches MAX_TIER.
+* rival creation
+* result boards
+* standings
+* finish parking
+* camera/framing after the finish
+* HUD height calculations
+* car-select UI
+* local-player setup
+* test fixtures
+* hard-coded array lengths
+* comments/documentation that describe seven racers
 
-Hazard-density scaling
+The race must genuinely support all eight simultaneously.
 
-At tier 0 / 1.00× speed, preserve today’s hazard spacing exactly or effectively exactly: approximately 430–900 road pixels.
+⸻
 
-At maximum base progression / 3.00×, increase the hazard spacing range by approximately 18%.
+3. Add Dhaval to CARS using v_dhaval.PNG
 
-Use a simple monotonic interpolation based on normalized tier progress:
+Create a normal sprite-backed CARS.dhaval entry following the existing vehicle model contract.
 
-tierProgress = clamp(G.tier / MAX_TIER, 0, 1)
+It should contain the appropriate equivalent of:
 
-spacingScale = lerp(1.00, 1.18, tierProgress)
+dhaval: {
+  key: "dhaval",
+  style: "sprite",
+  sprite: "v_dhaval.PNG",
+  accent: ...,
+  raceScale: ...,
+  spriteBounds: [...],
+  exhaust: [...],
+  hitShape: [...],
+  flame: [...]
+}
 
-Then generate subsequent gaps from the existing range multiplied by that scale.
+Do not copy another racer’s spriteBounds, dimensions, exhaust positions, or hitbox.
 
-The resulting approximate targets should be:
+Measure the actual image
 
-1.00×: 430–900
-1.50×: 449–941
-2.00×: 469–981
-2.50×: 488–1022
-3.00×: 507–1062
+Inspect v_dhaval.PNG itself and measure:
 
-The exact integer rounding is unimportant. The progression and gameplay feel are what matter.
+* source image dimensions
+* actual visible/solid body bounds
+* transparent padding
+* front tip/nose
+* front corners
+* wheel/fender extents
+* waist
+* rear shoulders
+* rear body
+* exhaust outlet(s), if the artwork contains visible exhausts
+* decorative protrusions that should not count as solid collision geometry
 
-This makes maximum-speed road-distance density roughly 15% lower than at the start rather than aggressively reducing hazard frequency.
+Store the resulting bounds as normalized source coordinates, exactly like the other sprite cars.
 
-Do not scale with G.speed, because G.speed includes transient gameplay effects and throttle interpolation. The road should not suddenly create fewer hazards because somebody activated an Ultimate or more hazards because the player was slowed.
+The full PNG must continue to be rendered. spriteBounds should be used for fitting and centering, not for destructive cropping.
 
-Keep the existing seam rule: spawnTrap() must still refuse to spawn while G.seam !== null.
+Dhaval must look large enough on the road
 
-Keep custom races authoritative: ruleOn("traps") must continue to disable hazards entirely.
+The current game deliberately uses per-car raceScale values because some source artwork is narrower than others.
 
-Keep the initial G.nextTrap = 620 behavior unless there is a strong technical reason to change it. The race starts at the minimum tier anyway, so the first hazard should remain familiar.
+Dhaval must not look tiny or toy-like beside the current roster.
 
-Prefer named tuning values rather than introducing unexplained new magic numbers. If the existing 430 and 900 values are promoted into constants, put them with the other gameplay tuning in js/data.js and update docs/TUNING.md.
+Measure its visible body and choose a uniform raceScale only if the source artwork needs one.
 
-A reasonable naming scheme would be conceptually equivalent to:
+The goal is:
 
-TRAP_GAP_MIN
-TRAP_GAP_MAX
-TRAP_GAP_MAX_SCALE
+* it clearly belongs to the same racing class visually
+* its solid body has comparable lane presence to the other cars
+* its proportions remain unchanged
+* no independent X/Y stretching
+* its collision body enlarges by exactly the same factor as the rendered vehicle
 
-Do not duplicate the formula in multiple files. There should be one authoritative helper or calculation for the next hazard gap.
+Do not choose an arbitrary oversized number just to make it look large. Base it on the measured visible body against the shared road car box and compare it visually with the existing seven cars.
 
-Make hazards slightly larger
+The menu/showroom preview should continue to use the existing preview sizing behavior rather than inheriting road-only raceScale in a way that breaks menu composition.
 
-Increase the physical hazard size only modestly. The intention is around 5–8%, not a dramatic redesign.
+⸻
 
-For puddles, increase the main rx / ry footprint by approximately 8%. Preserve the existing randomized aspect ratio and irregular seeded perimeter. The puddle should still look organically different each time.
+4. Give Dhaval a precise measured hitbox
 
-For tumbleweeds, increase the main r by approximately 8%.
+Dhaval needs its own traced polygonal hitShape.
 
-For meteors, increase both the warning/blast footprint and falling rock itself modestly, approximately 5–8%, but preserve the existing lane-safety philosophy. A meteor centered in one lane must not become so large that simply moving cleanly into a neighboring lane becomes unreliable.
+This is a hard requirement.
 
-Do not make all hazard artwork enormous merely because peripheral effects exist. Shadows, glows, water droplets, meteor fire trails, explosion animation, and loose tumbleweed twig tips are presentation and should not automatically become damaging geometry.
+Do not use:
 
-The size increase must apply coherently to both visuals and gameplay geometry. Do not enlarge the drawing while leaving the actual contact area at the old dimensions, and do not invisibly enlarge a hitbox farther than the hazard appears to occupy.
+* CAR_HIT_RECT
+* Flann’s polygon
+* Neela’s polygon
+* another racer’s polygon
+* a loose rectangle around the PNG
+* transparent image bounds as collision geometry
 
-Hitbox accuracy — preserve SEREN’s existing strengths
+Trace the actual solid body silhouette of v_dhaval.PNG.
 
-SEREN already has a strong collision system. Do not replace it with generic axis-aligned rectangles.
+The polygon should closely follow meaningful solid vehicle structure while excluding:
 
-Every playable vehicle has a traced hitShape in logical car units. carHit() gets the current model through racerModel(who) and its dimensions through racerDims(who), rotates the polygon with the car, and returns the resulting world-space points.
+* transparent corners
+* anti-aliased fringe
+* detached effects
+* decorative trailing pieces that a player would not reasonably expect to collide
+* flames/exhaust
+* purely ornamental extensions if they do not visually read as body
 
-Preserve that system exactly.
+Include meaningful solid parts such as bodywork, wheels/fenders, nose, and rear body where appropriate.
 
-Do not simplify vehicle hitboxes.
+The same active model and dimensions must drive both rendering and collision, preserving Seren’s existing invariant:
 
-Do not use sprite rectangular bounds as collision geometry.
+the car the player sees is the body the collision system uses.
 
-Do not add invisible padding to cars.
+The hitbox must:
 
-Alternate forms must continue switching their visual model and collision hull together.
+* scale with Dhaval’s raceScale
+* rotate with vehicle tilt
+* work before the PNG has finished loading
+* work identically for player, bot, and local human
+* remain independent of DPR/camera/view count
+* be deterministic
 
-The generic CAR_HIT_RECT should remain only a fallback, as it is now.
+Extend tools/hitbox-check.mjs with Dhaval-specific tests proving this.
 
-Centralize hazard collision geometry
+⸻
 
-Improve the hazard side of collision handling so the geometry used by gameplay, perfect-dodge detection, bots, players, and rendering cannot quietly diverge.
+5. Dhaval’s ultimate — core concept
 
-Create or refine shared hazard-geometry helpers where appropriate rather than maintaining slightly different radius calculations in several places.
+Dhaval keeps Seren’s standard ultimate lifecycle:
 
-The desired conceptual architecture is:
+* same normal ultimate charge time
+* same standard ultimate duration
+* same shared ultimate speed behavior
+* same meter lifecycle
+* same rules around wrecking, finishing, disabling ultimates, etc.
 
-car geometry comes from carHit().
+Do not introduce a separate ultimate clock.
 
-puddle geometry comes from the same irregular path used to draw the main puddle.
+Use the normal startUlt(), tickUlt(), and endUlt() architecture.
 
-tumbleweed geometry comes from one defined solid-body envelope.
+Create centralized predicates such as:
 
-meteor blast geometry comes from the warning/blast circle.
+dhavalCar(who)
+dhavalUltActive(who)
 
-falling meteor-rock geometry comes from one shared rock-radius calculation.
+Do not spread raw checks such as:
 
-Gameplay and perfect-dodge prediction should ask those same definitions.
+o.car === "dhaval"
 
-Do not create separate “player hitbox” and “bot hitbox” versions.
+through unrelated systems.
 
-Puddle precision
+Dhaval’s special power is a proximity-based Obscurity aura.
 
-The puddle implementation is already particularly good.
+While Dhaval’s ultimate is active, nearby eligible opposing racers become Obscured by Dhaval.
 
-puddlePoints() generates the seeded irregular outline.
+Dhaval does not obscure itself.
 
-drawPuddle() draws that outline through puddlePath().
+The mechanic must work identically whether Dhaval is:
 
-puddleHits() subdivides the same quadratic perimeter and performs polygon overlap against the car hull.
+* player one
+* a bot
+* a local multiplayer human
 
-Keep this architecture.
+Likewise, targets may be any of those.
 
-When increasing puddle size, feed the enlarged rx and ry into this same path so visual size and collision geometry remain synchronized automatically.
+⸻
 
-The small detached water droplets drawn outside the primary puddle should stay cosmetic. Do not make them collision geometry.
+6. Dhaval proximity range
 
-Do not replace the irregular puddle hitbox with an ellipse or circle.
+Use a world/race-distance-based range, not a raw screen-pixel rectangle.
 
-Tumbleweed precision
+The mechanic must behave consistently:
 
-The current tumbleweed visually consists of a procedural rotating bundle, while gameplay uses a circular proximity test based on o.r.
+* portrait vs landscape
+* desktop vs phone
+* one viewport vs four split-screen columns
+* different camera offsets
 
-Make the tumbleweed’s collision envelope explicit and centralized.
+Follow the same architectural principle used for Lolanthe’s proximity aura.
 
-The damaging body should correspond to the dense visible tumbleweed mass, not every isolated twig end and not an oversized invisible circle.
+Define one named tuning constant, for example:
 
-A small conservative inset relative to the outermost twig art is acceptable and desirable because individual sticks extending beyond the dense ball are visually porous. What matters is consistency: define the effective collision radius once and use it everywhere that needs to reason about a tumbleweed, including live collisions and perfect-dodge prediction.
+DHAVAL_AURA_LENGTHS
 
-If the existing effective factor around sqrt(0.86) remains visually correct after the size change, it may be retained, but give the concept a shared helper or named tuning value so updateTraps(), rival hazard handling, and perfect-dodge prediction cannot diverge.
+in data.js.
 
-Do not make contact easier simply by expanding the logical collision factor on top of the requested 8% overall hazard-size increase unless playtesting clearly shows the visible body requires it.
+A sensible starting point is approximately four car lengths, comparable to Lolanthe’s nearby-racer interaction, unless playtesting of the existing road scale indicates that a slightly different radius reads better.
 
-Meteor precision
+Keep the value centralized.
 
-The meteor has two distinct collision concepts and they must remain distinct.
+Process the aura from one settled field state per frame, analogous to lolantheAuras(), after racers have moved rather than producing order-dependent results while individual rivals are still updating.
 
-The first is the ground warning/blast radius o.r.
+⸻
 
-The red warning ring shown on the road represents the eventual blast area. When the meteor detonates, collision should correspond precisely to that circle. Preserve the current principle that the ring and damaging blast are the same physical footprint.
+7. Do not confuse Dhaval Obscurity with puddle water state
 
-The second is the falling rock itself, represented by o.mr.
+Seren already has an obscured Condition associated with the existing water/blind effect.
 
-Currently the renderer derives a visible rock radius using the fall-progress scale:
+Do not overwrite that state or force Dhaval to share the puddle’s internal timer and spray points.
 
-the visible rock uses o.mr * sc
+Dhaval needs independent gameplay state, for example:
 
-while roof collision uses o.mr directly.
+dhavalObscureT
+dhavalObscureLevel
 
-Remove that potential visual/physical disagreement.
+and any deterministic effect seed/state genuinely needed by the renderer.
 
-Introduce a single helper conceptually equivalent to meteorRockRadius(o) that returns the current visible solid-rock radius based on o.mr, o.fall, and rockLead(o).
+The existing obscured Condition can remain the canonical UI concept if appropriate:
 
-Use the same helper in both drawMeteor() and the falling-rock collision check.
+* puddle water active → obscured
+* Dhaval Obscurity active → obscured
+* both active → still one Obscured badge
 
-Do not include the rock’s glow or flame trail in the collision radius.
+But their internal timers/effects must remain independent so:
 
-Do not include its ground shadow.
+* Dhaval’s effect does not erase puddle spray
+* a puddle does not reset Dhaval’s level
+* clearing Dhaval’s effect does not accidentally erase unrelated state except when a true general debuff-clearing mechanic such as Cleansed calls for it
 
-Only the visible solid rock itself should make direct falling-rock contact.
+Create helpers instead of making activeConditions() understand a pile of raw fields.
 
-The blast circle after impact remains a separate collision event using o.r.
+Examples:
 
-rockAlt() must remain the single authority for meteor altitude.
+dhavalObscured(who)
+dhavalObscureLevel(who)
+applyDhavalObscure(who, source)
+clearDhavalObscure(who)
+increaseDhavalObscure(who)
 
-Do not create another altitude formula.
+Names may differ, but keep the ownership explicit.
 
-Prevent high-speed tunneling
+⸻
 
-This change matters because the road reaches 3.00× and hazards are being made slightly larger.
+8. Five levels of Dhaval Obscurity
 
-Collision accuracy should not depend on a hazard and a car happening to overlap at the exact end of a rendered frame.
+Dhaval Obscurity has exactly five severity levels.
 
-SEREN already uses sweptY() for parts of player hazard contact and uses very fine substeps in perfect-dodge prediction, capped around one logical pixel / 1/240 second.
+Initial application
 
-Preserve those strengths and make actual hazard contact robust for both Player 1 and rivals.
+When an eligible racer is first successfully affected:
 
-Do not simply increase hitboxes to hide tunneling.
+Level 1
 
-Where relative motion during one frame is large enough to jump across a contact boundary, test the swept motion between the previous and current positions.
+Never start at 0 while the debuff is visibly active.
 
-Use a cheap broad phase first so this does not become unnecessarily expensive. There are only seven racers and relatively few live hazards, so precise narrow-phase tests near a possible contact are reasonable.
+Escalation
 
-For irregular puddles, the actual puddle polygon remains authoritative.
+While that racer is currently under Dhaval Obscurity:
 
-For tumbleweeds and meteor circles, use the shared collision radii.
+every genuine collision with a road hazard increases Obscurity by exactly one level.
 
-For cars, use their existing polygon hulls.
+Example:
 
-If substeps are required, use deterministic bounded substeps comparable to the perfect-dodge system rather than FPS-dependent arbitrary sampling.
+first affected → Level 1
+hits one hazard → Level 2
+hits another hazard → Level 3
+hits another hazard → Level 4
+hits another hazard → Level 5
 
-The same physical encounter should resolve the same way at 30 FPS, 60 FPS, 120 FPS, or after the existing frame-delta clamp.
+Cap at:
 
-Avoid double hits. Existing o.hit, o.nm, per-racer bits, shield behavior, perfect-dodge bookkeeping, and hazard destruction/removal semantics must continue working.
+Level 5
 
-Player/rival parity
+Further hazard collisions must not exceed 5.
 
-SEREN’s architecture deliberately makes bots use the player’s mechanics.
+What qualifies as a collision
 
-Preserve this invariant.
+Escalate only after the collision system has determined that the racer genuinely contacted the hazard.
 
-The player-side hazard logic in js/mechanics.js and rival-side hazard handling in js/race.js currently share concepts such as:
+Do not escalate for:
 
-carHit()
-nearestOnCar()
-puddleHits()
-clearsSolidHazards()
-markPassed()
+* a near miss
+* a Perfect Dodge
+* a hazard passing nearby
+* an already-spent hazard
+* multiple checks of the same collision in one simulation step
+* a racer that is not currently Dhaval-obscured
+* a target for whom the hazard interaction was impossible because they were physically elsewhere
 
-Do not introduce new geometry that only one side uses.
+A shield absorbing the gameplay consequence is still a real physical hazard contact. If the collision was genuinely accepted, it may advance Dhaval Obscurity even if shield durability prevented the usual debuff/wreck.
 
-If collision geometry is centralized, both paths should consume it.
+However, if the racer’s own active ultimate destroys the hazard before it can actually hit them, that is not an Obscurity-escalating collision.
 
-A bot, local human, or Player 1 driving the same model through the same hazard should be judged against the same physical shape.
+Hook escalation into the authoritative accepted-collision paths, not into visual overlap detection.
 
-Difficulty settings must not alter collision sizes.
+Cover both:
 
-Preserve all existing hazard consequences
+* player hazard handling in mechanics.js
+* rival hazard handling in race.js
 
-This is a density/size/hitbox pass, not a hazard-rules redesign.
+and every applicable G.traps hazard type.
 
-City puddles must still apply the existing blind/Obscured behavior and shield rules.
+Reset behavior
 
-Tumbleweeds must still apply the existing Slow behavior and destruction behavior.
+A new, unrelated Dhaval Obscurity episode starts again at Level 1.
 
-Meteors must still use their current timed fall, direct falling-rock interaction, ground detonation, wreck behavior, and Saffron interception.
+Reset the Dhaval Obscurity level when the debuff is genuinely cleared, including:
 
-clearsSolidHazards() behavior must remain intact.
+* Cleansed
+* wreck/debuff cleanup
+* race reset
+* finish cleanup where appropriate
+* complete natural expiry
 
-Ultimate-specific hazard interactions must remain intact.
+Do not leave Level 5 silently stored so the next fresh application begins at Level 5.
 
-Rhosyn’s Aero-Glow absence from the shared road must remain intact.
+⸻
 
-Saffron’s airborne behavior and meteor interception must remain intact.
+9. Duration / refresh model
 
-Respawn invulnerability, finish protection, shield durability, perfect-dodge rewards, trap penalties, and all car-specific powers must remain unchanged except where improved geometry makes contact physically more accurate.
+Use a named constant for how long Dhaval Obscurity remains after its last successful application, for example:
 
-Do not change BLIND_TIME, SLOW_TIME, DEAD_TIME, INVULNERABLE_TIME, ultimate charge, shield counts, damage consequences, race speed, or boost tuning as part of this task.
+DHAVAL_OBSCURE_TIME
 
-Rendering
+A good initial value is around 3 seconds, matching Seren’s existing preference for short, refreshable proximity debuffs.
 
-Keep SEREN’s current Canvas 2D visual style.
+While an eligible racer remains inside an ulting Dhaval’s radius:
 
-Hazards should look like the same hazards they are now, merely a little larger.
+* refresh the timer
+* do not reset the level back to 1
+* do not stack duration additively
 
-Do not redesign puddles.
+After leaving the radius:
 
-Do not redesign tumbleweeds.
+* the existing severity may remain during the short tail
+* then expire normally
 
-Do not redesign meteors.
+Re-entering before expiry refreshes the same episode.
 
-Do not make warning graphics disproportionately larger than their actual danger.
+Re-entering after complete expiry begins a fresh Level 1 episode.
 
-The warning ring of a meteor should remain an honest preview of the eventual blast radius.
+Keep this value easy to tune.
 
-Keep culling correct after the size increases. Review trapReach() and drawTraps() so a larger hazard is not clipped or culled slightly too early, especially in split-screen.
+⸻
 
-Preserve split-screen correctness: W remains one viewport, while VW_TOP / VW_BOT cover the shared world required by every viewport.
+10. Screen effect — white, purple, red, and green moving light circles
 
-Files likely involved
+The affected racer’s own screen must fill with large luminous circles in exactly this palette family:
 
-The main implementation should remain localized.
+* white
+* purple
+* red
+* green
 
-js/race.js — hazard gap progression and rival hazard-contact integration.
+The result should feel like huge bright stage/carnival/light-show circles repeatedly appearing across the driver’s vision.
 
-js/mechanics.js — spawnTrap(), hazard geometry, collision helpers, player trap collision, perfect-dodge geometry, meteor/tumbleweed precision.
+The effect should:
 
-js/render.js — use shared meteor rock geometry and confirm hazard drawing/culling follows enlarged dimensions.
+* pop into view
+* move across the screen
+* drift
+* overlap
+* rotate/orbit
+* change composition over time
+* appear at different sizes
+* partially move off-screen
+* create increasingly chaotic obstruction at higher levels
 
-js/data.js — add named tuning constants only if useful for the new spacing/size parameters.
+Do not turn this into:
 
-docs/TUNING.md — document the updated spacing behavior, new tuning constants, approximate max-tier density change, and hazard size policy.
+* small particles
+* tiny dots
+* confetti
+* a simple color wash
+* one static radial gradient
+* generic smoke
 
-Only touch docs/ARCHITECTURE.md if the collision authority materially changes enough that its description would otherwise become inaccurate.
+The defining visual is large bright circles of light covering the driver’s vision.
 
-Do not modify unrelated UI, menu, AI judgement, car abilities, item balance, race length, speed progression, or artwork.
+Because a perfectly uniform circle does not visually reveal rotation, give the light forms subtle internal asymmetry, segmented halos, elliptical shape, orbiting sub-lights, sweep highlights, or rotating grouped arrangements so the requested rotation is actually perceptible.
 
-Code-quality expectations
+Keep it polished rather than noisy pixel clutter.
 
-Follow the repository’s existing classic-script/global-scope architecture.
+⸻
 
-Do not introduce modules, imports, a bundler, npm dependencies, or external libraries.
+11. Exact visual progression from Level 1 to Level 5
 
-All new top-level names must be unique across the entire script set.
+Severity must increase clearly and monotonically.
 
-Avoid browser-global names.
+The five levels should differ through a combination of:
 
-Keep one authority per gameplay question.
+* number of circles
+* average radius
+* opacity
+* overlap
+* movement density
+* amount of screen coverage
+* frequency of new pop-ins
+* brightness
 
-Prefer short, descriptive helpers over repeated formulas.
+Target the following visual read:
 
-Comments should explain design invariants, not restate obvious JavaScript.
+Level 1 — Light obstruction
 
-Do not silently duplicate a hitbox formula between mechanics.js, race.js, and render.js.
+The player can still see most of the road.
 
-Acceptance criteria
+Use:
 
-1. A race at tier 0 retains approximately the current 430–900 hazard-gap range.
-2. Hazard spacing grows smoothly/monotonically with G.tier, reaching about 1.18× the original gap at MAX_TIER.
-3. Temporary Boost, Ultimate, Slow, wrecking, shunts, or individual vehicle pace do not affect the hazard-spacing scale.
-4. At 3.00× base progression, road-distance hazard density is modestly lower rather than dramatically lower.
-5. Puddles and tumbleweeds are approximately 8% larger; meteors are only modestly larger and retain a reliable safe neighboring-lane escape.
-6. Puddle collision continues matching the irregular main puddle outline rather than an ellipse.
-7. Detached puddle droplets remain cosmetic.
-8. Car collision continues using each model’s traced rotated polygon.
-9. Tumbleweed collision has one shared, documented solid-body radius used consistently by gameplay and dodge prediction.
-10. The falling meteor’s visible solid-rock radius and direct-contact radius come from the same calculation.
-11. Meteor glow, fire trail, shadow, and explosion presentation do not become direct-contact hitboxes.
-12. The meteor warning circle accurately previews its ground blast radius.
-13. High-speed encounters cannot routinely tunnel through a hazard merely because no final-frame overlap occurred.
-14. Player 1, bots, and local-human rivals use identical hazard geometry.
-15. Existing o.hit, per-racer masks, perfect-dodge state, shields, immunity, Ultimates, Saffron interception, Aero-Glow, and finishing protections continue behaving correctly.
-16. No unrelated gameplay constants are changed.
-17. Split-screen hazard drawing/culling remains correct.
-18. node tools/check.mjs passes with no new errors.
-19. Test at 1.00×, roughly 2.00×, and 3.00× and verify visually that the intended progression is: same density at the beginning, modestly more breathing room later, slightly larger hazards throughout.
-20. Specifically test edge grazes against every vehicle size/form, including narrow cars, larger race-scaled cars, Cole’s bike, Neela’s alternate form, and Saffron’s special states, so collision follows the actual current model rather than a generic rectangle.
+* relatively few circles
+* significant empty gaps
+* lower opacity
+* moderate radii
+* slower/cleaner movement
 
-The finished result should feel subtle. A player familiar with SEREN should not think hazards were removed or redesigned. They should notice that the extremely fast part of a race is a little less cluttered, individual hazards are easier to read because they have slightly more presence, and near-edge collisions feel trustworthy because what visually touches the car is what the game actually evaluates.
+Approximate perceived obstruction: 15–25%.
+
+It should be obvious that something is affecting the driver but should not dominate the whole screen.
+
+Level 2 — Noticeable
+
+More circles and more overlap.
+
+Approximate perceived obstruction: 30–40%.
+
+Important racing information is still visible through frequent openings.
+
+Level 3 — Heavy
+
+The lights are now a serious visibility problem.
+
+Approximate perceived obstruction: 50–60%.
+
+Large circles should regularly cross the player’s primary forward view.
+
+Level 4 — Severe
+
+The road is difficult to follow.
+
+Approximate perceived obstruction: 70–80%.
+
+Use many large overlapping lights with only intermittent openings.
+
+Level 5 — Almost blinded
+
+This is the maximum state.
+
+The racer should barely be able to see the road.
+
+Approximate perceived obstruction: 85–95% across time.
+
+Use huge overlapping white/purple/red/green lights with high density.
+
+Do not simply replace the entire viewport with one opaque rectangle. There should still be tiny moving openings and visual evidence that a race is continuing underneath.
+
+The result should feel like the player’s vision has become almost unusable because of the light storm, not because the renderer stopped drawing the game.
+
+⸻
+
+12. View ownership and split-screen are critical
+
+Dhaval’s lights are a view effect, not a world effect.
+
+If Racer A is Obscured:
+
+* Racer A’s own viewport gets the light circles.
+* Other players’ viewports do not get Racer A’s screen obstruction.
+* Racer A’s physical car should not have giant screen circles attached to it in the world.
+* A bot carries the gameplay status without creating an imaginary full-screen overlay over unrelated human players.
+
+Use Seren’s existing per-view architecture (VOWN, viewport clipping, etc.).
+
+Test all four local configurations.
+
+There must be no effect leakage from one split-screen column into the next.
+
+In single-player, follow the same convention as the existing water Obscured effect: obscure the playable world without making the HUD fundamentally unreadable.
+
+⸻
+
+13. Renderer must remain pure
+
+The visual circles must not mutate race state.
+
+Do not:
+
+* allocate new persistent arrays every rendered frame
+* call Math.random() in a way that makes drawing the same simulation state twice produce unrelated layouts
+* advance gameplay timers in render.js
+* alter severity from the renderer
+* create Image objects per frame
+
+Either:
+
+* use deterministic time/seed calculations from stored state, or
+* update cosmetic state from the normal simulation update path and let the renderer only read it
+
+Follow the same read-only renderer invariant as the rest of Seren.
+
+⸻
+
+14. Reduced motion support
+
+Respect:
+
+motionReduced()
+
+Reduced motion must not remove the gameplay obstruction.
+
+At each severity level, reduced-motion users must experience approximately the same visual coverage, but:
+
+* stop or strongly reduce continuous rotation
+* stop aggressive sweeping
+* remove rapid popping/flashing
+* hold a stable arrangement of lights
+* preserve opacity/coverage/severity
+
+Do not use strobing.
+
+The mechanic must remain readable as a debuff without requiring animation.
+
+⸻
+
+15. Rhosyn interaction
+
+An ulting Rhosyn cannot be Obscured by Dhaval.
+
+Rhosyn’s existing ultimate/Aero-Glow architecture already distinguishes between:
+
+* ultimate active
+* leaving the shared road
+* away
+* returning
+
+Respect those predicates.
+
+At minimum:
+
+rhosynUltActive(who)
+
+must make the racer ineligible for new Dhaval Obscurity.
+
+While Rhosyn is away through:
+
+rhosynElsewhere(who)
+
+Dhaval must obviously be unable to reach it at all.
+
+Dhaval must not:
+
+* apply a hidden timer while Rhosyn is away
+* pre-load Rhosyn with Level 1 so it appears instantly when Rhosyn returns
+* draw lights in Aero-Glow
+* use the Rhosyn car’s canonical road position as supernatural targeting while it is isolated
+
+If Rhosyn activates its ultimate while already Dhaval-obscured, clear Dhaval’s Obscurity as part of the transition so it does not carry into Aero-Glow.
+
+Do not alter Rhosyn’s existing isolation or return Invulnerable behavior.
+
+⸻
+
+16. Verdant interaction
+
+An ulting Verdant cannot be Obscured by Dhaval.
+
+Verdant is different from Rhosyn:
+
+* Verdant is still physically present
+* Verdant is invisible to others
+* Verdant can still participate in physical collisions
+
+Do not incorrectly make Verdant noContact().
+
+Instead, Dhaval’s targeting/application logic must specifically respect:
+
+verdantUltActive(who)
+
+An ulting Verdant is not a valid Dhaval Obscurity target.
+
+If Verdant activates its ultimate while already under Dhaval Obscurity, clear Dhaval’s Obscurity when the ultimate becomes active rather than leaving invisible light-state running against the intended immunity.
+
+Do not alter Verdant’s existing directional defence, reveal timer, invisibility, or Mind Control immunity.
+
+⸻
+
+17. New Condition: Cleansed
+
+Add a new official Seren Condition:
+
+Cleansed
+
+It is a Buff.
+
+Cleansed means:
+
+Immediately removes every active debuff from the racer. For the entire duration of Cleansed, no debuff can be applied to that racer.
+
+This needs to be a first-class Condition, not a special boolean hidden inside Dhaval logic.
+
+Add it to:
+
+CONDITIONS
+
+with:
+
+* localization key
+* distinct badge color
+* type: "buff"
+* unique icon
+* readable foreground ink
+
+Add English and French:
+
+* name
+* garage/reference description
+* any needed accessible labels
+
+It must appear automatically in the Conditions reference UI using the game’s existing generated Buff/Debuff system.
+
+⸻
+
+18. Cleansed needs its own recognizable icon
+
+Extend COND_PATHS.
+
+Do not reuse the Invulnerable shield icon.
+
+Possible visual concept:
+
+* sparkle/star with a clearing sweep
+* small burst with a clean ring
+* crossed-away debuff marks
+* another simple geometric “purified/cleared” symbol
+
+The icon must remain readable at the tiny split-screen badge size.
+
+Color must not be the only distinction between Cleansed and another Condition.
+
+⸻
+
+19. Cleansed mechanics
+
+Give racers canonical timer state such as:
+
+cleanseT
+
+and helpers such as:
+
+cleansedWho(who)
+applyCleansed(who)
+
+Use a named tuning constant, for example:
+
+CLEANSED_TIME
+
+Unless playtesting gives a stronger reason otherwise, use 3.0 seconds as the initial duration.
+
+Applying Cleansed should:
+
+1. immediately call the general debuff-clearing path
+2. remove all currently active debuffs
+3. remove/reset Dhaval Obscurity and its severity
+4. set or refresh cleanseT
+5. not stack duration additively
+
+If Cleansed is applied again while active, refresh/set it to the configured duration rather than creating six, nine, twelve seconds through additive stacking.
+
+⸻
+
+20. “No debuff can reach the racer” must be general
+
+Cleansed must protect against all current debuffs, not merely Dhaval’s.
+
+That includes at least:
+
+* Slowed
+* Obscured from water
+* Dhaval Obscurity
+* Skidded
+* Mind Controlled
+
+Future debuffs should have one obvious shared protection gate to use.
+
+Do not create separate checks like:
+
+if (!cleanseT) applySlow()
+if (!cleanseT) applyBlind()
+if (!cleanseT) applySlip()
+...
+
+in every mechanic.
+
+Centralize the meaning of “this racer refuses debuffs.”
+
+⸻
+
+21. Cleansed is NOT Invulnerable
+
+This architectural distinction is essential.
+
+Cleansed prevents debuffs.
+
+It must not make the car physically unreachable.
+
+A Cleansed racer must still be able to:
+
+* collide with another car
+* be rammed
+* hit a barrier
+* use a shield
+* lose shield durability
+* collide with hazards
+* be wrecked by destructive mechanics where applicable
+* interact with the race normally
+
+Do not accidentally add Cleansed to noContact().
+
+The current code has noContact() and refusesDebuffs() coupled closely enough that adding Cleansed naïvely could make the racer intangible.
+
+Refactor the protection predicates if necessary so these questions remain separate:
+
+1. Can this physical body be contacted?
+2. Can a debuff be applied to it?
+
+For example, it is acceptable to introduce a clearer helper such as:
+
+protectedFromDebuffs(who)
+
+that includes Cleansed, while keeping noContact() based on the existing physical states:
+
+* finished
+* wrecked
+* Invulnerable
+* Rhosyn elsewhere
+* Saffron airborne where applicable
+
+The exact naming is flexible. The semantic distinction is not.
+
+⸻
+
+22. Lolanthe + Dhaval interaction
+
+This is the special counter-interaction:
+
+If Dhaval’s ultimate attempts to Obscure a Lolanthe whose own ultimate is currently active, Lolanthe does not receive Dhaval Obscurity. Instead, that Lolanthe becomes Cleansed.
+
+Use:
+
+lolantheUltActive(who)
+
+as the authoritative check.
+
+Behavior:
+
+1. Dhaval’s proximity application reaches an ulting Lolanthe.
+2. Do not apply or refresh Dhaval Obscurity.
+3. Clear any existing Dhaval Obscurity immediately.
+4. Apply/refresh Cleansed.
+5. Cleansed immediately removes every other current debuff too.
+6. While Cleansed remains active, no debuff can be applied.
+7. Lolanthe remains physically present and otherwise behaves normally.
+
+Do not stop Lolanthe’s ultimate.
+
+Do not modify Lolanthe’s Mind Control aura.
+
+Do not make Lolanthe permanently immune after its ultimate ends.
+
+This conversion occurs because Lolanthe is actively ulting when Dhaval’s Obscurity reaches it.
+
+⸻
+
+23. Cleansed must block Lolanthe’s own enemy debuffs too
+
+Once Cleansed is active, its protection is universal.
+
+For example, during Cleansed:
+
+* another Lolanthe’s Mind Control cannot apply
+* puddle Obscured cannot apply
+* oil Skidded cannot apply
+* tumbleweed Slow cannot apply
+* Dhaval Obscurity cannot apply
+
+The relevant hazard/contact can still happen physically; only the debuff consequence is refused.
+
+Once Cleansed expires, debuffs may be applied normally again.
+
+⸻
+
+24. Dhaval destroys hazards while ulting
+
+Dhaval’s ultimate must destroy hazards it physically contacts.
+
+Integrate this into the game’s existing ultimate/hazard architecture rather than inventing an unrelated shield.
+
+Add Dhaval to the appropriate solid-hazard privilege where existing ultimate cars destroy solid hazards.
+
+Additionally, because this Dhaval requirement explicitly says Dhaval destroys hazards, audit all objects in the actual road-hazard/trap system:
+
+* tumbleweeds
+* meteors
+* puddles
+
+Dhaval should destroy/remove a contacted G.traps hazard rather than suffering its ordinary consequence.
+
+For Dhaval specifically:
+
+* tumbleweed contact → weed destroyed
+* falling meteor/body contact → meteor destroyed before its normal damaging consequence
+* puddle contact → puddle cleared/destroyed instead of applying water Obscured
+
+Use appropriate existing destruction FX where possible, tinted/styled to Dhaval if needed.
+
+Do not:
+
+* consume Dhaval’s ultimate
+* penalize ultimate charge for the destroyed hazard
+* apply the hazard’s Slow/Obscured consequence
+* count Dhaval destroying the hazard as an Obscurity escalation against Dhaval
+
+Keep item-created Oil conceptually separate unless the existing code formally treats it as the same trap/hazard category. Do not casually delete every offensive object in the game just because Dhaval is ulting.
+
+Make player and rival behavior symmetrical.
+
+⸻
+
+25. Dhaval’s Obscurity and shields
+
+Shield logic must remain coherent.
+
+A Dhaval Obscurity application is a debuff application, not physical damage, so do not consume shield durability merely because Dhaval is nearby unless Seren’s existing Condition rules explicitly make proximity debuffs consume shield.
+
+A racer already under Dhaval Obscurity who physically contacts a hazard:
+
+* may have that hazard handled by shield durability as usual
+* still advances one Obscurity level if the physical hazard collision was genuinely accepted
+* does not advance twice because multiple collision functions observed the same object
+
+Cleansed prevents the Dhaval debuff itself and therefore there is no Dhaval severity to escalate while Cleansed.
+
+Invulnerable should continue to clear/refuse debuffs according to existing game rules.
+
+⸻
+
+26. Bot behavior must not cheat through the visual obstruction
+
+Dhaval’s effect cannot be purely cosmetic for AI racers.
+
+A human at Level 5 can barely see, so an AI racer at Level 5 should not continue to make decisions with perfect supernatural information.
+
+Integrate Dhaval Obscurity into the bot sensing/judgement layer.
+
+Do this in a controlled, deterministic way rather than making the bot randomly crash every frame.
+
+Possible approach:
+
+* Level 1: small perception/judgement degradation
+* Level 2: moderate
+* Level 3: significant
+* Level 4: strong
+* Level 5: severe
+
+It can affect things already modeled by Seren such as:
+
+* whether a hazard is noticed
+* look-ahead
+* deliberate lane assessment
+* target confidence
+* reaction quality
+
+Do not alter the car’s actual physics merely because a bot drives it.
+
+The underlying mechanic remains a visibility/perception debuff.
+
+Also update Dhaval bot ultimate valuation.
+
+A Dhaval bot should value its ultimate more when:
+
+* multiple eligible rivals are inside/near its aura range
+* nearby opponents are in positions where hazard escalation is plausible
+* the pack is dense
+
+It should not value targets that Dhaval cannot Obscure:
+
+* ulting Rhosyn
+* ulting Verdant
+* currently Cleansed racers
+
+For an ulting Lolanthe, recognize that applying Dhaval’s aura gives Lolanthe Cleansed rather than harming it, so a competent bot should not count that target as offensive value.
+
+⸻
+
+27. Dhaval visual identity during its own ultimate
+
+Dhaval still receives the shared ultimate visual language/pacing Seren already uses.
+
+Add a restrained Dhaval-specific cue if needed so players can tell that its aura is active, but do not make the whole car disappear under the victim-screen effect.
+
+The giant colored light circles belong to the victims’ views, not around Dhaval’s physical sprite.
+
+If adding an aura cue around Dhaval:
+
+* keep it lightweight
+* use the same white/purple/red/green palette
+* do not obscure its measured vehicle silhouette
+* do not create collision geometry
+* respect reduced motion
+
+⸻
+
+28. State lifecycle
+
+Add every new state field to both:
+
+* player-one state
+* rivals
+
+Initialize/reset it everywhere equivalent existing fields are initialized.
+
+Audit at minimum:
+
+* fresh game state
+* startRace()
+* rival construction
+* wreck
+* respawn
+* finish
+* race restart
+* ultimate end
+* leaving a race
+* local races
+
+Relevant state includes:
+
+Dhaval Obscurity timer
+Dhaval Obscurity level
+Cleansed timer
+any deterministic cosmetic seed/state
+
+Do not allow stale visual state to survive a new race.
+
+A wreck should use the existing general debuff-cleanup semantics and therefore remove Dhaval Obscurity.
+
+⸻
+
+29. activeConditions() must stay canonical
+
+activeConditions(who) should remain the authoritative derivation of the Conditions currently worn by a racer.
+
+Extend it so:
+
+* Cleansed appears while its timer is active.
+* Obscured appears while puddle obscuration OR Dhaval Obscurity is active.
+* no duplicate Obscured badges are emitted.
+* finished racers still carry no Conditions according to existing lifecycle rules.
+* Condition ordering follows CONDITIONS key order.
+
+Do not create a second mutable list of active Conditions.
+
+⸻
+
+30. Car-select and garage integration
+
+Add Dhaval everywhere the other cars exist.
+
+In index.html, create an eighth option equivalent to:
+
+<button class="car-opt" id="carDhaval">
+  <span class="car-art">
+    <canvas class="car-cv" data-car="dhaval" aria-hidden="true"></canvas>
+  </span>
+  <span class="car-name" data-i18n="dhaval">Dhaval</span>
+</button>
+
+Ensure:
+
+* keyboard navigation still works
+* gamepad car-selection navigation still works
+* hover/focus showroom preview works
+* random selection can choose Dhaval
+* taken-car behavior works in local play
+* layout remains balanced with eight cars
+* no card clips at common viewport sizes
+
+Do not hard-code a separate renderer for its menu artwork. Use the shared drawCar() / sprite path.
+
+Add Dhaval to the Cars & More reference page with an accurate ultimate description.
+
+⸻
+
+31. Standings and place strings
+
+The DOM standings currently contain seven rows.
+
+Add row eight:
+
+* posRow8
+* pos8
+* pos8n
+
+Add the localization needed for eighth place, including the canvas HUD’s:
+
+place8
+
+English should display the equivalent of 8th.
+
+Provide correct French wording consistent with the existing localization style.
+
+Audit:
+
+* running order
+* result board
+* finish result
+* local HUD
+* responsive height calculations
+
+Eight rows must not overlap the ultimate controls or other HUD elements.
+
+⸻
+
+32. Localization
+
+Add complete English and French strings for at least:
+
+* dhaval
+* Dhaval ultimate/power description
+* any Dhaval garage explanatory copy
+* condCleansed
+* Cleansed description
+* place8
+* any new accessibility labels
+
+Do not leave French falling back to English.
+
+tools/check.mjs must continue to report no missing translation keys.
+
+Suggested Dhaval description meaning:
+
+Ultimate — nearby racers are engulfed by moving lights. Obscurity starts at Level 1 and grows whenever the affected racer hits a hazard.
+
+Suggested Cleansed description meaning:
+
+Removes all debuffs and prevents new debuffs for its duration.
+
+Write polished translations consistent with the rest of Seren.
+
+⸻
+
+33. Sprite cache
+
+Because Dhaval is part of CAR_IDS, its sprite should be loaded through the same CAR_SPRITES construction path as the rest of the roster.
+
+Verify:
+
+* v_dhaval.PNG is instantiated exactly once
+* late image load triggers the normal preview repaint
+* no extra Image allocation occurs during gameplay/rendering
+* missing/not-yet-decoded image does not alter collision geometry
+
+Update sprite-cache assertions to the new total number of sheets.
+
+⸻
+
+34. Rendering order for Dhaval screen obstruction
+
+Integrate the light overlay into the correct per-view render sequence.
+
+The intended visual stack is:
+
+1. road/world
+2. cars/hazards/world FX
+3. victim’s Dhaval Obscurity light overlay
+4. normal view/HUD conventions as appropriate
+
+Do not draw it once over the entire combined canvas after all local columns have been rendered.
+
+Each viewport must decide independently whether its owner is Dhaval-obscured and at what level.
+
+Existing water obstruction is the closest architectural reference, but Dhaval’s visual should be its own implementation because it has five severity levels and a different appearance.
+
+⸻
+
+35. Do not break current car-specific mechanics
+
+Regression-test all current special cars.
+
+Dhaval must not change:
+
+Flann
+
+* ultimate ram behavior
+* fire rendering
+* contact priority
+
+Neela
+
+* transformation
+* one exchange
+* active-model hitbox
+* hazard privilege
+* swap guard
+
+Lolanthe
+
+* Mind Control aura
+* note effects
+* forced lane behavior
+* ultimate duration
+
+Only add the documented Dhaval→ulting-Lolanthe Cleansed interaction.
+
+Verdant
+
+* invisibility
+* directional defensive contact
+* reveal timing
+* physical presence
+* Mind Control immunity
+
+Only add immunity to Dhaval Obscurity while Verdant’s ultimate is active.
+
+Rhosyn
+
+* Aero-Glow view
+* physical absence
+* canonical race position continuing underneath
+* return transition
+* return Invulnerable
+
+Only add immunity/cleanup of Dhaval Obscurity during its ultimate.
+
+Saffron
+
+* flight
+* airborne contact rules
+* meteor interception
+* transformation geometry
+
+Cole
+
+* car/motorcycle switching
+* separate measured forms
+* speed multipliers
+* ultimate hazard behavior
+
+Dhaval’s addition must not regress any of these.
+
+⸻
+
+36. Update automated invariants
+
+The current checks contain assumptions about:
+
+* seven racers
+* seven sprite cars
+* field size
+* which cars have special ultimate logic
+* per-car race scales
+* car menu buttons/canvases
+* full-field rendering
+
+Update those assertions intentionally.
+
+Do not merely weaken or delete checks until they pass.
+
+The validators should become stricter by adding Dhaval’s expected behavior.
+
+⸻
+
+37. Required Dhaval tests
+
+Extend the existing suites and, if useful, create a focused:
+
+tools/dhaval-check.mjs
+
+but the main invariant suites must also know Dhaval exists.
+
+At minimum test all of the following.
+
+Roster / field
+
+* CAR_IDS.length === 8
+* FIELD_SIZE === 8
+* solo creates seven rivals
+* local 2/3/4 produces six/five/four bots
+* all eight can render together
+* full race remains stable over an extended simulation
+
+Sprite
+
+* v_dhaval.PNG is cached once
+* Dhaval menu preview uses the shared renderer
+* Dhaval road rendering uses the configured race scale
+* aspect ratio is preserved
+* sprite bounds center the measured visible body
+* rendering does not mutate G
+
+Hitbox
+
+* Dhaval uses its own polygon
+* not CAR_HIT_RECT
+* not another car’s polygon
+* hit geometry exists before image load
+* solid measured source points are inside
+* transparent/decorative corners are outside
+* rotation transforms the polygon exactly with the sprite
+* doubling dimensions doubles the hull
+* raceScale scales sprite and hull together
+* player and rival Dhaval produce identical geometry at identical poses
+
+Shared ultimate lifecycle
+
+* normal charge clock unchanged
+* normal 15-second duration unchanged
+* shared ultimate pace behavior unchanged
+* wreck/end/reset works like other cars
+
+Aura
+
+* nearby ordinary racer receives Level 1
+* out-of-range racer does not
+* Dhaval does not target itself
+* finished/wrecked/unreachable racer does not receive it
+* remaining in range refreshes duration without resetting level
+* leaving range allows the tail timer to expire
+* fresh later application begins at Level 1
+
+Severity
+
+* hazard contact increments 1→2→3→4→5
+* never exceeds 5
+* one hazard cannot increment more than once
+* near miss does not increment
+* Perfect Dodge does not increment
+* ultimate-destroyed hazard does not increment
+* shield-absorbed but genuine contact counts once
+* clearing the debuff resets its severity
+
+Rhosyn
+
+* normal Rhosyn can be affected if otherwise eligible
+* ulting Rhosyn cannot be newly affected
+* activating Rhosyn ultimate clears current Dhaval Obscurity
+* no Dhaval effect appears in Aero-Glow
+* returning does not resurrect stale Dhaval state
+
+Verdant
+
+* normal Verdant can be affected
+* ulting Verdant cannot
+* entering Verdant ultimate clears existing Dhaval Obscurity
+* Verdant remains physically collidable as before
+
+Lolanthe
+
+* normal Lolanthe can receive Dhaval Obscurity
+* ulting Lolanthe instead receives Cleansed
+* no Dhaval Obscurity remains on that Lolanthe
+* Lolanthe’s own ultimate continues normally
+
+Cleansed
+
+* instantly clears Slow
+* instantly clears water Obscured
+* instantly clears Dhaval Obscurity
+* instantly clears Skidded
+* instantly clears Mind Controlled
+* removes Dhaval severity state
+* blocks every one of those while active
+* displays as a Buff
+* refreshes instead of stacking
+* expires correctly
+* after expiry a debuff can land normally again
+* does not make the racer noContact()
+* Cleansed racer can still physically collide, lose shield, and be wrecked
+
+Dhaval hazard destruction
+
+Test Dhaval while ulting against:
+
+* tumbleweed
+* meteor
+* puddle
+
+Confirm:
+
+* contacted hazard is removed/destroyed
+* Dhaval receives no corresponding hazard debuff
+* no trap meter penalty
+* ultimate remains running
+
+Test both player and rival Dhaval.
+
+View overlay
+
+For Levels 1–5:
+
+* coverage increases monotonically
+* Level 1 remains fairly open
+* Level 5 is almost fully obscured
+* palette includes white, purple, red, and green
+* only affected viewport receives overlay
+* two, three, and four-way split-screen do not leak
+* render calls do not modify gameplay state
+* reduced motion preserves severity while stopping/reducing motion
+
+AI
+
+* Dhaval-obscured bots do not retain perfect visibility
+* stronger levels reduce perception more than weaker levels
+* Dhaval bot values clusters of eligible targets
+* immune targets are not counted as ordinary offensive value
+
+UI
+
+* eighth car option exists
+* showroom renders Dhaval
+* garage card exists
+* eighth standings row exists
+* eight-place strings exist
+* EN/FR strings complete
+* responsive layouts do not overlap
+
+⸻
+
+38. Run the existing validation suite
+
+Before considering the work complete, run at least:
+
+node tools/check.mjs
+node tools/menu-check.mjs
+node tools/ultimate-check.mjs
+node tools/sprite-check.mjs
+node tools/hitbox-check.mjs
+
+Also run any currently present focused checks such as Cole’s integration check and the new Dhaval check if one is added.
+
+Do not accept a solution that passes only by removing old assertions.
+
+⸻
+
+39. Manual QA
+
+After automated tests, manually test in the browser.
+
+Test Dhaval as:
+
+* player
+* AI
+* local player 2/3/4
+
+Test targets:
+
+* ordinary racer
+* Rhosyn
+* ulting Rhosyn
+* Verdant
+* ulting Verdant
+* Lolanthe
+* ulting Lolanthe
+* Cleansed racer
+
+Manually force Obscurity through all five levels.
+
+Verify visually:
+
+* Level 1 is mild
+* every level is clearly more obscuring than the previous
+* Level 5 leaves the race barely visible
+* lights are unmistakably large white/purple/red/green circles
+* circles pop, move, overlap, and visibly rotate/orbit under full motion
+* reduced motion is stable rather than flashing
+* effect remains clipped to the correct split-screen view
+* HUD remains usable enough to understand the Condition
+* no giant overlay appears over spectators/other players
+
+Also compare Dhaval physically beside every other vehicle and make sure it reads as a full-size Seren race car rather than an undersized sprite.
+
+⸻
+
+40. Documentation
+
+Update documentation that currently says there are seven racers.
+
+At minimum update:
+
+* README roster/full-field information
+* architecture comments that say seven
+* testing documentation
+* project-layout asset list
+
+Document:
+
+* v_dhaval.PNG
+* Dhaval as eighth racer
+* Dhaval’s five-level Obscurity
+* hazard escalation
+* immunity of ulting Rhosyn
+* immunity of ulting Verdant
+* ulting Lolanthe → Cleansed interaction
+* meaning of Cleansed
+* Dhaval’s measured hitbox/race-scale decisions
+
+Prefer adding a focused QA record such as:
+
+docs/DHAVAL-QA.md
+
+with the measured source bounds, chosen race scale, hitbox reasoning, interaction matrix, visual-level expectations, and test evidence.
+
+⸻
+
+41. Important implementation invariants
+
+Treat these as non-negotiable:
+
+1. Dhaval is a real eighth racer, not just an asset/menu entry.
+2. v_dhaval.PNG is measured rather than guessed.
+3. Dhaval has its own precise traced hitbox.
+4. Render size and collision size always agree.
+5. Dhaval uses the shared ultimate charge/duration/pace lifecycle.
+6. Dhaval Obscurity begins at Level 1.
+7. Accepted hazard contacts raise it one level, capped at 5.
+8. Level 5 makes the race barely visible.
+9. The visual is made from large white, purple, red, and green light circles.
+10. Only the affected racer’s own view receives those circles.
+11. An ulting Rhosyn is immune.
+12. An ulting Verdant is immune.
+13. An ulting Lolanthe converts Dhaval’s attempted Obscurity into Cleansed.
+14. Cleansed immediately removes all debuffs.
+15. Cleansed blocks all debuffs for its complete duration.
+16. Cleansed is not physical Invulnerability and does not make a racer intangible.
+17. Dhaval destroys contacted road hazards while ulting.
+18. AI cannot see perfectly through severe Dhaval Obscurity.
+19. Reduced motion keeps the obstruction but removes aggressive movement.
+20. All eight-car, split-screen, localization, and existing-racer regressions must pass.
+
+Do not implement shortcuts that satisfy the appearance while breaking these systemic rules.
