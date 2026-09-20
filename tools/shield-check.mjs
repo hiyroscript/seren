@@ -12,7 +12,7 @@ function setup(kind='player',car='flann'){
   run(`G.local=false;G.car=${JSON.stringify(car)};G.mode='endless';G.rules=defaultRules();
     G.rules.bots=1;G.rules.boost=false;G.rules.bubbles=false;startRace();G.state='running';
     G.nextTrap=G.nextRow=1e9;globalThis.R=G.rivals[0];R.car=G.car;R.human=${kind==='local'};
-    R.changeT=1e9;R.y=playerY-2000;R.x=laneCX(0);R.lane=R.dodgeLane=0;
+    R.changeT=1e9;placeRivalAtY(R, playerY-2000);R.x=laneCX(0);R.lane=R.dodgeLane=0;
     globalThis.who=${kind==='player'?'"me"':'R'};globalThis.o=who==='me'?G:who;`);
 }
 function collide(type){

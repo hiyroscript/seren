@@ -16,11 +16,11 @@ function setup(kind='player', mode='endless'){
     G.rules.boost=false; startRace(); G.state='running';
     G.nextTrap=G.nextRow=1e9; G.speed=BASE_SPEED;
     globalThis.R=G.rivals[0]; R.car='lolanthe'; R.human=${kind === 'local'};
-    R.changeT=1e9; R.abs=BASE_SPEED; R.y=playerY-2000;
+    R.changeT=1e9; R.abs=BASE_SPEED; placeRivalAtY(R, playerY-2000);
     globalThis.who=${kind === 'player' ? '"me"' : 'R'};
     globalThis.o=who==='me'?G:who;
     o.lane=1; o.dodgeLane=1; o.x=laneCX(1); o.ult=0;
-    if(who!=='me'){R.y=playerY;G.lane=0;G.dodgeLane=0;G.x=laneCX(0);}
+    if(who!=='me'){placeRivalAtY(R, playerY);G.lane=0;G.dodgeLane=0;G.x=laneCX(0);}
   `);
 }
 test('shared constants and runtime initialization',()=>{
@@ -159,5 +159,69 @@ test('perfect puddle escape during an ultimate cannot extend its duration',()=>{
   dodgeSetup('player','puddle');
   run('G.rules.ults=true;G.ult=1;startUlt("me");G.speed=BASE_SPEED*ULT_SPEED;h.y=Math.min(...carHit().points.map(p=>p.y))-14-G.speed*0.10;G.lane=2;for(let i=0;i<42;i++)update(1/60);');
   near('G.ultT',14.3); near('G.ult',14.3/15); equal('h.pdDone & 1',1);
+});
+// Independent distances: exercise the real update at/beyond the former clamp.
+for(const y of [-30000, -60000]) test('distant bot progresses through P1 wreck/respawn at y='+y,()=>{
+  setup('bot');
+  run(`G.rules.ults=false;placeRivalAtY(R,${y});R.lane=0;R.x=laneCX(0);
+    destroyCar();G.speed=0;globalThis.startM=metersOf(R);globalThis.playerM=G.meters;`);
+  for(let i=0;i<80;i++){
+    run('globalThis.beforeM=metersOf(R);update(0.05);');
+    near('metersOf(R)-beforeM',420*0.05*0.075);
+    near('R.y',run('playerY-(metersOf(R)-G.meters)/0.075'));
+    if(i===19){near('metersOf(R)-startM',31.5);near('G.meters-playerM',0);}
+  }
+  equal('G.dead',0); equal('G.meters>playerM',true);
+});
+test('distant bot finishes during P1 wreck and rolls onto its parking mark',()=>{
+  setup('bot','bots');
+  run(`G.rules.ults=false;placeRivalAtY(R,-60000);G.finishAt=metersOf(R)+15;
+    destroyCar();G.speed=0;for(let i=0;i<20;i++)update(0.05);`);
+  equal('G.dead>0',true);equal('R.finished',1);equal('G.results.length',1);
+  equal('G.results[0].me',false);equal('G.results[0].place',1);
+  run('for(let i=0;i<200;i++)update(0.05);');
+  near('metersOf(R)',run('parkMeters(1)'),1e-6);
+  near('R.parkM',run('metersOf(R)'));equal('R.lane',run('parkLaneFor(1)'));
+});
+test('a wrecked rival stays at its own distance while the camera advances',()=>{
+  setup('bot');run(`G.rules.ults=false;R.invuln=0;wreckRival(R,null,true);
+    globalThis.startM=metersOf(R);globalThis.startY=R.y;
+    for(let i=0;i<20;i++)update(0.05);`);
+  near('metersOf(R)',run('startM'));near('R.y-startY',420);equal('R.dead>0',true);
+  run('while(R.dead>0)update(0.05);');near('metersOf(R)',run('startM'));
+  run('update(0.05);');equal('metersOf(R)>startM',true);
+});
+test('large separations keep standings and physical proximity independent',()=>{
+  setup('bot');run(`G.rules.bots=5;spawnRivals();
+    G.rivals.forEach((r,i)=>{r.m=10000+i*1000;r.lane=1;r.x=laneCX(1);});`);
+  equal('placeOf("me")',6);equal('placeOf(G.rivals[0])',5);equal('placeOf(G.rivals[4])',1);
+  equal('rearContact(G.rivals[0])',null);
+  run('globalThis.distances=G.rivals.map(metersOf);rebaseWorld(8000);');
+  equal('G.rivals.every((r,i)=>metersOf(r)===distances[i])',true);
+  run('playerY+=100;');
+  equal('G.rivals.every((r,i)=>metersOf(r)===distances[i])',true);
+  near('G.rivals[0].y',run('playerY-(10000-G.meters)/0.075'));
+  run('playerY-=100;');
+});
+test('starting grid retains its original rows and world distances',()=>{
+  setup('bot');run('G.rules.bots=5;spawnRivals();');
+  equal('G.rivals.length',5);
+  for(let i=0;i<5;i++){
+    near(`G.rivals[${i}].y`,run(`playerY+${i<2?0:1}*carH*1.6`));
+    near(`metersOf(G.rivals[${i}])`,run(`G.meters-${i<2?0:1}*carH*1.6*0.075`));
+  }
+});
+test('four local seats and bots progress independently during P1 wreck',()=>{
+  for(let i=0;i<4;i++)f.pads[i]={index:i,connected:true,buttons:[],axes:[0,0]};
+  run(`G.local=true;G.players=4;G.picks=CAR_IDS.slice(0,4);G.padIds=[0,1,2,3];
+    G.mode='local';G.rules=defaultRules();G.rules.boost=false;G.rules.ults=false;
+    G.rules.traps=false;G.rules.bubbles=false;startRace();G.state='running';
+    G.rivals.forEach((r,i)=>{r.m=5000+i*1000;r.abs=BASE_SPEED;r.changeT=1e9;});
+    globalThis.starts=G.rivals.map(metersOf);destroyCar();G.speed=0;
+    globalThis.playerM=G.meters;for(let i=0;i<20;i++)update(0.05);`);
+  equal('G.state','running');equal('G.rivals.filter(r=>r.human).length',3);
+  for(let i=0;i<5;i++)near(`metersOf(G.rivals[${i}])-starts[${i}]`,31.5);
+  near('G.meters-playerM',0);equal('G.dead>0',true);
+  run('G.local=false;');f.pads.length=0;
 });
 console.log(`\n${checks} progression/reward checks passed (real simulation with DOM/Canvas doubles).`);

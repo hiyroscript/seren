@@ -383,12 +383,9 @@ function swapGuarded(who){
 /* ================================================================
    WHERE A RACER ACTUALLY IS
    ================================================================
-   Player one has no race `y` of its own. It is held at playerY while the road
-   runs past underneath, and every rival's position is a screen offset from
-   that camera which metersOf() turns into a distance along the road. So there
-   is no pair of coordinates that means the same thing for both kinds of racer,
-   and anything that reads one racer's place in order to put another racer
-   there has to go through here.
+   Every racer owns its distance: G.meters for player one, R.m for rivals.
+   Rival y is a read-only camera projection, never a source of race progress.
+   World poses let mechanics exchange positions without depending on the camera.
 
    A pose is the honest answer: how far down the road, which lane, and where
    across that lane. It does not move when the camera does, so it is still
@@ -402,23 +399,15 @@ function racerWorldPose(who){
   return { m: me ? G.meters : metersOf(o), lane:o.lane, x:o.x };
 }
 
-/* Move the whole world past player one by dy screen pixels.
-
-   This is the one place player one's position can change, and it is not a
-   special case so much as a single frame of scrolling done in one step: a
-   frame adds d to G.scroll, d*0.075 to G.meters and d to the y of every object
-   on the road, and so does this. Which is why nothing that was not asked to
-   move changes place: every rival, hazard, bubble, slick, seeker, spark,
-   building, trail node and the track seam all travel with the metre count, so
-   metersOf() gives every one of them exactly the answer it gave before. Marks
-   that are already distances - the finish line, a finisher's parking mark -
-   are absolute and are not touched at all. */
+/* Move player one's camera by dy pixels. Only G.meters changes; unrelated
+   rivals keep their canonical metres and their y getters project automatically.
+   Screen-stored scenery, hazards and trails still need the explicit shift.
+   Absolute finish and parking marks are untouched. */
 function rebaseWorld(dy){
   if(!dy) return;
   G.scroll += dy;
   G.meters += dy*0.075;
   for(let i=0;i<G.rivals.length;i++){
-    G.rivals[i].y += dy;
     shiftTrail(G.rivals[i], dy);
   }
   shiftTrail(G, dy);
@@ -447,7 +436,7 @@ function teleportRacerToPose(who, pose){
     G.lane = pose.lane;
     G.x = pose.x;
   } else if(who){
-    who.y = playerY - (pose.m - G.meters)/0.075;
+    who.m = pose.m;
     who.lane = pose.lane;
     who.x = pose.x;
   }
@@ -1110,7 +1099,7 @@ function rearEnd(who, victim){
   const vy = victim.y;
   /* Far enough back to clear both bodies, whatever size each of them is. */
   const gap = (racerDims(who).h + racerDims(vWho).h)/2*0.98;
-  if(meB) G.bumpCD = 0.5; else { who.bumpCD = 0.5; who.y = vy + gap; }
+  if(meB) G.bumpCD = 0.5; else { who.bumpCD = 0.5; who.m = G.meters + (playerY - (vy + gap))*0.075; }
 
   if(meB) G.slowT = Math.max(G.slowT, BUMP_SLOW*0.7);
   else who.slow = Math.max(who.slow, BUMP_SLOW*0.7);

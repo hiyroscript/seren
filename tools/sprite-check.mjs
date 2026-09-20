@@ -203,7 +203,7 @@ test('ordinary boost, ultimate, player blink and rival sprite use existing visua
   assert.equal(fires().length,0,'a blinked-out car draws nothing at all');
   /* Ending it puts the fire out on the very next frame. */
   run('G.invuln=0;endUlt("me");');calls=[];run('render();');assert.equal(fires().length,0);
-  run('G.car="saffron";G.rivals[0].car="flann";G.rivals[0].y=playerY-150;G.rivals[0].invuln=0;G.rivals[0].boosting=true;');
+  run('G.car="saffron";G.rivals[0].car="flann";placeRivalAtY(G.rivals[0], playerY-150);G.rivals[0].invuln=0;G.rivals[0].boosting=true;');
   calls=[];run('render();');assert.equal(sheet("v_flann.PNG").length,1);assert.equal(plumes().length,2);
   assert.equal(fires().length,0);
   /* A rival Flann gets the identical treatment - the effect is per racer, not
@@ -228,7 +228,7 @@ test('three sprite cars are drawn larger on the road; the other three keep their
   clearWorld();
   run(`G.local=false;G.car="flann";G.rules=defaultRules();startRace();clearTimers();
        G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach((r,i)=>{r.car=CAR_IDS[i+1];r.invuln=0;r.dead=0;r.y=playerY-140*(i+1);});`);
+       G.rivals.forEach((r,i)=>{r.car=CAR_IDS[i+1];r.invuln=0;r.dead=0;placeRivalAtY(r, playerY-140*(i+1));});`);
   const drawn=JSON.parse(sizedDraws('render();'));
   const [base,tall]=[run('carW'),run('carH')];
   assert.equal(drawn.length,6);
@@ -465,7 +465,7 @@ test('the road shows the car until the ultimate, the craft during it, and back a
   assert.equal(sheet('v_neela.PNG').length,1);
   assert.equal(sheet('vtm_neela.PNG').length,0);
   /* A rival Neela gets the identical treatment. */
-  run(`G.car="saffron";G.rivals[0].car="neela";G.rivals[0].y=playerY-150;
+  run(`G.car="saffron";G.rivals[0].car="neela";placeRivalAtY(G.rivals[0], playerY-150);
        G.rivals[0].invuln=0;G.rivals[0].dead=0;`);
   calls=[];run('render();');
   assert.equal(sheet('v_neela.PNG').length,1);
@@ -478,7 +478,7 @@ test('a full render of a transforming Neela changes no race state',()=>{
   run(`G.local=false;G.car="neela";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
        G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;});
-       G.rivals[0].car="neela";G.rivals[0].invuln=0;G.rivals[0].y=playerY-160;
+       G.rivals[0].car="neela";G.rivals[0].invuln=0;placeRivalAtY(G.rivals[0], playerY-160);
        G.ult=1;startUlt("me");G.rivals[0].ult=1;startUlt(G.rivals[0]);
        G.speed=BASE_SPEED;G.rivals[0].abs=BASE_SPEED;
        /* Trail laid by the update path itself rather than by a whole frame:
@@ -696,8 +696,8 @@ f.images.forEach(i=>i.load());
 test('a Rhosyn in Aero-Glow is gone from every other view, and so is everything pinned to it',()=>{
   run(`G.local=false;G.car="saffron";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;r.y=playerY+9000;});
-       globalThis.r=G.rivals[0];r.car="rhosyn";r.y=playerY-150;r.boosting=true;
+       G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;placeRivalAtY(r, playerY+9000);});
+       globalThis.r=G.rivals[0];r.car="rhosyn";placeRivalAtY(r, playerY-150);r.boosting=true;
        r.mindT=MIND_CONTROL_TIME;r.mindPop=0;r.invuln=2;`);
   clearWorld();
   /* Before it fires, player one sees the car, its exhaust and its notes. */
@@ -736,7 +736,7 @@ test('the owner is shown Aero-Glow, with its own car and nobody else in it',()=>
   run(`G.local=false;G.car="rhosyn";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
        G.rivals.forEach(r=>{r.car="flann";r.dead=0;r.invuln=0;r.boosting=true;
-                            r.y=playerY-120;});`);
+                            placeRivalAtY(r, playerY-120);});`);
   clearWorld();
   /* The shared world first: five rivals and the player are all drawn. */
   run('G.shake=0;');calls=[];run('render();');
@@ -793,7 +793,7 @@ test('one local column can be in Aero-Glow while the others race on',()=>{
     run(`G.local=true;G.players=${seats};G.rules=defaultRules();
          G.picks=["rhosyn"].concat(CAR_IDS.filter(c=>c!=="rhosyn")).slice(0,${seats});
          G.car=G.picks[0];startRace();clearTimers();G.state="running";G.invuln=0;
-         G.rivals.forEach(r=>{r.dead=0;r.invuln=0;r.y=playerY-carH*0.5;});
+         G.rivals.forEach(r=>{r.dead=0;r.invuln=0;placeRivalAtY(r, playerY-carH*0.5);});
          G.shake=0;`);
     clearWorld();
     /* Seat one is the only Rhosyn, drawn once per column before it fires. */
@@ -867,7 +867,7 @@ test('an ulting Verdant is half in its own view and nothing in anybody else’s'
   assert.ok(drawn.filter(d=>d.car!=='verdant').every(d=>d.alpha===1),'only Verdant fades');
   /* A rival Verdant, seen from player one's view, is gone entirely. */
   run(`endUlt("me");G.verdantHide=0;G.car="saffron";G.rivals[0].car="verdant";
-       G.rivals[0].dead=0;G.rivals[0].invuln=0;G.rivals[0].y=playerY-150;
+       G.rivals[0].dead=0;G.rivals[0].invuln=0;placeRivalAtY(G.rivals[0], playerY-150);
        G.rivals[0].ult=1;startUlt(G.rivals[0]);tickVerdant(G.rivals[0],VERDANT_FADE*2);`);
   drawn=alphaDraws('render();');
   assert.equal(drawn.some(d=>d.car==='verdant'),false,'an invisible car is not drawn at all');
@@ -915,7 +915,7 @@ test('the queen note floats over an ulting Lolanthe, pops in, bobs and pops out'
   f.images.forEach(i=>i.load(1254,1254));
   run(`G.local=false;G.car="lolanthe";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;r.y=playerY+9000;});
+       G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;placeRivalAtY(r, playerY+9000);});
        motionPref="full";`);
   clearWorld();
   /* The notes are drawn in the world at absolute coordinates, so the camera
@@ -965,7 +965,7 @@ test('the queen note floats over an ulting Lolanthe, pops in, bobs and pops out'
 test('exactly three notes orbit a controlled racer, with no bob and no restart',()=>{
   run(`G.local=false;G.car="saffron";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;r.y=playerY+9000;});
+       G.rivals.forEach(r=>{r.car="saffron";r.dead=0;r.invuln=0;placeRivalAtY(r, playerY+9000);});
        motionPref="full";`);
   clearWorld();
   const still=()=>{run('G.shake=0;');calls=[];run('render();');};
@@ -1020,7 +1020,7 @@ test('exactly three notes orbit a controlled racer, with no bob and no restart',
 test('the notes are proportional to whichever car is wearing them',()=>{
   run(`G.local=false;G.car="saffron";G.mode="endless";G.rules=defaultRules();
        startRace();clearTimers();G.state="running";G.invuln=0;G.dead=0;
-       G.rivals.forEach(r=>{r.dead=0;r.invuln=0;r.y=playerY+9000;});`);
+       G.rivals.forEach(r=>{r.dead=0;r.invuln=0;placeRivalAtY(r, playerY+9000);});`);
   clearWorld();
   const sizes={};
   for(const car of JSON.parse(run('JSON.stringify(CAR_IDS)'))){
@@ -1080,7 +1080,7 @@ test('dragon width spans two lanes on phone, desktop and split columns',()=>{
 test('flight draws one raised model above road objects and keeps state unchanged',()=>{
   run(`G.local=false;G.car='saffron';G.rules=defaultRules();G.rules.bots=1;startRace();clearTimers();
     G.state='running';G.invuln=0;G.dead=0;startUlt('me');tickSaffron('me',MORPH_TIME);
-    G.rivals[0].car='flann';G.rivals[0].y=playerY;G.rivals[0].x=G.x;G.rivals[0].invuln=0;`);
+    G.rivals[0].car='flann';placeRivalAtY(G.rivals[0], playerY);G.rivals[0].x=G.x;G.rivals[0].invuln=0;`);
   clearWorld();run('G.shake=0;');const before=run('JSON.stringify(G)');calls=[];run('render();');
   assert.equal(sheet('vtm_saffron.PNG').length,1);
   assert.equal(sheet('v_saffron.PNG').length,0);

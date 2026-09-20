@@ -100,6 +100,9 @@ export function fixture(desktop = true, transformSource = source => source) {
   const context=vm.createContext(sandbox);
   const run=code=>vm.runInContext(code,context);
   for(const file of ['core','i18n','data','audio','runtime','ui','settings','local','ai','mechanics','race','render','hud','input','main'])run(transformSource(read('js/'+file+'.js'), file));
+  run(`function placeRivalAtY(r, y){
+    teleportRacerToPose(r, {m:G.meters+(playerY-y)*0.075, lane:r.lane, x:r.x});
+  }`);
   const $=s=>document.querySelector(s);
   const click=id=>{assert.ok($('#'+id),'missing '+id);$('#'+id).click();};
   const boot=()=>{timers.shift()();};

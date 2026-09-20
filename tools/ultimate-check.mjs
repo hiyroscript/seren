@@ -18,7 +18,7 @@ function setup(car, kind, active = true){
        G.mode = 'endless'; startRace(); G.state = 'running';
        G.nextTrap = 1e9; G.nextRow = 1e9;
        G.rivals[0].car = G.car; G.rivals[0].human = ${kind === 'local'};
-       G.rivals[0].lane = 0; G.rivals[0].x = laneCX(0); G.rivals[0].y = playerY - 2000;
+       G.rivals[0].lane = 0; G.rivals[0].x = laneCX(0); placeRivalAtY(G.rivals[0], playerY - 2000);
        G.rivals[0].changeT = 1e6;
        globalThis.who = ${kind === 'player' ? '"me"' : 'G.rivals[0]'};
        globalThis.o = who === 'me' ? G : who;
@@ -297,7 +297,7 @@ test('rear contact between every pair of ulting cars, priority in the documented
   for(const car of cars) for(const rival of cars){
     const want = pairOutcome(car,rival);
     const label = car + ' into ' + rival;
-    setup(car,'player');run(`globalThis.r=G.rivals[0];r.car=${JSON.stringify(rival)};r.lane=G.lane;r.y=playerY-carH*0.5;startUlt(r);
+    setup(car,'player');run(`globalThis.r=G.rivals[0];r.car=${JSON.stringify(rival)};r.lane=G.lane;placeRivalAtY(r, playerY-carH*0.5);startUlt(r);
       globalThis.beforeM=[G.meters,metersOf(r)];
       rearEnd('me',{me:false,obj:r,lane:r.lane,y:r.y});`);
     if(want === 'swap'){
@@ -393,7 +393,7 @@ function duel(kind, ulting = true){
        rvl.car = ${kind === 'player' ? '"saffron"' : '"flann"'}; rvl.human = ${kind === 'local'};
        rvl.dead = 0; rvl.invuln = 0; rvl.finished = null; rvl.slow = 0; rvl.blind = 0;
        rvl.slip = 0; rvl.shuntT = 0; rvl.bumpCD = 0; rvl.changeT = 1e6;
-       rvl.lane = 1; rvl.x = laneCX(1); rvl.y = playerY - carH*0.4;
+       rvl.lane = 1; rvl.x = laneCX(1); placeRivalAtY(rvl, playerY - carH*0.4);
        globalThis.F = ${kind === 'player' ? '"me"' : 'G.rivals[0]'};
        globalThis.X = ${kind === 'player' ? 'G.rivals[0]' : '"me"'};
        globalThis.fo = F === 'me' ? G : F; globalThis.xo = X === 'me' ? G : X;
@@ -542,13 +542,13 @@ test('flann/player ultimate smashes a falling rock instead of being crushed',()=
    proved on the path the game actually runs rather than on direct calls. */
 test('the ram works through the ordinary per-frame contact sweep',()=>{
   duel('player');
-  run(`rvl.y = playerY - carH*0.2; rvl.x = G.x; rvl.lane = G.lane; update(1/60);`);
+  run(`placeRivalAtY(rvl, playerY - carH*0.2); rvl.x = G.x; rvl.lane = G.lane; update(1/60);`);
   equal('rvl.dead > 0',true);equal('G.dead',0);equal('G.slowT',0);equal('G.ultOn',true);
   /* And from the rival's own sweep: a bot or local-seat Flann running up the
      back of the player wrecks the player from inside updateRival(). */
   for(const kind of ['bot','local']){
     duel(kind);
-    run(`rvl.y = playerY + carH*0.2; rvl.x = G.x; rvl.lane = G.lane;
+    run(`placeRivalAtY(rvl, playerY + carH*0.2); rvl.x = G.x; rvl.lane = G.lane;
          updateRival(rvl,1/60,'running');`);
     equal('G.dead > 0',true);equal('rvl.dead',0);equal('rvl.ultOn',true);
     equal('rvl.slow',0);equal('G.shuntT',0);
@@ -566,7 +566,7 @@ for(const car of ['saffron'])
          G.dead=0;G.invuln=0;G.slowT=0;G.blind=0;G.lane=1;
          globalThis.rvl=G.rivals[0];rvl.car=${JSON.stringify(car)};rvl.dead=0;rvl.invuln=0;
          rvl.slow=0;rvl.blind=0;rvl.shuntT=0;rvl.bumpCD=0;rvl.changeT=1e6;rvl.lane=1;
-         rvl.x=G.x;rvl.y=playerY-carH*0.4;
+         rvl.x=G.x;placeRivalAtY(rvl, playerY-carH*0.4);
          G.ult=1;rvl.ult=1;`);
     equal('flannUltActive("me")',false);equal('flannUltActive(rvl)',false);
     /* tumbleweed still slows it */
@@ -659,7 +659,7 @@ test('every Condition is derived from the state that owns it',()=>{
    collision, and it is never presented as a Condition. */
 test('a finished racer is out of play and wears no badge',()=>{
   setup('flann','player',false);
-  run(`globalThis.r=G.rivals[0];r.y=playerY;r.lane=G.lane;r.x=G.x;
+  run(`globalThis.r=G.rivals[0];placeRivalAtY(r, playerY);r.lane=G.lane;r.x=G.x;
        r.slow=2;r.blind=2;r.slip=2;r.invuln=0;r.finished=1;r.parkM=G.meters;`);
   equal('JSON.stringify(activeConditions(r))','[]');
   equal('noContact(r)',true);
@@ -784,8 +784,8 @@ test('collecting a bubble grants charge but no item to a player, a bot or a loca
        seat.human=true;
        [bot,seat].forEach((c,i)=>{c.dead=0;c.invuln=0;c.finished=null;c.item=null;
          c.useT=0;c.itemHold=0;c.swapT=0;c.canT=0;c.changeT=1e6;
-         c.lane=i===0?0:2;c.x=laneCX(c.lane);c.y=playerY;});
-       G.rivals.slice(2).forEach(c=>{c.y=playerY-4000;});
+         c.lane=i===0?0:2;c.x=laneCX(c.lane);placeRivalAtY(c, playerY);});
+       G.rivals.slice(2).forEach(c=>{placeRivalAtY(c, playerY-4000);});
        globalThis.swept=0;
        globalThis.row=()=>{G.boxes=[{y:playerY,gone:0,s:0,life:BUBBLE_LIFE,
                                      blink:0,ph:0,doomed:false}];
@@ -820,7 +820,7 @@ test('useItem refuses a stale Can, Oil or Seeker while rewards are off',()=>{
          G.nextTrap=1e9;G.nextRow=1e9;G.traps=[];G.slicks=[];G.missiles=[];
          G.dead=0;G.invuln=0;G.finished=null;G.canT=0;
          globalThis.bot=G.rivals[0];bot.dead=0;bot.invuln=0;bot.finished=null;
-         bot.canT=0;bot.y=playerY-300;
+         bot.canT=0;placeRivalAtY(bot, playerY-300);
          G.item=${JSON.stringify(id)};bot.item=${JSON.stringify(id)};
          globalThis.usedMe=useItem('me');globalThis.usedBot=useItem(bot);`);
     equal('usedMe',false);equal('usedBot',false);
@@ -869,7 +869,7 @@ function duo(nSide, vSide, ulting = true){
          r.finished = null; r.slow = 0; r.blind = 0; r.slip = 0; r.shuntT = 0;
          r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.whiteT = 0; r.morphT = 0;
          r.swapGuard = 0; r.ult = 0; r.lane = 1; r.x = laneCX(1);
-         r.y = playerY - 3000 - i*900; r.abs = BASE_SPEED;
+         placeRivalAtY(r, playerY - 3000 - i*900); r.abs = BASE_SPEED;
        });
        globalThis.N = ${nExpr}; globalThis.V = ${vExpr};
        globalThis.no = N === 'me' ? G : N; globalThis.vo = V === 'me' ? G : V;
@@ -887,9 +887,9 @@ function duo(nSide, vSide, ulting = true){
 /* Put the two of them body to body, without going near the helper the mechanic
    itself uses to move racers. */
 function collide(){
-  run(`if(N === 'me'){ V.lane = G.lane; V.x = G.x; V.y = playerY; }
-       else if(V === 'me'){ N.lane = G.lane; N.x = G.x; N.y = playerY; }
-       else { V.lane = N.lane; V.x = N.x; V.y = N.y; }`);
+  run(`if(N === 'me'){ V.lane = G.lane; V.x = G.x; placeRivalAtY(V, playerY); }
+       else if(V === 'me'){ N.lane = G.lane; N.x = G.x; placeRivalAtY(N, playerY); }
+       else { V.lane = N.lane; V.x = N.x; placeRivalAtY(V, N.y); }`);
 }
 /* Let the road actually run, so an activation pose is genuinely in the past by
    the time it is used. */
@@ -1173,7 +1173,7 @@ test('the exchange also runs through the ordinary per-frame contact sweep',()=>{
   /* Player one driving into the back of a bot, through update(). */
   duo('me','bot');
   drive(45);
-  run(`V.y = playerY - carH*0.2; V.x = G.x; V.lane = G.lane;
+  run(`placeRivalAtY(V, playerY - carH*0.2); V.x = G.x; V.lane = G.lane;
        globalThis.saved = { m:G.neelaOrigin.m, lane:G.neelaOrigin.lane };
        globalThis.victimPose = pose(V);
        update(1/60);`);
@@ -1188,7 +1188,7 @@ test('the exchange also runs through the ordinary per-frame contact sweep',()=>{
   for(const side of ['bot','seat']){
     duo(side,'me');
     drive(45);
-    run(`N.y = playerY + carH*0.2; N.x = G.x; N.lane = G.lane;
+    run(`placeRivalAtY(N, playerY + carH*0.2); N.x = G.x; N.lane = G.lane;
          globalThis.saved = { m:N.neelaOrigin.m, lane:N.neelaOrigin.lane };
          globalThis.mine = pose('me');
          updateRival(N, 1/60, 'running');`);
@@ -1473,7 +1473,7 @@ test('a whiteout covers only the views it belongs to, in two, three and four sea
       equal(`whiteoutActive(G.humans[${i}])`,false);
     /* Exchanging with a seated human whites that seat out and nobody else. */
     run(`globalThis.other = G.humans[1];
-         other.lane = G.lane; other.x = G.x; other.y = playerY;
+         other.lane = G.lane; other.x = G.x; placeRivalAtY(other, playerY);
          other.dead = 0; other.invuln = 0; other.finished = null;
          G.whiteT = 0; other.whiteT = 0;
          rearEnd("me", {me:false, obj:other, lane:other.lane, y:other.y});
@@ -1489,7 +1489,7 @@ test('a whiteout covers only the views it belongs to, in two, three and four sea
          globalThis.bot = G.rivals.find(r => !r.human);
          G.car = "neela"; G.neelaForm = false; G.neelaSwapped = false;
          G.ult = 1; G.ultOn = false; startUlt("me");
-         bot.lane = G.lane; bot.x = G.x; bot.y = playerY;
+         bot.lane = G.lane; bot.x = G.x; placeRivalAtY(bot, playerY);
          bot.dead = 0; bot.invuln = 0; bot.finished = null;
          rearEnd("me", {me:false, obj:bot, lane:bot.lane, y:bot.y});`);
     equal('whiteoutActive(bot)',true);
@@ -1531,7 +1531,7 @@ function pair(aSide, bSide, aCar, bCar){
          r.bumpCD = 0; r.changeT = 1e6; r.tilt = 0; r.ult = 0;
          r.mindT = 0; r.mindPop = 0; r.mindOut = 0;
          r.lane = 1; r.x = laneCX(1);
-         r.y = playerY - 3000 - i*900; r.abs = BASE_SPEED;
+         placeRivalAtY(r, playerY - 3000 - i*900); r.abs = BASE_SPEED;
        });
        globalThis.A = ${aExpr}; globalThis.B = ${bExpr};
        globalThis.ao = A === 'me' ? G : A; globalThis.bo = B === 'me' ? G : B;
@@ -1546,9 +1546,9 @@ function pair(aSide, bSide, aCar, bCar){
           position and the only way to get it. */
        globalThis.putBeside = (w, other, dy) => {
          const o = w === 'me' ? G : w, t = other === 'me' ? G : other;
-         if(w === 'me'){ G.lane = t.lane; G.x = t.x; other.y = playerY - dy; }
-         else if(other === 'me'){ o.lane = G.lane; o.x = G.x; o.y = playerY + dy; }
-         else { o.lane = t.lane; o.x = t.x; o.y = t.y + dy; }
+         if(w === 'me'){ G.lane = t.lane; G.x = t.x; placeRivalAtY(other, playerY - dy); }
+         else if(other === 'me'){ o.lane = G.lane; o.x = G.x; placeRivalAtY(o, playerY + dy); }
+         else { o.lane = t.lane; o.x = t.x; placeRivalAtY(o, t.y + dy); }
        };
        globalThis.others = () => G.rivals.filter(r => r !== A && r !== B);`);
 }
@@ -1664,7 +1664,7 @@ test('the forced move goes through the real barge and can wreck both cars',()=>{
        putBeside(B, A, -mindRange()*0.2);
        B.lane = 1; B.x = laneCX(1);
        globalThis.L0 = others()[0]; globalThis.R0 = others()[1];
-       [L0, R0].forEach((c, i) => { c.lane = i*2; c.x = laneCX(i*2); c.y = B.y;
+       [L0, R0].forEach((c, i) => { c.lane = i*2; c.x = laneCX(i*2); placeRivalAtY(c, B.y);
          c.dead = 0; c.invuln = 0; c.changeT = 1e6; });
        ao.ult = 1; startUlt(A); update(1/60);`);
   equal('B.lane !== 1',true,'the victim was left in Lolanthe’s lane');
@@ -1683,7 +1683,7 @@ test('the forced move goes through the real barge and can wreck both cars',()=>{
   run(`G.lane = 0; G.x = laneCX(0);
        putBeside(B, A, -mindRange()*0.2);
        B.lane = 0; B.x = laneCX(0);
-       globalThis.M0 = others()[0]; M0.lane = 1; M0.x = laneCX(1); M0.y = B.y;
+       globalThis.M0 = others()[0]; M0.lane = 1; M0.x = laneCX(1); placeRivalAtY(M0, B.y);
        M0.dead = 0; M0.invuln = 0; M0.changeT = 1e6;
        ao.ult = 1; startUlt(A); update(1/60);`);
   equal('B.lane',1,'from the wall there is one door and it was taken');
@@ -1870,7 +1870,7 @@ test('the defence also runs through the ordinary per-frame contact sweep',()=>{
   /* The player drives up the back of a car it cannot see, on the frame loop
      rather than through a direct call. */
   pair('me','bot','saffron','verdant');
-  run(`bo.ult = 1; startUlt(B); B.lane = G.lane; B.x = G.x; B.y = playerY - carH*0.2;
+  run(`bo.ult = 1; startUlt(B); B.lane = G.lane; B.x = G.x; placeRivalAtY(B, playerY - carH*0.2);
        B.changeT = 1e6; B.abs = BASE_SPEED; update(1/60);`);
   equal('G.dead > 0',true,'the player drove into the hidden car and lived');
   equal('B.dead',0);equal('B.ultOn',true);
@@ -1878,7 +1878,7 @@ test('the defence also runs through the ordinary per-frame contact sweep',()=>{
   /* And the other way, from inside updateRival(): a bot running up the back of
      an invisible player is destroyed by it. */
   pair('me','bot','verdant','saffron');
-  run(`ao.ult = 1; startUlt(A); B.lane = G.lane; B.x = G.x; B.y = playerY + carH*0.2;
+  run(`ao.ult = 1; startUlt(A); B.lane = G.lane; B.x = G.x; placeRivalAtY(B, playerY + carH*0.2);
        B.changeT = 1e6; B.abs = BASE_SPEED; updateRival(B, 1/60, 'running');`);
   equal('B.dead > 0',true);
   equal('G.dead',0);equal('G.ultOn',true);
@@ -1900,7 +1900,7 @@ test('an ulting Verdant and an ulting Flann destroy each other with nothing left
   /* And through the lane barge, which must agree with the rear-end. */
   pair('me','bot','verdant','flann');
   run(`ao.ult = 1; startUlt(A); bo.ult = 1; startUlt(B);
-       B.lane = G.lane; B.x = G.x; B.y = playerY;
+       B.lane = G.lane; B.x = G.x; placeRivalAtY(B, playerY);
        globalThis.out = bumpTarget({me:false,obj:B,lane:B.lane}, 1, 'me');`);
   equal('out','stopped');
   equal('G.dead > 0',true);equal('B.dead > 0',true);
@@ -1952,11 +1952,11 @@ test('the Neela-versus-Flann priority is untouched where no Verdant is involved'
 });
 test('bots do not aim at what they cannot see, and still collide with it',()=>{
   pair('me','bot','verdant','saffron');
-  run(`ao.ult = 1; startUlt(A); B.lane = 1; B.x = laneCX(1); B.y = playerY - carH*3;
+  run(`ao.ult = 1; startUlt(A); B.lane = 1; B.x = laneCX(1); placeRivalAtY(B, playerY - carH*3);
        G.lane = 1; G.x = laneCX(1); B.human = false;
        /* Everybody else out of the bot's lane and far up the road, so what is
           in front of it and behind it is the hidden car or nothing. */
-       others().forEach(r => { r.y = playerY - 20000; r.lane = 0; r.x = laneCX(0); });
+       others().forEach(r => { placeRivalAtY(r, playerY - 20000); r.lane = 0; r.x = laneCX(0); });
        for(let i=0;i<20;i++) update(1/60);
        globalThis.s = botSense(B);`);
   equal('s.all.find(x => x.who === A).seen',false);
@@ -1980,12 +1980,12 @@ test('both new ultimates value themselves without claiming the other two do not'
   /* A crowd is worth something to Lolanthe and an empty road is not. */
   pair('me','bot','lolanthe','saffron');
   run(`A === 'me'; globalThis.L = G.rivals[1]; L.car = "lolanthe"; L.human = false;
-       L.lane = 1; L.x = laneCX(1); L.y = playerY - 2000; L.dead = 0; L.invuln = 0;
-       G.rivals.forEach(r => { if(r !== L) r.y = playerY - 9000; });
+       L.lane = 1; L.x = laneCX(1); placeRivalAtY(L, playerY - 2000); L.dead = 0; L.invuln = 0;
+       G.rivals.forEach(r => { if(r !== L) placeRivalAtY(r, playerY - 9000); });
        G.lane = 0; G.x = laneCX(0); globalThis.s = botSense(L);`);
   const alone = run('botUltExtra(L, s)');
   assert.equal(alone,0,'an empty road is worth nothing extra');
-  run(`G.rivals.forEach(r => { if(r !== L){ r.y = L.y + carH; r.lane = 1;
+  run(`G.rivals.forEach(r => { if(r !== L){ placeRivalAtY(r, L.y + carH); r.lane = 1;
          r.dead = 0; r.invuln = 0; } });
        globalThis.s = botSense(L);`);
   const crowd = run('botUltExtra(L, s)');
@@ -1997,8 +1997,8 @@ test('both new ultimates value themselves without claiming the other two do not'
   /* Alone on the road, with nobody within reach in either direction, it is
      worth nothing beyond the pace - which is a different judgement from the
      ram's and from the exchange's, not a copy of either. */
-  run(`L.y = playerY - 12000;
-       G.rivals.forEach(r => { if(r !== L) r.y = playerY - 30000; });
+  run(`placeRivalAtY(L, playerY - 12000);
+       G.rivals.forEach(r => { if(r !== L) placeRivalAtY(r, playerY - 30000); });
        globalThis.s = botSense(L);`);
   assert.equal(run('botUltExtra(L, s)'),0,'an empty road is worth nothing extra');
   /* And the other two are exactly as they were. */
@@ -2278,7 +2278,7 @@ test('shared-road pickups and offensive systems all skip a departed Rhosyn',()=>
      and what it leaves is still there for whoever does reach it. */
   run(`G.boxes = [{ y: yOf(A), gone:0, s:0.5, life:BUBBLE_LIFE, blink:0, ph:0, doomed:false }];
        if(A === 'me'){ G.lane = 1; G.x = laneCX(1); } else { A.lane = 1; A.x = laneCX(1); }
-       G.rivals.forEach(r => { if(r !== A) r.y = playerY - 9000; });
+       G.rivals.forEach(r => { if(r !== A) placeRivalAtY(r, playerY - 9000); });
        updateBubbles(1/60, 0, 'running');`);
   equal('G.boxes.length',1);
   equal('G.boxes[0].gone',0,'it collected a bubble it could not see');
@@ -2469,7 +2469,7 @@ for(const kind of ['player','bot','local']){
     equal('controlsLocked(who)',true);equal('o.boosting',false);equal('o.lane',2);
     near('o.ultT',14.75);
     // Place the other racer under the canonical road footprint.
-    run(`tgt.x=o.x;tgt.lane=o.lane;if(target==='me') playerY=o.y;else tgt.y=playerY;
+    run(`tgt.x=o.x;tgt.lane=o.lane;if(target==='me') placeRivalAtY(o, playerY);else placeRivalAtY(tgt, playerY);
          o.mindT=0;tickUlt(who,20);`);
     equal('o.saffronPhase','drop');equal('racerModel(who).key','saffron');
     equal('o.saffronLift',1);
@@ -2498,14 +2498,14 @@ for(const kind of ['player','bot','local']){
 test('Saffron touchdown resolves every overlap and respects protection',()=>{
   for(const state of ['ordinary','invuln','finished','aero','air','distant']){
     setup('saffron','player');
-    run(`globalThis.v=G.rivals[0];v.car='rhosyn';v.x=G.x;v.y=playerY;v.lane=G.lane;
+    run(`globalThis.v=G.rivals[0];v.car='rhosyn';v.x=G.x;placeRivalAtY(v, playerY);v.lane=G.lane;
       v.dead=0;v.invuln=0;v.finished=null;
       ${state==='invuln'?'v.invuln=2;':state==='finished'?'v.finished=1;':state==='aero'?'startUlt(v);':state==='air'?"v.car='saffron';startUlt(v);":state==='distant'?'v.x+=roadW*2;':''}
       endUlt('me');tickSaffron('me',1);`);
     equal('v.dead>0',state==='ordinary');
   }
   setup('saffron','player');
-  run(`globalThis.v=G.rivals[0];v.car='flann';v.x=G.x;v.y=playerY;v.invuln=0;
+  run(`globalThis.v=G.rivals[0];v.car='flann';v.x=G.x;placeRivalAtY(v, playerY);v.invuln=0;
        globalThis.v2={...v};G.rivals.push(v2);endUlt('me');tickSaffron('me',1);`);
   equal('v.dead>0 && v2.dead>0',true);
 });

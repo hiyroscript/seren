@@ -86,7 +86,7 @@ test('polygon contact handles edge touch, crossing edges and complete containmen
 });
 test('player and rival use identical body geometry at the same position',()=>{
   for(const car of Array.from(run('CAR_IDS'))){
-    run(`G.car="${car}";Object.assign(G.rivals[0],{car:G.car,x:G.x,y:playerY,tilt:G.tilt});`);
+    run(`G.car="${car}";Object.assign(G.rivals[0],{car:G.car,x:G.x,m:G.meters+(playerY-(playerY))*0.075,tilt:G.tilt});`);
     eq('JSON.stringify(carHit())===JSON.stringify(carHit(G.rivals[0]))',true);
   }
 });
@@ -95,7 +95,7 @@ test('DPR and view offsets never affect world-space contact',()=>{
   assert.equal(run('JSON.stringify(carHit())'),before);
 });
 test('rear contact rejects shared lane labels with physically separated cars',()=>{
-  run('G.car="flann";G.tilt=0;G.lane=1;G.rivals.forEach(r=>{r.dead=0;r.invuln=0;r.finished=null;r.y=playerY+1000;});Object.assign(G.rivals[0],{car:"flann",lane:1,x:G.x+150,y:playerY-120,tilt:0});');
+  run('G.car="flann";G.tilt=0;G.lane=1;G.rivals.forEach(r=>{r.dead=0;r.invuln=0;r.finished=null;placeRivalAtY(r, playerY+1000);});Object.assign(G.rivals[0],{car:"flann",lane:1,x:G.x+150,m:G.meters+(playerY-(playerY-120))*0.075,tilt:0});');
   eq('rearContact("me")',null);
 });
 test('rear contact follows overlapping bodies during a lane transition',()=>{
@@ -104,19 +104,19 @@ test('rear contact follows overlapping bodies during a lane transition',()=>{
   /* Two Flanns separate at the sum of their two half-heights, and both of
      those are now scaled - so the clearance moved with the render rather than
      staying at the old shared car box. */
-  run('G.rivals[0].y=playerY-186*0.84*1.12-0.01;');eq('rearContact("me")',null);
-  run('G.rivals[0].y=playerY-186*0.84*1.12+0.5;');
+  run('placeRivalAtY(G.rivals[0], playerY-186*0.84*1.12-0.01);');eq('rearContact("me")',null);
+  run('placeRivalAtY(G.rivals[0], playerY-186*0.84*1.12+0.5);');
   eq('rearContact("me").obj===G.rivals[0]',true);
   /* The old unscaled clearance is now firmly inside the bigger car. */
-  run('G.rivals[0].y=playerY-186*0.84-0.01;');
+  run('placeRivalAtY(G.rivals[0], playerY-186*0.84-0.01);');
   eq('rearContact("me").obj===G.rivals[0]',true);
 });
 test('barge queries still project into the requested lane',()=>{
-  run('G.x=laneCX(0);G.lane=0;Object.assign(G.rivals[0],{lane:1,x:laneCX(1),y:playerY});');
+  run('G.x=laneCX(0);G.lane=0;Object.assign(G.rivals[0],{lane:1,x:laneCX(1),m:G.meters+(playerY-(playerY))*0.075});');
   eq('carAt(1,playerY,"me").obj===G.rivals[0]',true);
 });
 test('finish, wreck and invulnerability protections still exclude contact',()=>{
-  run('G.rivals[0].y=playerY-100;G.x=G.rivals[0].x;');
+  run('placeRivalAtY(G.rivals[0], playerY-100);G.x=G.rivals[0].x;');
   for(const [key,value] of [['invuln',2],['dead',2],['finished',1]]){
     run(`G.rivals[0].${key}=${value};`);eq('rearContact("me")',null);
     run(`G.rivals[0].${key}=${key==='finished'?'null':0};`);
@@ -222,7 +222,7 @@ test('hull returns to the car on a racer swap and on natural expiry',()=>{
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0;G.dead=0;G.invuln=0;G.lane=1;G.x=laneCX(1);
        globalThis.v=G.rivals[0];v.car="saffron";v.dead=0;v.invuln=0;v.finished=null;
-       v.lane=1;v.x=G.x;v.y=playerY-carH*0.3;v.tilt=0;v.changeT=1e6;
+       v.lane=1;v.x=G.x;placeRivalAtY(v, playerY-carH*0.3);v.tilt=0;v.changeT=1e6;
        G.ult=1;startUlt("me");`);
   eq('carHit().points.length',20);
   run('rearEnd("me",{me:false,obj:v,lane:v.lane,y:v.y});');
@@ -243,7 +243,7 @@ test('player and rival wear the alternate body identically',()=>{
   run(`G.local=false;G.car="neela";G.rules=defaultRules();G.rules.bots=1;
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0.11;G.x=200;playerY=300;
-       globalThis.r=G.rivals[0];r.car="neela";r.x=G.x;r.y=playerY;r.tilt=G.tilt;
+       globalThis.r=G.rivals[0];r.car="neela";r.x=G.x;placeRivalAtY(r, playerY);r.tilt=G.tilt;
        r.dead=0;r.invuln=0;r.finished=null;
        G.ult=1;startUlt("me");r.ult=1;startUlt(r);`);
   eq('neelaFormActive("me") && neelaFormActive(r)',true);
@@ -258,16 +258,16 @@ test('alternate-form contact still meets edge touch and a tiny separation',()=>{
   run(`G.local=false;G.car="neela";G.rules=defaultRules();G.rules.bots=1;
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=100;carH=186;G.tilt=0;G.lane=1;G.x=laneCX(1);G.dead=0;G.invuln=0;
-       G.rivals.forEach(r=>{r.y=playerY+9000;r.finished=null;});
+       G.rivals.forEach(r=>{placeRivalAtY(r, playerY+9000);r.finished=null;});
        globalThis.r=G.rivals[0];r.car="saffron";r.dead=0;r.invuln=0;r.finished=null;
        r.lane=1;r.x=G.x;r.tilt=0;G.ult=1;startUlt("me");`);
   /* Nose of the alternate body to tail of a rectangle car: touching counts,
      a thousandth of a pixel clear does not. */
   const reach=run('carHit().points.map(p=>playerY-p.y).reduce((a,b)=>Math.max(a,b))');
   const theirs=run("Math.max(...CARS.saffron.hitShape.map(p=>p[1]))*carDims('saffron').h");
-  run(`r.y=playerY-${reach+theirs}-0.001;`);
+  run(`placeRivalAtY(r, playerY-${reach+theirs}-0.001);`);
   eq('hitPolygonsOverlap(carHit().points,carHit(r).points)',false);
-  run(`r.y=playerY-${reach+theirs}+0.001;`);
+  run(`placeRivalAtY(r, playerY-${reach+theirs}+0.001);`);
   eq('hitPolygonsOverlap(carHit().points,carHit(r).points)',true);
 });
 test('Neela hit geometry exists before either of its images loads',()=>{
@@ -354,7 +354,7 @@ function rhosynSetup(tilt){
        G.mode="endless";startRace();clearTimers();G.state="running";
        carW=${carW0};carH=${carH0};G.x=200;playerY=300;G.tilt=${tilt || 0};
        G.dead=0;G.invuln=0;G.finished=null;clearAeroGlowState("me");
-       G.rivals.forEach(r=>{r.y=playerY+9000;r.dead=0;r.invuln=0;r.finished=null;});`);
+       G.rivals.forEach(r=>{placeRivalAtY(r, playerY+9000);r.dead=0;r.invuln=0;r.finished=null;});`);
 }
 /* A point in logical car units, put where the renderer would put it. */
 function atCar(px,py){

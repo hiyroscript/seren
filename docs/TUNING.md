@@ -23,8 +23,10 @@ Change a number, reload the page. There is nothing to rebuild.
 | `MAX_TIER` | derived | `(MAX_MULT − 1) / MULT_STEP` = 20 tiers, so 6 minutes 40 seconds to top speed |
 | `TRACK_SECONDS` | `60` | seconds on a track before it hands over to the next |
 
-Distance is `speed × dt × 0.075`, so 1.00× ≈ 31.5 m/s. That `0.075` is inline in
-`race.js` and in `metersOf()`; it is the only place metres and pixels meet.
+Distance is `speed × dt × 0.075`, so 1.00× ≈ 31.5 m/s. Each racer integrates its own physical speed into canonical metres (`G.meters`
+for Player 1, `R.m` for rivals). `metersOf()` only reads those metres. The same
+`0.075` conversion projects rival camera y and converts grid offsets, contacts,
+teleports and parking offsets; camera coordinates never determine normal progress.
 
 ## Race structure
 

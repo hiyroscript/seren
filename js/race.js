@@ -113,7 +113,10 @@ function spawnRivals(){
     const lane = grid[i];
     const back = rows[i]*carH*1.6;
     return {
-      car:id, lane:lane, dodgeLane:lane, x:laneCX(lane), y:playerY + back, tilt:0,
+      car:id, lane:lane, dodgeLane:lane, x:laneCX(lane), m:G.meters - back*0.075, tilt:0,
+      /* Camera projection only: movement, contact and teleports write m.
+         Deriving on read also keeps resize/rebase and every consumer coherent. */
+      get y(){ return parkY(this.m); },
       /* a person on the controls, or the bot mind */
       human:i < seats.length, seat:i + 1, pad:i + 1,
       padId:(G.padIds && G.padIds[i + 1] !== undefined ? G.padIds[i + 1] : null),
@@ -159,7 +162,7 @@ function spawnRivals(){
 function toFlag(){ return G.mode === "bots" || G.mode === "local"; }
 
 /* distance along the road, in metres, for anyone on it */
-function metersOf(R){ return R ? G.meters + (playerY - R.y)*0.075 : G.meters; }
+function metersOf(R){ return R ? R.m : G.meters; }
 function rivalMeters(){ return G.rivals.length ? metersOf(G.rivals[0]) : 0; }
 
 /* ---------------- race lifecycle --------------------------------- */
@@ -726,7 +729,6 @@ function updateRival(R, dt, st){
     R.dead -= dt;
     if(R.dead <= 0){ R.dead = 0; resetShield(R); R.invuln = INVULNERABLE_TIME; }
     R.abs = 0;
-    R.y += G.speed*dt;
     return;
   }
   if(R.finished !== null){                     /* over the line: roll out onto the mark */
@@ -739,7 +741,7 @@ function updateRival(R, dt, st){
        there is nothing moving to chase, so the car sits exactly on its mark
        and the camera does the rest. */
     R.parkM = lerp(R.parkM, parkMeters(R.finished), 1 - Math.pow(0.02, dt));
-    R.y = parkY(R.parkM);
+    R.m = R.parkM;
     R.x = lerp(R.x, laneCX(R.lane), 1 - Math.pow(0.00008, dt));
     return;
   }
@@ -826,8 +828,7 @@ function updateRival(R, dt, st){
 
   const ahead = rearContact(R);
   if(ahead && ahead.y < R.y) rearEnd(R, ahead);        /* it runs into their back */
-  R.y += (G.speed - R.abs)*dt;
-  R.y = clamp(R.y, -30000, H + 30000);
+  R.m += R.abs*dt*0.075;
 
   /* reaction: a beat late, and now and then missed entirely */
   const inLane = s.now[R.lane] === 1;

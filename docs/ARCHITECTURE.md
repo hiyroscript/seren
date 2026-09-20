@@ -530,21 +530,29 @@ cannot be read as a second contact in the same frame.
 
 ### Where a racer actually is
 
-Player one has no race `y`. It is held at `playerY` while the road runs past, and
-every rival's position is a screen offset from that camera which `metersOf()`
-turns into a distance. So nothing may compare or copy positions directly:
+Every racer owns an authoritative longitudinal distance: `G.meters` for Player 1
+and `R.m` for each rival (bot or local human). `metersOf(R)` reads that distance.
+Live rivals advance by their own `R.abs * dt * 0.075`, independently of visibility,
+Player 1's movement, or Player 1's wreck timer. A rival's own wreck holds its
+metres fixed until it respawns.
 
-- `racerWorldPose(who)` returns `{ m, lane, x }` — distance along the road,
-  lane, and lateral position. It does not move when the camera does, which is
-  what lets Neela hand back a pose taken fifteen seconds earlier.
-- `teleportRacerToPose(who, pose)` places a rival outright. For player one it
-  calls `rebaseWorld(dy)`, which is the one place player one's position can
-  change and is arithmetically a single frame of scrolling done in one step:
-  `G.scroll`, `G.meters` and the `y` of every rival, hazard, bubble, slick,
-  seeker, spark, building, prop, walk, trail node and the track seam all travel
-  together. The invariant is that `metersOf()` gives every unrelated racer
-  exactly the answer it gave before, and marks that are already distances — the
-  finish line, a finisher's `parkM` — are untouched.
+`R.y` is a read-only getter: `playerY - (R.m - G.meters) / 0.075`.
+It has no clamp and no stored simulation state. Camera movement, resizing and
+rebasing therefore cannot change progress or collapse separated racers into
+false collision proximity. AI, HUD, targeting and finishes use `metersOf()`;
+rendering and collision geometry read the same unclamped projection.
+
+- `racerWorldPose(who)` returns `{ m, lane, x }`, independent of the camera.
+- `teleportRacerToPose(who, pose)` sets a rival's canonical metres, lane and x.
+  For Player 1 it calls `rebaseWorld(dy)`: `G.meters` and `G.scroll` change,
+  screen-stored hazards/scenery/trails shift, and rival projections follow
+  automatically. Unrelated rivals' metres, finish lines and parking marks do
+  not change. Neela swaps use these same helpers.
+- Rear-end separation writes canonical metres; it is actual displacement,
+  unlike a camera rebase. Other y mutations belong to hazards, effects or scenery.
+- Finish places are locked at crossing. During rollout, `R.m` follows `R.parkM`
+  with the existing easing and parking staircase, so parked cars keep their
+  world location while the rest of the field races.
 
 ### Which body a racer is wearing
 
