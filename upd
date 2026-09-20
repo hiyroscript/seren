@@ -1,808 +1,504 @@
-Work directly in the hiyroscript/seren repository on the current main implementation.
+Work in the hiyroscript/seren repository on the current main branch.
 
-Implement a focused shield-system visual and behavior update. Preserve the existing architecture, game feel, six-half durability model, wreck/respawn lifecycle, split-screen behavior, car-specific ultimate mechanics, accessibility, and dependency-free Canvas/DOM design.
+Objective
 
-Do not redesign unrelated HUD systems, hazards, ultimates, collisions, or car mechanics.
+Fix a race-simulation bug where racers that are sufficiently far away from Player 1 can effectively stop making race progress when Player 1 is destroyed/wrecked.
 
-Goal
+Seren is supposed to behave like an actual race simulation: every racer still in the race must have independent longitudinal progress. Destroying the player may stop that player’s car temporarily, but it must never stop, freeze, pause, tether, or otherwise suspend the other racers.
 
-Make four coordinated changes:
+This must be fixed at the simulation/state-model level. Do not hide the problem with a larger coordinate clamp, special-case HUD math, fake catch-up, or by continuing to advance the player’s distance while their car is wrecked.
 
-1. Change shield depletion order so damage begins with the third/cyan bar instead of the first/pink bar.
-2. Restyle all shield bars to remove outlines and half-divider lines and give the colored fill a polished gradient.
-3. When a non-view-owner racer survives a hazard collision, briefly show its current shield bar/color and half-state directly above the car for exactly about one second.
-4. While a racer’s ultimate is actively running, ordinary shield-consuming hazard contact must not consume a shield half.
+Confirmed relevant architecture
 
-These changes must work identically for player one, bots, and local multiplayer racers.
-
-⸻
-
-Existing implementation to preserve
-
-The current durability system is already centralized and should remain that way.
-
-Important existing definitions:
-
-* SHIELD_COLORS in js/data.js is currently:
-    * pink #FF8CE1
-    * yellow #FFEB96
-    * cyan #78EBFF
-* SHIELD_BARS = 3
-* SHIELD_HALVES_PER_BAR = 2
-* SHIELD_MAX = 6
-* every puddle/tumbleweed durability hit removes one half
-* the sixth durability hit wrecks the racer
-* respawn restores all six halves
-* meteor/combat destruction bypasses durability and does not decrement it
-* hitShield(who) in js/mechanics.js is the shared durability mutation
-* shieldBarFill(halves, bar) is the shared fill calculation
-* player and rivals both use the same shield model
-* the DOM HUD uses paintShield()
-* local/split-screen HUD uses Canvas hudShield()
-* VOWN in the renderer identifies the owner of the current viewport
-* condition badges already use the correct per-view pattern: do not draw the owner’s world-space status over their own car
-* o.ultOn is the canonical shared flag for an actively running ultimate
-* ultDelta() already ignores charge penalties/rewards while an ultimate is active
-
-Do not introduce a second durability system.
-
-⸻
-
-1. Reverse shield depletion order
-
-Keep the visible bar order exactly:
-
-pink | yellow | cyan
-
-Do not reorder the DOM elements and do not swap the colors.
-
-Instead, change the shared fill calculation so durability is removed from right to left:
-
-cyan → yellow → pink
-
-The progression must be exactly:
-
-Shield halves remaining	Pink	Yellow	Cyan
-6	100%	100%	100%
-5	100%	100%	50%
-4	100%	100%	0%
-3	100%	50%	0%
-2	100%	0%	0%
-1	50%	0%	0%
-0	0%	0%	0%
-
-The sixth hit still destroys the racer exactly as it currently does.
-
-shieldBarFill() should remain the single source of truth for both DOM and Canvas HUDs.
-
-With the current color array ordered [pink, yellow, cyan], the calculation should conceptually become equivalent to:
-
-fill = clamp((halves - bar * SHIELD_HALVES_PER_BAR) / SHIELD_HALVES_PER_BAR, 0, 1)
-
-Do not create separate reversed calculations in paintShield() and hudShield().
-
-⸻
-
-2. Restyle the shield bars
-
-Apply the same visual treatment to:
-
-* the normal DOM HUD
-* the Canvas/local multiplayer HUD
-* the new temporary above-car shield indicator described below
-
-Remove the outline
-
-The bars should no longer have a visible border/stroke.
-
-For the DOM HUD, .shield-bar currently has:
-
-border:1px solid var(--line-2)
-
-Remove that border.
-
-For the Canvas local HUD, hudShield() currently calls hudGlass(), which deliberately draws a border and highlight stroke.
-
-Do not use the stroked hudGlass() treatment for the shield tracks anymore.
-
-Instead, draw a simple rounded dark/translucent track with no stroke, then render the colored gradient fill over it.
-
-Do not change hudGlass() globally because the rest of the HUD still uses it.
-
-Only the shield bars should lose their outline.
-
-Remove the half-divider
-
-The visual line through the center of every two-hit bar must disappear completely.
-
-DOM currently creates it with:
-
-.shield-bar::after
-
-Remove/disable this pseudo-element.
-
-Canvas currently explicitly draws:
-
-ctx.fillRect(x + w/2, ...)
-
-Remove that divider.
-
-The 50% state must be communicated purely by the width of the colored fill.
-
-There should be no center tick, seam, black divider, or other half marker.
-
-Add gradients
-
-Replace each shield bar’s flat fill with a subtle polished gradient while keeping its existing color identity.
-
-Do not change the bars into unrelated colors.
-
-Use the current pink/yellow/cyan colors as the central/base hues and give each one a restrained brighter-to-base-to-deeper treatment.
-
-For example, a vertical gradient can conceptually be:
-
-* lighter highlight near the top
-* existing shield color through the middle
-* slightly deeper version near the bottom
-
-Keep it clean and game-like rather than glossy/chrome.
-
-A reasonable palette direction is:
-
-* Pink: pale/light pink → #FF8CE1 → deeper pink
-* Yellow: pale cream-yellow → #FFEB96 → deeper golden yellow
-* Cyan: pale ice-cyan → #78EBFF → deeper cyan
-
-Prefer defining shared gradient-stop data next to SHIELD_COLORS in js/data.js, then consume those same stops from both Canvas and DOM rendering.
-
-Do not duplicate three unrelated palettes in CSS and JavaScript if it can be avoided.
-
-For DOM rendering, paintShield() currently assigns a flat SHIELD_COLORS[i] background. Replace that with the corresponding CSS linear-gradient(...).
-
-For Canvas, construct the equivalent ctx.createLinearGradient(...) from the same stop definitions.
-
-The full and half-filled versions of a given bar must use the exact same gradient; only width changes.
-
-The empty portion should remain the existing subtle dark/translucent track.
-
-⸻
-
-3. Add a temporary shield-state indicator above other racers
-
-When a racer physically collides with a hazard and survives the encounter, show a compact shield indicator directly above that racer’s car.
-
-It lasts approximately 1.0 second from the latest qualifying collision, then disappears.
-
-Repeated qualifying collisions while it is visible should refresh/restart the one-second timer.
-
-Critical view-owner rule
-
-Do NOT show this indicator above the car being driven by the owner of the current viewport.
-
-That racer’s bottom HUD shield bars are enough.
-
-Use the renderer’s actual viewport-owner concept:
-
-VOWN !== who
-
-Do not simply test:
-
-who !== "me"
-
-because in local multiplayer, player 2/3/4 are represented by rival objects but are still the owners of their own split-screen columns.
-
-The desired rule is:
-
-* normal single-player view: no floating shield indicator over "me"
-* normal single-player view: rivals may display it
-* local player 1’s column: player 1 gets no floating indicator; other racers may
-* local player 2’s column: player 2 gets no floating indicator; other racers may
-* same for players 3 and 4
-
-This should mirror the architectural pattern already used by drawConditionStack().
-
-Indicator design
-
-Do not draw all three shield bars over the car.
-
-Show one small compact bar representing the racer’s current active durability stage.
-
-The indicator should communicate:
-
-1. which shield color the racer is currently on
-2. whether that current color has one or two halves remaining
-
-Use the same color/gradient language as the bottom shield HUD.
-
-Suggested appearance:
-
-* horizontally centered above the car
-* approximately 30–40 logical px wide at normal scale
-* approximately 5–7 px high
-* small rounded corners
-* dark translucent empty track
-* no border
-* no center divider
-* current shield gradient as fill
-* full width = both halves of the current color remain
-* 50% width = only one half remains
-
-Scale naturally with the existing scene/HUD scaling conventions rather than hard-coding device pixels.
-
-Do not add text, numbers, icons, labels, or a shield badge.
-
-The bar itself is enough.
-
-Exact state mapping
-
-After a surviving collision, derive the indicator from the racer’s current shield state:
-
-* shield = 6 → cyan, 100%
-* shield = 5 → cyan, 50%
-* shield = 4 → yellow, 100%
-* shield = 3 → yellow, 50%
-* shield = 2 → pink, 100%
-* shield = 1 → pink, 50%
-* shield = 0 → no indicator because that racer has been destroyed
-
-A clean helper would derive this instead of scattering conditionals.
-
-For halves > 0, the bar index can conceptually be derived from the remaining half count, and the fill is:
-
-* even remaining count → full
-* odd remaining count → half
-
-Keep the logic general enough to derive from the shield constants where practical.
-
-Timing state
-
-Add one small cosmetic timer per racer, for example:
-
-shieldHitT
-
-or another similarly clear name.
-
-Add it consistently to:
-
-* G in js/runtime.js
-* newly spawned rivals in spawnRivals() in js/race.js
-
-Reset it on a new race.
-
-Advance/decrement it alongside the other short-lived racer status/cosmetic timers:
-
-* player-one update path
-* rival update path
-
-Use a shared constant such as:
-
-SHIELD_HIT_TIME = 1
-
-in js/data.js.
-
-A qualifying surviving hazard contact should reset it to SHIELD_HIT_TIME.
-
-The timer is visual feedback only. It must never influence collision, AI, protection, durability, targeting, or race state.
-
-Destroyed racers
-
-If the hazard collision destroys the racer, do not show the temporary bar.
-
-Examples:
-
-* sixth durability hit reduces shield to 0 and invokes the wreck lifecycle → no popup
-* meteor destroys a racer → no popup
-* any other direct wrecking hazard outcome → no popup
-
-Also clear the timer when appropriate during wreck/restart lifecycle so stale state cannot reappear after respawn.
-
-Respawning still restores all six shield halves normally.
-
-⸻
-
-4. Active ultimates must preserve shield durability
-
-Add one universal rule:
-
-While o.ultOn is true, an ordinary hazard contact must not remove a shield half.
-
-This applies equally to:
-
-* player one
-* bots
-* local human racers
-* every car
-
-Use ultOn, not car-name checks.
-
-Do not create six separate ultimate exceptions.
-
-The best place for this protection is at or immediately around the shared hitShield(who) boundary so that the invariant applies consistently to player and rival durability paths.
-
-The logic should conceptually be:
-
-1. reject contacts already rejected by noContact()
-2. obtain the racer object
-3. if its ultimate is active:
-    * do not decrement shield
-    * treat the durability result as survived
-    * trigger the temporary shield-state feedback for non-owner render views
-    * return without wrecking
-4. otherwise perform the existing half-bar decrement
-5. if the shield reaches zero:
-    * wreck using the existing lifecycle
-    * do not start the temporary indicator
-6. if it survives:
-    * start/refresh the temporary indicator
-
-Do not change the shield maximum or add regenerative behavior.
-
-Important: this is NOT universal invulnerability
-
-An active ultimate protecting durability does not mean every hazard effect disappears.
-
-Preserve all existing car-specific and hazard-specific behavior unless it conflicts specifically with shield loss.
-
-In particular:
-
-Puddles
-
-For a racer whose ultimate does not otherwise remove puddle consequences:
-
-* shield half is preserved while ultOn
-* the existing BLIND_TIME
-* puddle spray
-* Obscured condition
-* visual/audio effects
-
-should continue normally.
-
-The current ultDelta() already ignores the trap meter penalty during an active ultimate, so do not create another ultimate-duration modification.
-
-Tumbleweeds
-
-For cars whose existing ultimate behavior already smashes a tumbleweed through clearsSolidHazards(who), preserve that behavior:
-
-* weed breaks
-* no Slow
-* no shield loss
-* ultimate continues
-
-For any active-ultimate case in which the weed still reaches the racer normally, preserve the normal surviving hazard consequence such as Slow, but do not decrement durability.
-
-Meteors
-
-Do not convert shield durability into meteor protection.
-
-Meteors currently bypass durability entirely.
-
-Keep the existing direct destruction / ultimate-specific meteor interactions intact.
-
-The new ultOn shield rule is specifically about hazards that would otherwise call the durability/half-bar system.
-
-An active ultimate must not accidentally become a new generic meteor invulnerability mechanic.
-
-Existing physical absence/protection
-
-Do not produce fake collision feedback for racers that did not actually get contacted because of existing mechanics.
-
-Examples:
-
-* dead racer
-* finished racer
-* respawn Invulnerable racer
-* Saffron physically above road-level hazards
-* Rhosyn absent from the shared road in Aero-Glow
-
-If noContact() or the existing architecture means no contact happened, do not flash the shield indicator.
-
-⸻
-
-5. Trigger the above-car indicator on the correct contacts
-
-The temporary shield display should correspond to a real non-destructive hazard contact.
-
-The ordinary durability path can start it through hitShield().
-
-Also account for existing ultimate-specific solid-hazard contact paths that bypass hitShield() entirely because the hazard is smashed.
-
-For example, an ulting car using clearsSolidHazards(who) can physically meet a tumbleweed without shield damage.
-
-That is still a hazard contact and may refresh the temporary shield display, showing the shield state unchanged.
-
-Likewise, if a protected solid meteor is physically struck and smashed by an applicable existing ultimate path without destroying the racer, it can count as surviving hazard contact feedback.
-
-However:
-
-* do not flash on a perfect dodge
-* do not flash because a hazard merely passes nearby
-* do not flash for a hazard removed elsewhere before reaching the racer
-* do not flash for no-contact states
-* do not flash for a destroyed racer
-
-Centralize this as much as practical so every hazard does not invent its own timer behavior.
-
-⸻
-
-6. Rendering requirements
-
-The temporary indicator belongs in Canvas world rendering, not as one global DOM element.
-
-This is required because Seren can render two to four separate views of the same race at once.
-
-Add an appropriately named Canvas helper in the same HUD/rendering layer that currently owns racer-attached status presentation.
-
-A good architectural fit is js/hud.js, near drawConditionStack(), with js/render.js invoking it while drawing racers.
-
-It must:
-
-* read state only
-* never mutate shield state
-* respect VOWN
-* respect the racer’s current per-view visibility alpha
-* never reveal an invisible Verdant to another player
-* remain positioned with the racer if the camera/view is offset
-* remain inside the current split-screen viewport
-* use the current measured racer dimensions instead of assuming every sprite is identical
-
-Pass/use the same racerViewAlpha(who) result already used for the car, notes, seat marker and Conditions.
-
-If a Verdant is invisible in a particular view, its shield flash must also be invisible.
-
-Do not allow this new feedback to leak the location of a hidden car.
-
-Draw it above the body silhouette and keep enough spacing that it does not visually merge with the roof sprite.
-
-Condition stacks are already placed beside cars; keep the shield flash centered over the racer so the two systems remain visually distinct.
-
-The indicator should also work for racers drawn through the airborne pass if an active timer legitimately exists, while still respecting owner/visibility rules.
-
-⸻
-
-7. DOM HUD requirements
-
-index.html currently contains:
-
-* #shieldPink
-* #shieldYellow
-* #shieldCyan
-
-inside three .shield-bar tracks.
-
-Keep this markup unless there is a compelling reason to change it.
-
-Do not add separate half elements.
-
-Continue controlling half state through width:
-
-* 100%
-* 50%
-* 0%
-
-Keep the existing meter semantics:
-
-* role="meter"
-* aria-valuemin="0"
-* aria-valuemax="6"
-* aria-valuenow reflecting actual shield halves
-
-Do not remove or weaken localization of the accessible shield label.
-
-The visual gradient does not change the accessible value.
-
-⸻
-
-8. Local/split-screen HUD requirements
-
-hudShield(o) is the Canvas equivalent used by local multiplayer.
-
-It must visually match the normal DOM HUD:
-
-* same bar order: pink, yellow, cyan
-* same cyan-first depletion
-* same gradients
-* no outline
-* no center divider
-* same 100/50/0 fills
-* same dark empty track
-
-Do not allow the regular browser HUD and the local Canvas HUD to communicate different shield states.
-
-⸻
-
-9. State lifecycle requirements
-
-The new temporary timer must not leak between races/lives.
-
-Ensure:
-
-* new race → timer 0
-* spawn rivals → timer 0
-* surviving hazard contact → timer 1 second
-* another surviving hazard contact during that second → timer resets to 1 second
-* timer naturally counts down to 0
-* wreck → no visible indicator / timer cleared
-* respawn → no stale indicator
-* finishing race → no stale shield indicator attached to parked/finished state
-* restarting race → clean state
-
-Do not use setTimeout() for racer-attached shield feedback.
-
-Use the existing frame-driven timer pattern so pause/game state behavior stays deterministic and local multiplayer remains synchronized.
-
-⸻
-
-10. Preserve existing mechanics
-
-Do not accidentally change any of the following:
-
-* six total shield halves
-* sixth ordinary durability hit causes wreck
-* three-second wreck lifecycle
-* full durability reset on respawn
-* respawn Invulnerable condition
-* meteor bypass of durability
-* combat wrecks preserving partial shield until respawn
-* puddle overlap consuming at most one durability half per encounter
-* tumbleweed Slow behavior
-* puddle Obscured behavior
-* perfect-dodge rewards
-* ultimate charge/duration logic
-* ultDelta() active-ultimate behavior
-* Flann ram
-* Neela exchange
-* Lolanthe Mind Control
-* Verdant invisibility/contact rules
-* Rhosyn Aero-Glow
-* Saffron flight
-* clearsSolidHazards()
-* noContact()
-* local multiplayer ownership
-* AI
-* finishing/parking
-* accessibility
-* mystery bubble colors
-
-The shield colors are shared with BUBBLE_TINTS; do not unintentionally change mystery-bubble presentation merely to create shield gradients.
-
-Add separate shield gradient data if necessary.
-
-⸻
-
-11. Tests
-
-Update tools/shield-check.mjs comprehensively rather than weakening it.
-
-Reverse progression
-
-Change the expected six-hit fill progression from the existing pink-first behavior to:
-
-6: [1,   1,   1]
-5: [1,   1,  .5]
-4: [1,   1,   0]
-3: [1,  .5,   0]
-2: [1,   0,   0]
-1: [.5,  0,   0]
-0: [0,   0,   0]
-
-The array order remains:
-
-[pink, yellow, cyan]
-
-Do not reverse the array itself.
-
-DOM regression
-
-At G.shield = 3, the DOM expectation must now be:
-
-* pink 100%
-* yellow 50%
-* cyan 0%
-
-Continue asserting aria-valuenow="3" and the localized label.
-
-Also verify that the DOM fill uses the intended gradient instead of silently reverting to solid colors.
-
-Canvas/local regression
-
-The current Canvas test identifies shield fills by comparing ctx.fillStyle against the three flat hex colors.
-
-That assertion will become invalid when fillStyle is a CanvasGradient.
-
-Update the test so it validates:
-
-* three shield tracks still render
-* fill widths match shieldBarFill()
-* the cyan-first progression is respected
-* gradients are actually created/used
-* local seats still own independent shield counts
-
-Do not remove Canvas coverage merely because the implementation now uses gradients.
-
-Ultimate durability regression
-
-Add coverage for player, bot, and local-human paths showing that:
-
-* start with shield 6
-* activate an ultimate
-* collide with an ordinary shield-consuming hazard that genuinely reaches the racer
-* shield remains 6
-
-Also test a partially damaged racer, for example:
-
-* shield = 3
-* activate ultimate
-* collide
-* shield remains 3
-
-This ensures active ultimate protection preserves the current state rather than restoring it.
-
-For a puddle, verify the relevant surviving non-durability consequence can still occur where existing mechanics allow it.
-
-Do not turn this test into generic invulnerability.
-
-Indicator timer regression
-
-Add state tests demonstrating:
-
-* ordinary surviving hazard hit starts the timer
-* active-ultimate surviving hazard contact starts/refreshes the timer while leaving shield unchanged
-* another qualifying collision resets the timer
-* timer decays to 0 after roughly one second of game updates
-* sixth shield hit/wreck does not leave a live popup timer
-* respawn does not restore an old popup timer
-
-Current-stage helper regression
-
-If a helper is introduced for the floating indicator, test the complete mapping:
-
-* 6 → cyan/full
-* 5 → cyan/half
-* 4 → yellow/full
-* 3 → yellow/half
-* 2 → pink/full
-* 1 → pink/half
-* 0 → none
-
-View-owner regression
-
-Add at least a focused renderer/helper test ensuring the temporary indicator is suppressed for VOWN === who.
-
-This must cover the local-seat case where who is a rival object, not merely "me".
-
-Also ensure an invisible racer cannot be revealed by the indicator if its per-view alpha is zero.
-
-⸻
-
-12. Documentation consistency
-
-Seren’s README and architecture/tuning documents describe these mechanics in detail, so update relevant documentation after the implementation.
-
-At minimum review:
-
-* README.md hazard/shield section
-* README.md ultimate/hazard descriptions where puddles are described as “unchanged”
-* docs/ARCHITECTURE.md
-* docs/TUNING.md
-
-Document these distinctions accurately:
-
-* visual order is still pink → yellow → cyan
-* durability is now consumed cyan → yellow → pink
-* active ultimate prevents ordinary shield-half consumption
-* this does not automatically suppress Slow/Obscured or create universal invulnerability
-* existing car-specific solid-hazard behavior remains intact
-* meteors still bypass durability
-
-Do not rewrite unrelated documentation.
-
-⸻
-
-13. Files expected to be involved
-
-Likely files:
-
-js/data.js
-
-* gradient definitions
-* one-second shield-feedback duration constant
-
-js/runtime.js
-
-* player-one temporary shield-feedback timer state
+Inspect these files first:
 
 js/race.js
 
-* rival timer initialization
-* race reset
-* player/rival timer ticking
-* rival hazard-contact integration as needed
+* spawnRivals()
+* metersOf(R)
+* update(dt)
+* updateRival(R, dt, st)
+* updateRivals(dt, st)
+* checkFinish()
+* parking/finish helpers
 
 js/mechanics.js
 
-* reverse shieldBarFill()
-* generic active-ultimate durability preservation
-* surviving-contact feedback trigger
-* player hazard paths
-* clean wreck/reset behavior
+* racerWorldPose()
+* rebaseWorld()
+* teleportRacerToPose()
+* collision/contact code that directly modifies a rival’s y
+* wreckRival()
+* destroyCar()
+* fieldTopY() / fieldBottomY()
+
+js/ai.js
+
+* botSense()
+* race-distance comparisons
+* target/threat calculations
 
 js/hud.js
 
-* gradient helpers
-* borderless/dividerless Canvas shield HUD
-* DOM gradient application
-* temporary over-car shield renderer/helper
+* placeOf()
+* standings and race-distance displays
 
 js/render.js
 
-* invoke the temporary indicator for non-view-owner racers using the same visibility rules as other racer-attached presentation
+* any conversion from race position to camera position
 
-css/app.css
+docs/ARCHITECTURE.md
 
-* remove shield border
-* remove center divider
-* retain rounded clipping and dark empty track
+* especially Where a racer actually is
 
-tools/shield-check.mjs
+docs/TUNING.md
 
-* reverse progression expectations
-* gradient-aware Canvas checks
-* ultimate shield preservation
-* timer/state mapping
-* viewport-owner behavior where practical
+* distance/pixel conversion documentation
 
-documentation
+Tests:
 
-* update only statements made obsolete by this change
+* tools/progression-check.mjs
+* tools/ultimate-check.mjs
+* tools/hitbox-check.mjs
+* other existing regression suites affected by racer position
 
-Do not scatter new durability rules into unrelated files if the existing shared helpers can own them.
+The current bug
 
-⸻
+The current model makes a rival’s longitudinal race distance depend on its screen-space position relative to Player 1:
 
-14. Acceptance criteria
+metersOf(R) effectively does:
 
-The implementation is complete only when all of these are true:
+G.meters + (playerY - R.y) * 0.075
 
-1. Starting a race shows three full bars in the existing left-to-right order:
-    pink, yellow, cyan.
-2. First ordinary shield hit:
-    * cyan becomes 50%
-    * pink and yellow remain full.
-3. Second hit:
-    * cyan empties.
-4. Third/fourth hits:
-    * yellow goes 50% then empty.
-5. Fifth hit:
-    * pink goes 50%.
-6. Sixth hit:
-    * racer is wrecked
-    * all bars are empty
-    * no floating shield indicator remains on the destroyed racer.
-7. Respawn:
-    * restores all three full bars
-    * no stale floating shield timer.
-8. Every shield bar:
-    * has no border/outline
-    * has no center half-divider
-    * uses a subtle gradient
-    * still clearly communicates 100%, 50%, and empty states.
-9. DOM and Canvas/local HUDs match visually and logically.
-10. A rival/bot surviving a puddle or tumbleweed collision displays a compact temporary shield bar above the car for about one second.
-11. The temporary bar uses the current stage mapping:
-    cyan → yellow → pink as durability declines.
-12. The current viewport owner never receives this floating indicator over their own car.
-13. In local split-screen, each human’s own column suppresses the indicator for that human specifically.
-14. Other racers can still show the indicator in that column.
-15. The indicator respects racer visibility and cannot reveal an invisible Verdant.
-16. A racer with an active ultOn does not lose a durability half from an ordinary shield-consuming hazard.
-17. Active-ultimate durability protection works for player one, bots, and local humans.
-18. Ultimate protection does not refill previously lost shield.
-19. Puddle/weed non-durability effects remain intact where the existing ultimate mechanics do not already negate them.
-20. Meteors remain direct-destruction hazards governed by their existing rules rather than suddenly becoming normal shield damage.
-21. Saffron/Rhosyn states where no physical road-hazard contact occurs do not produce fake shield flashes.
-22. node tools/shield-check.mjs passes with updated assertions.
-23. node tools/check.mjs still passes.
-24. Existing ultimate/hazard regression checks remain passing after updating only expectations genuinely changed by this feature.
-25. No unrelated gameplay, UI, AI, collision, accessibility, or local-multiplayer behavior regresses.
+Meanwhile normal rival motion in updateRival() does approximately:
 
-Keep the implementation centralized, deterministic, frame-driven, and consistent with Seren’s existing architecture.
+R.y += (G.speed - R.abs) * dt
+
+and then:
+
+R.y = clamp(R.y, -30000, H + 30000)
+
+This means R.y is doing two jobs at once:
+
+1. presentation/camera-relative screen position;
+2. authoritative race progress.
+
+Those concepts must not be the same thing.
+
+The failure becomes obvious for a racer far ahead.
+
+Suppose a rival reaches the existing upper-road clamp:
+
+R.y === -30000
+
+The rival may still have:
+
+R.abs === BASE_SPEED or substantially more.
+
+As long as Player 1 is moving, G.meters increases, so metersOf(R) can continue increasing even though the rival itself is stuck at R.y === -30000.
+
+But when Player 1 is destroyed, update() deliberately drives:
+
+G.speed -> 0
+
+which is correct behavior for the wrecked player.
+
+Now G.meters stops advancing.
+
+The distant rival continues trying to execute:
+
+R.y += (0 - R.abs) * dt
+
+but that would put it below -30000, so the clamp immediately forces it back to -30000.
+
+Therefore:
+
+* R.y no longer changes;
+* G.meters no longer changes;
+* metersOf(R) no longer changes.
+
+The rival is still notionally driving according to R.abs, but its authoritative race distance is frozen.
+
+The 30000px limit represents only roughly 2250 metres at the game’s 0.075 metres/pixel conversion, so a sufficiently separated field can genuinely reach this condition during a long race.
+
+This is a camera-coordinate leak into simulation state.
+
+Required simulation model
+
+Give every rival an authoritative longitudinal world/race distance that exists independently from Player 1’s camera position.
+
+Player 1 may continue to use G.meters as its canonical longitudinal distance.
+
+Every rival should have an equivalent canonical value, for example:
+
+R.m
+
+or another clearly named field.
+
+The exact name is up to you, but there must be one authoritative longitudinal value per racer.
+
+Conceptually:
+
+Player 1:
+canonical distance = G.meters
+
+Rival:
+canonical distance = R.m
+
+Camera-space rival position should become a projection of those values:
+
+R.y = playerY - (R.m - G.meters) / 0.075
+
+A rival’s race progress must no longer be reconstructed from a bounded screen coordinate.
+
+Rival initialization
+
+When rivals are spawned, initialize their canonical distance so their current starting-grid layout remains exactly the same.
+
+Do not visually change the starting grid.
+
+For example, derive initial R.m from the existing initial R.y/grid offset once during construction, or construct both from the same starting-distance value.
+
+The first frame of a race should be visually and mechanically indistinguishable from the current game.
+
+Normal rival movement
+
+When a live racer is driving, advance its canonical race distance directly from its own physical speed.
+
+At a conceptual level:
+
+R.m += R.abs * dt * 0.075
+
+The player continues advancing with:
+
+G.meters += G.speed * dt * 0.075
+
+Then derive the rival’s camera-relative position from the difference between R.m and G.meters.
+
+Do not advance rival race distance using (G.speed - R.abs).
+
+That expression is useful for calculating relative movement on Player 1’s screen, but it is not the rival’s actual forward race progress.
+
+This distinction is critical.
+
+If Player 1 is stationary and a bot is moving at 420 px/s, the bot should still cover approximately:
+
+420 * 1 * 0.075 = 31.5 metres
+
+during one simulated second.
+
+If Player 1 is wrecked for the normal three-second DEAD_TIME, the rest of the field should continue advancing for those three seconds according to each car’s own speed, boosts, ultimates, slows, shunts, etc.
+
+Do not let a coordinate clamp control race progress
+
+The existing:
+
+clamp(R.y, -30000, H + 30000)
+
+must no longer be capable of freezing or modifying canonical race progress.
+
+Prefer removing the simulation-level clamp entirely and deriving the real camera-relative y from canonical distance.
+
+The finite race distances used by Seren are nowhere near JavaScript numeric limits.
+
+If some rendering safeguard is still genuinely needed, clamp only a temporary value used for drawing/culling. Never write a presentation clamp back into authoritative race state.
+
+Also consider the secondary problem with keeping simulation objects clamped: two racers that are actually hundreds of metres apart could eventually collapse onto the same -30000 coordinate and appear physically colocated to collision or AI code. The fix should ensure a rendering safeguard cannot create false simulation proximity.
+
+Wrecked rivals
+
+Preserve existing wreck behavior.
+
+When a rival itself is destroyed:
+
+* its own forward race distance should stop advancing for the duration of its wreck;
+* Player 1 and every other racer continue normally;
+* if Player 1’s camera moves during that time, the wrecked rival’s camera-relative y should still update because its fixed world position is being viewed from a moving camera;
+* after its wreck timer expires, it resumes from the exact canonical distance at which it was destroyed.
+
+Do not accidentally make a wrecked rival continue racing invisibly.
+
+The required change is independence between racers, not removal of wreck penalties.
+
+Player destruction
+
+destroyCar() and Player 1’s existing wreck lifecycle should retain their intended effects.
+
+It is correct that Player 1’s own speed falls to zero.
+
+It is correct that Player 1 does not accumulate race distance while stopped.
+
+It is incorrect for this to stop another racer’s distance.
+
+Do not solve the issue by advancing G.meters while Player 1 is destroyed. G.meters belongs to Player 1 and should continue meaning Player 1’s actual distance.
+
+Finish-line behavior
+
+A rival must be able to cross the finish line while Player 1 is wrecked and stationary.
+
+checkFinish() already runs during the race. After this fix it must receive a continuously advancing rival distance from metersOf(R).
+
+Verify this explicitly.
+
+Example scenario:
+
+* Player 1 is destroyed.
+* G.speed === 0.
+* a bot is still alive and approaching G.finishAt.
+* the bot continues accumulating distance.
+* it crosses G.finishAt.
+* R.finished receives the correct placing immediately.
+* the result is added to G.results.
+* Player 1 may still be in the middle of the wreck timer.
+
+Do not defer AI finishes until Player 1 respawns.
+
+Finish rollout / parking
+
+Preserve the current finish parking system.
+
+R.parkM is already expressed as an absolute road-distance concept and should remain consistent with the new canonical racer distance.
+
+Decide carefully whether a finished racer’s canonical distance should follow its rollout or whether parkM remains the separate post-finish presentation distance. Either is acceptable if the current visible behavior and race-order semantics are preserved.
+
+Do not break:
+
+* finishing order;
+* the staggered parking staircase;
+* parkLaneFor();
+* parkMeters();
+* the current easing;
+* already-finished cars remaining correctly placed while other cars continue racing.
+
+metersOf()
+
+After the migration, metersOf(R) should return the rival’s canonical longitudinal distance rather than reverse-engineering it from R.y.
+
+Keep metersOf() as the central accessor if that reduces churn. A large amount of the game already correctly asks metersOf() instead of reading longitudinal state directly.
+
+That means AI, HUD standings, targeting, race order, finish detection, and mechanics can benefit from the architectural fix without each subsystem inventing its own workaround.
+
+Avoid scattering direct R.m reads everywhere unless there is a strong reason.
+
+Audit every direct rival y mutation
+
+This part is important.
+
+Search the entire repository for code that directly modifies a racer’s y.
+
+Classify each occurrence as either:
+
+Camera projection only
+The racer’s world distance did not change. Only its location relative to Player 1’s camera changed.
+
+or:
+
+Actual longitudinal movement / teleport
+The racer’s real position on the track changed and therefore its canonical distance must change.
+
+Pay special attention to:
+
+* updateRival()
+* wreck handling
+* finish rollout
+* rebaseWorld()
+* teleportRacerToPose()
+* contact/rear-end displacement
+* any code that assigns who.y
+* Neela’s position exchange
+
+Do not leave hidden code paths that mutate R.y without keeping canonical distance coherent.
+
+A useful invariant is:
+
+For every active rival, when using an unclamped camera projection,
+
+R.y ≈ playerY - (metersOf(R) - G.meters) / 0.075
+
+Any real longitudinal position change should update canonical metres first and then project to y.
+
+Neela and world rebasing
+
+Be particularly careful with Neela.
+
+Current architecture deliberately supports racerWorldPose(), teleportRacerToPose(), and rebaseWorld() so Neela can exchange actual world positions even though Player 1 is the camera anchor.
+
+Keep that behavior.
+
+racerWorldPose(R) should naturally return the new canonical rival distance.
+
+Teleporting a rival to a pose must set its canonical longitudinal distance as well as its lane/x and camera projection.
+
+When Player 1 is teleported through rebaseWorld():
+
+* G.meters changes;
+* scenery/hazards/world-space presentation shifts appropriately;
+* unrelated rivals’ canonical distances must NOT change;
+* their camera-relative y values must change only because the camera moved.
+
+Do not double-apply the rebase to both R.m and R.y.
+
+The existing documented invariant that unrelated racers stay at the same world location through a Player 1 rebase must remain true.
+
+AI behavior
+
+Bots must continue thinking and driving while off-screen and while Player 1 is wrecked.
+
+Difficulty must continue affecting decision quality only. Do not add rubber-banding or a special wreck bonus.
+
+Existing values such as:
+
+* R.abs
+* boost state
+* ultimate state
+* slow state
+* shunt state
+* AI think timers
+
+should continue working normally.
+
+Distance-based AI decisions should use canonical race distance through metersOf().
+
+Do not make bots chase Player 1 simply because the camera belongs to Player 1.
+
+They are racing the whole field.
+
+Local multiplayer
+
+This fix must also work in Local mode.
+
+Player 1 being destroyed must not suspend P2, P3, P4, or any bot.
+
+Likewise, if a human-controlled rival is far ahead of Player 1, that racer must continue making independent race progress even if Player 1’s car is stationary.
+
+The canonical-distance solution should apply equally to bot rivals and human-controlled rivals because they share updateRival().
+
+Do not create separate physics for bots and local humans.
+
+What NOT to do
+
+Do not fix this by merely increasing 30000 to a larger number.
+
+Do not remove the clamp and leave R.y as authoritative race state.
+
+Do not make G.meters advance while the player is wrecked.
+
+Do not add a special if (G.dead) distance increment.
+
+Do not calculate standings differently only while the player is destroyed.
+
+Do not teleport distant racers forward after the player respawns.
+
+Do not implement rubber-banding.
+
+Do not pause AI until racers return to the visible screen.
+
+Do not create a second simplified simulation for off-screen racers.
+
+There should be one race simulation. Visibility is presentation only.
+
+Regression tests to add
+
+Add deterministic regression coverage for this bug, preferably to tools/progression-check.mjs or another existing simulation-focused suite.
+
+At minimum cover all of these cases:
+
+1. Put a live rival at or beyond the old -30000 far-ahead condition.
+2. Give it a known R.abs, such as BASE_SPEED.
+3. Destroy Player 1 or otherwise put Player 1 into the real wreck state with zero movement.
+4. Run one simulated second.
+5. Assert that the rival gained approximately 31.5 metres at tier 0:
+    BASE_SPEED * 1s * 0.075.
+6. Assert that Player 1 gained essentially zero metres during the stationary wreck interval.
+7. Put a rival shortly before G.finishAt, destroy Player 1, simulate enough time for the rival to cross, and assert that the rival receives a finishing place while G.dead > 0.
+8. Verify monotonic rival progress through the entire Player 1 wreck/respawn cycle: no freeze, backwards jump, teleport, or catch-up correction.
+9. Verify a rival that is itself wrecked does NOT gain distance during its own wreck.
+10. Verify rebaseWorld() / Neela position exchange keeps unrelated racers’ canonical world distances unchanged.
+11. Verify standings obtained through placeOf() remain correct for very large separations.
+12. Verify Local mode human rivals continue progressing while Player 1 is wrecked.
+
+Where practical, construct the regression so the old implementation fails for the precise reason described above rather than merely checking a new field exists.
+
+Documentation
+
+Update docs/ARCHITECTURE.md.
+
+The current Where a racer actually is section says that rival position is fundamentally a screen offset converted by metersOf().
+
+That will no longer be accurate.
+
+Document the new invariant clearly:
+
+* every racer has canonical longitudinal race distance;
+* Player 1’s canonical value is G.meters;
+* rivals carry their own canonical value;
+* R.y is a camera-space projection of the difference;
+* simulation progress exists independently of visibility and independently of Player 1’s movement;
+* player/world rebasing changes the camera/world presentation without changing unrelated racers’ absolute track positions.
+
+Update docs/TUNING.md if its explanation of metre/pixel conversion becomes inaccurate.
+
+Preserve existing behavior
+
+Do not retune the game as part of this fix.
+
+Keep unchanged unless technically required:
+
+* BASE_SPEED
+* MULT_STEP
+* MAX_MULT
+* DEAD_TIME
+* boost speed/drain/refill
+* ultimate speed/duration
+* difficulty values
+* race length
+* track timing
+* finish distance
+* hazard behavior
+* six-car field
+* AI personalities
+* collision geometry
+* parking positions
+
+This is a simulation correctness fix, not a balance pass.
+
+Validation
+
+Run the existing relevant regression suites after implementing the change, especially:
+
+node tools/progression-check.mjs
+
+node tools/ultimate-check.mjs
+
+node tools/hitbox-check.mjs
+
+node tools/check.mjs
+
+Also run the other existing Seren checks if the changes touch their domains.
+
+Pay particular attention to Neela’s swap/rebase tests and Rhosyn’s canonical-position tests because both rely heavily on the distinction between world position and presentation.
+
+Finally, manually or deterministically reproduce the original scenario:
+
+* create a racer more than roughly 2.25 km ahead of Player 1;
+* make sure it is actively driving;
+* destroy Player 1;
+* observe Player 1 stop;
+* verify the distant racer continues accumulating metres every simulation frame;
+* verify standings continue changing;
+* verify it can cross the finish line during Player 1’s wreck;
+* verify Player 1 respawning does not cause any rival position correction.
+
+Definition of done
+
+The fix is complete when the race simulation no longer depends on Player 1 moving in order for another racer to make forward progress.
+
+A useful final invariant is:
+
+A racer’s race distance is determined by that racer’s own movement, not by whether that racer is visible and not by whether Player 1’s camera is moving.
+
+Player destruction should affect Player 1.
+
+Rival destruction should affect that rival.
+
+Nothing about either event should freeze the rest of the race.
