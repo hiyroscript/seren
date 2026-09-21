@@ -204,10 +204,10 @@ test('large separations keep standings and physical proximity independent',()=>{
   near('G.rivals[0].y',run('playerY-(10000-G.meters)/0.075'));
   run('playerY-=100;');
 });
-test('eight-racer starting grid has finite positions across three rows',()=>{
-  setup('bot');run('G.rules.bots=7;spawnRivals();');
-  equal('G.rivals.length',7);
-  for(let i=0;i<7;i++){
+test('nine-racer starting grid has finite positions across three rows',()=>{
+  setup('bot');run('G.rules.bots=8;spawnRivals();');
+  equal('G.rivals.length',8);
+  for(let i=0;i<8;i++){
     near(`G.rivals[${i}].y`,run(`playerY+${i<2?0:i<5?1:2}*Math.max(...CAR_IDS.map(id=>carDims(id).h))*1.3`));
     near(`metersOf(G.rivals[${i}])`,run(`G.meters-${i<2?0:i<5?1:2}*Math.max(...CAR_IDS.map(id=>carDims(id).h))*1.3*0.075`));
   }

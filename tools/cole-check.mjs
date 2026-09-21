@@ -13,11 +13,11 @@ function setup(kind='player'){
     R.m=-10000;globalThis.who=${kind==='player'?'"me"':'R'};globalThis.o=who==='me'?G:who;`);
 }
 test('seventh identity and full local fields',()=>{
-  eq('CAR_IDS.join(",")','flann,neela,lolanthe,verdant,rhosyn,saffron,cole,dhaval');eq('FIELD_SIZE',8);
+  eq('CAR_IDS.join(",")','flann,neela,lolanthe,verdant,rhosyn,saffron,cole,dhaval,aureolin');eq('FIELD_SIZE',9);
   for(const n of [1,2,3,4]){
     run(`G.local=${n>1};G.players=${n};G.picks=CAR_IDS.slice(0,${n});G.car=G.picks[0];G.rules=defaultRules();startRace();`);
-    eq('G.rivals.length+1',8);eq('G.rivals.filter(r=>!r.human).length',8-n);
-    eq('new Set([G.car,...G.rivals.map(r=>r.car)]).size',8);
+    eq('G.rivals.length+1',9);eq('G.rivals.filter(r=>!r.human).length',9-n);
+    eq('new Set([G.car,...G.rivals.map(r=>r.car)]).size',9);
   }
 });
 for(const kind of ['player','bot','local']){
@@ -124,22 +124,22 @@ test('button localization, visibility, rules, disabled state and per-view occupi
  run('tickCole("me",2);paintHUD(true);');eq('$("#coleSwitch").disabled',false);
  run('G.car="flann";G.rules=defaultRules();paintHUD(true);');eq('$("#coleSwitch").style.display','none');eq('hudActionWidth(G)',120);
 });
-test('eight starting hulls never overlap across selected cars and view sizes',()=>{
+test('nine starting hulls never overlap across selected cars and view sizes',()=>{
  for(const car of run('CAR_IDS'))for(const width of [200,390,900]){
   run(`G.local=false;G.car='${car}';G.rules=defaultRules();startRace();W=${width};H=844;layout();spawnRivals();
     globalThis.all=['me',...G.rivals];`);
-  for(let i=0;i<8;i++)for(let j=i+1;j<8;j++)eq(`hitPolygonsOverlap(carHit(all[${i}]).points,carHit(all[${j}]).points)`,false);
+  for(let i=0;i<9;i++)for(let j=i+1;j<9;j++)eq(`hitPolygonsOverlap(carHit(all[${i}]).points,carHit(all[${j}]).points)`,false);
  }
 });
-test('all eight parking marks are distinct, clear, ordered and framed in every finisher view',()=>{
+test('all nine parking marks are distinct, clear, ordered and framed in every finisher view',()=>{
  for(const width of [200,390,900]){
   run(`G.local=false;G.car='cole';G.rules=defaultRules();startRace();W=${width};H=844;layout();spawnRivals();G.finishAt=1000;
     G.coleBike=true;G.parkRot=0;globalThis.all=['me',...G.rivals];
     all.forEach((who,i)=>{const o=who==='me'?G:who;o.finished=i+1;o.lane=parkLaneFor(i+1);o.x=laneCX(o.lane);o.tilt=0;
       if(who==='me')G.meters=parkMeters(i+1);else o.m=o.parkM=parkMeters(i+1);});`);
-  eq('new Set(all.map((w,i)=>parkMeters(i+1))).size',8);
-  for(let i=0;i<8;i++){
-    for(let j=i+1;j<8;j++)eq(`hitPolygonsOverlap(carHit(all[${i}]).points,carHit(all[${j}]).points)`,false);
+  eq('new Set(all.map((w,i)=>parkMeters(i+1))).size',9);
+  for(let i=0;i<9;i++){
+    for(let j=i+1;j<9;j++)eq(`hitPolygonsOverlap(carHit(all[${i}]).points,carHit(all[${j}]).points)`,false);
     eq(`all.every(w=>carHit(w).points.every(p=>p.y+camDy(all[${i}])>0 && p.y+camDy(all[${i}])<H))`,true);
   }
   run('paintHUD(true);');eq('$("#posRow7").style.display','');eq('placeWord(7)',run('t("place7")'));

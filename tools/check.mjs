@@ -352,10 +352,10 @@ else {
     if (!new RegExp(`data-car="${id}"`).test(html)) fail(`car ${id} has no select-screen canvas`);
   }
   pass(`${carIds.length} cars: models, strings, buttons and ultimates all wired`);
-  const expectedRoster = "flann,neela,lolanthe,verdant,rhosyn,saffron,cole,dhaval";
-  carIds.join() === expectedRoster && /const FIELD_SIZE = 8;/.test(sources.data)
-    ? pass("exact eight-car roster and field size")
-    : fail("roster or field size no longer matches the eight racers");
+  const expectedRoster = "flann,neela,lolanthe,verdant,rhosyn,saffron,cole,dhaval,aureolin";
+  carIds.join() === expectedRoster && /const FIELD_SIZE = 9;/.test(sources.data)
+    ? pass("exact nine-car roster and field size")
+    : fail("roster or field size no longer matches the nine racers");
 }
 
 /* One CONDITIONS table, six entries, and every renderer reading it. The

@@ -18,7 +18,7 @@
 
 ![Measured hull over the original sprite](img/dhaval-hull.png)
 
-![All eight cars in their road dimensions](img/dhaval-roster.png)
+![The eight-car roster before Aureolin, in road dimensions](img/dhaval-roster.png)
 
 ## Rules and interactions
 
@@ -110,7 +110,7 @@ The sprite suite runs a three-minute full-field simulation.
 
 The former six-rival spawn arrays were extended to seven slots. The regression
 suite checks finite positions and non-overlapping starting/parking hulls for the
-full eight-car roster.
+full nine-car roster.
 
 ## Remaining manual browser/controller QA
 
@@ -120,7 +120,7 @@ timed out. No physical controllers were available. Native Canvas inspection and
 DOM/Canvas test doubles do not prove browser layout or physical input behavior.
 
 Before release, play Dhaval as P1 and local P2/P3/P4 on desktop and phone-sized
-layouts, inspect the eight-card showroom and eight-row HUD, and check levels 1–5
+layouts, inspect the nine-card showroom and nine-row HUD, and check levels 1–5
 in motion and reduced motion. Check each special counter, hazard destruction,
 and split-screen clipping while driving. No completed browser/controller QA is
 claimed by this record.

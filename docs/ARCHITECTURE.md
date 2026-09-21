@@ -278,7 +278,7 @@ elsewhere.
 - `setupSummary()` reads the mode, player count, style, bots and difficulty from
   `G`. It is presentation only. `paintCustom()` still writes through the original
   rules and restores focus after rebuilding controls.
-- `paintPicks()` keeps the eight direct-pick buttons, taken states and player roster
+- `paintPicks()` keeps the nine direct-pick buttons, taken states and player roster
   current. `previewCar()` renders the focused/hovered vehicle at showroom size
   using the same `paintCarIcon()` / `drawCar()` path as the other car artwork.
   Previewing never commits a pick. The board remains three columns for gamepads.
@@ -357,7 +357,7 @@ of step, and the order it returns is `CONDITIONS`' own key order so a stack of
 badges never reshuffles. A finished racer returns none.
 
 `startUlt`, `tickUlt` and `endUlt` manage one fixed 15-second speed multiplier
-for every driver, and that lifecycle is shared by all eight cars. Five cars add a
+for every driver, and that lifecycle is shared by all nine cars. Individual cars add a
 power on top of it. Four of those five are applied at the consequence or at the
 view rather than through `noContact()`: an ulting Flann, Neela or Lolanthe still
 has to physically meet a racer or a hazard for anything to happen, an ulting
@@ -582,7 +582,7 @@ lifecycle (`startRace`, countdown, `pause`, `leave`), the finish
 and the frame loop.
 
 ### `render.js`
-All Canvas 2D drawing. Seven car models, three tracks' worth of scenery and road,
+All Canvas 2D drawing. Nine car models, three tracks' worth of scenery and road,
 hazards, particles, and the Conditions that sit over them.
 
 **Draw order here is behaviour** — it decides what covers what. `renderView(dy)`
@@ -606,7 +606,7 @@ writes none. Aero-Glow is deliberately not a `TRACKS` entry and its name is
 drawn inside the view rather than written into `#trackName`, which is the page's
 one HUD and in split-screen belongs to whoever is not in there.
 
-All eight cars use their root `v_*.PNG` sprite assets. Neela, Saffron and Cole also register their `vtm_*.PNG` alternate sheets in the shared cache. All eleven car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
+All nine cars use their root `v_*.PNG` sprite assets. Neela, Saffron, Cole and Aureolin also register their `vtm_*.PNG` alternate sheets in the shared cache. All thirteen car sheets load once; the two note sheets use `FX_SPRITES`. No procedural cruiser remains.
 
 Showroom, garage, player, bot and local columns all use this same dispatch, and
 the menus paint from `CARS` directly, so a preview is always the car and never
@@ -817,7 +817,7 @@ somewhere else, it goes through `racerWorldPose` and `teleportRacerToPose` and
 never through raw `x`/`y`; if it needs a second body, it goes in an `altForm`
 and comes out through `racerModel()`.
 
-`FIELD_SIZE` is 8. Standard races include all eight identities; custom rules
+`FIELD_SIZE` is 9. Standard races include all nine identities; custom rules
 can request fewer bots. Two, three and four local humans leave six, five and
 four bot slots respectively. Cole’s permanent alternate form is selected by
 `racerModel()`; `switchColeForm()` handles input eligibility and `racerPace()`
@@ -969,8 +969,8 @@ and dodges produce no feedback. This timer has no gameplay effect.
 
 ## Dhaval and Cleansed
 
-`CAR_IDS` contains eight racers; `FIELD_SIZE` is eight and spawn geometry includes
-seven rival slots. All UI selection handlers derive from `CAR_IDS`.
+`CAR_IDS` contains nine racers; `FIELD_SIZE` is nine and spawn geometry includes
+eight rival slots. All UI selection handlers derive from `CAR_IDS`.
 `dhavalAuras()` runs after movement and before `lolantheAuras()`, so Cleansed is
 established before hostile Mind Control is considered. The aura uses canonical
 road coordinates and four shared car lengths, following Lolanthe’s range model.
@@ -991,3 +991,20 @@ ladder and seat HUD. It reads simulation age and severity. `dhavalLight()` is a
 pure, shared geometry calculation; reduced motion selects one stable time.
 AI sight, hazard lookahead, pickup assessment and observation/reaction cadence
 read severity without changing physics. See [Dhaval QA](DHAVAL-QA.md).
+
+
+## Aureolin weapons and nine-racer integration
+
+`CAR_IDS` and `FIELD_SIZE` define nine identities. Eight rivals occupy two slots beside P1 and two complete rows of three behind; row spacing uses the largest `carDims()` height. Selection, garage, standings and local bot counts derive from the same field definition.
+
+`switchVehicleForm(who)` dispatches Cole to its compatibility function and switches Aureolin’s persistent `aureolinArmed` state under the same race/control gates. `racerModel()` is authoritative for the active artwork, hull and dimensions. `modelAnchorWorld()` uses measured source dimensions, uniform fit, bounds, tilt and canonical pose, and works before image decoding. The existing `coleSwitch` DOM ID remains for compatibility; `paintVehicleSwitch`, labels, icons, input and layout are generic.
+
+Every racer carries `aureolinSlows`, capacity, overheat, form and firing clocks. `racerPace()` multiplies by `max(0,1-0.10*stackCount)`; each stack has its own simulation timer. `clearDebuffs()` clears all stacks. A wreck clears firing and debuffs, but preserves the chosen form and weapon capacity. `startRace()` resets every field and both projectile arrays.
+
+`canAureolinFireBullets()` is shared by human requests, bot requests and ultimate automatic fire. `humanFire()` tracks keyboard, pointer and controller sources, including independent release requirements after Mind Control. `botAureolinWeapons()` only requests a form and fire; it never spawns projectiles. Weapon capacity and per-shot drain are independent of ordinary boost rules.
+
+After all racers move, the aura passes and `checkFinish()` run before weapon generation. `tickAureolin()` and `updateAureolinProjectiles()` advance only while running. `aureolinFrame()` snapshots racer poses for relative swept contact; projectile positions store canonical metres and project through `parkY()`, so scrolling, rebasing and local cameras cannot change range or targeting. Fast projectiles sweep their measured polygons against `carHit().points` and the physical hazard geometry, resolving the earliest contact. Water and pickups are excluded. Dedicated arrays leave Mystery Bubble seekers unchanged.
+
+`aureolinReachable()` separates projectile reachability from road contact: rockets may reach airborne Saffron; neither type reaches Rhosyn’s ultimate. Flann absorption and Verdant reveal precede ordinary effects. Rocket damage subtracts exactly one shield half even during ordinary ultimates and invokes the shared wreck lifecycle when exhausted. It has no splash radius.
+
+`AUREOLIN_SPRITES` loads the two projectile PNGs once. All local cameras draw the same objects. `hudMeterExtra()` expands the footer only when both bars are present and adjusts action, shield, condition and edge-marker geometry together. The DOM yellow meter exposes translated accessible capacity/overheat text.

@@ -151,7 +151,7 @@ test('touch capability gates Local with native disabled state',()=>{assert.ok(mo
    about to drive, not what it turns into. */
 test('Neela holds the second slot and is not a seventh car',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,8);
+  assert.equal(ids.length,9);
   assert.equal(ids[1],'neela');
   assert.equal(ids.includes('phantom'),false);
   assert.ok(f.$('#carNeela'),'the select screen has a Neela button');
@@ -234,8 +234,8 @@ test('every menu preview is the car model, never the alternate form',()=>{
    of the two cars it replaced survives anywhere a player can read. */
 test('Lolanthe and Verdant hold the third and fourth slots',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,8);
-  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron','cole','dhaval']);
+  assert.equal(ids.length,9);
+  assert.deepEqual(ids,['flann','neela','lolanthe','verdant','rhosyn','saffron','cole','dhaval','aureolin']);
   assert.equal(ids.includes('bolt'),false);
   assert.equal(ids.includes('timestamp'),false);
   for(const [id,btn] of [['lolanthe','#carLolanthe'],['verdant','#carVerdant']]){
@@ -307,7 +307,7 @@ test('Mind Controlled is a Condition the garage can show',()=>{
    survive anywhere a player can read - nor anywhere the code can reach. */
 test('Rhosyn holds the fifth slot and is not a seventh car',()=>{
   const ids=Array.from(f.run('CAR_IDS'));
-  assert.equal(ids.length,8);
+  assert.equal(ids.length,9);
   assert.equal(ids[4],'rhosyn');
   assert.equal(ids.includes('rose'),false);
   assert.ok(f.$('#carRhosyn'),'the select screen has a Rhosyn button');

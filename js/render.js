@@ -1399,6 +1399,7 @@ function renderView(dy){
   drawSlicks();
   drawBubbles();
   drawMissiles();
+  drawAureolinProjectiles();
   drawAirborneRacers();
   ctx.restore();                 /* back to the screen this view is drawn on */
   drawGlassLayer();
@@ -1771,4 +1772,23 @@ function drawBlind(left, pts){
     ctx.fillStyle = "#FFFFFF"; ctx.fill();
   }
   ctx.globalAlpha = 1;
+}
+
+/* Projectile images are cached once; all cameras draw the same world objects. */
+const AUREOLIN_SPRITES = {};
+(function(){
+  for(const def of Object.values(AUREOLIN_PROJECTILES)){
+    const img = new Image(); AUREOLIN_SPRITES[def.sprite] = img; img.src = def.sprite;
+  }
+})();
+function drawAureolinProjectiles(){
+  for(const p of [...G.aureolinBullets,...G.aureolinRockets]){
+    if(p.y < CT-p.length || p.y > CB+p.length) continue;
+    const def = AUREOLIN_PROJECTILES[p.kind], img = AUREOLIN_SPRITES[def.sprite];
+    if(!img || !img.complete || !img.naturalWidth) continue;
+    const b = def.bounds, k = p.length/b[3];
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.angle);
+    ctx.drawImage(img,-(b[0]+b[2]/2)*k,-(b[1]+b[3]/2)*k,def.sourceSize[0]*k,def.sourceSize[1]*k);
+    ctx.restore();
+  }
 }

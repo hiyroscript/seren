@@ -19,7 +19,7 @@ The bike is intentionally narrower and slightly longer than the car. Both keep t
 
 ## Automated coverage
 
-Run all seven existing commands plus the focused suite:
+Run the existing checks and the focused suite:
 
 ```sh
 node tools/check.mjs
@@ -32,13 +32,13 @@ node tools/shield-check.mjs
 node tools/cole-check.mjs
 ```
 
-The focused suite is also imported by `ultimate-check.mjs`. Coverage includes all driver types, seven-car and 2/3/4-human fields, input gating, mixed HUD/Q/L1 cooldown attempts, held input, pause, respawn and finish persistence, form-aware stacking and smoothing, hazards in both forms, Mind Control, per-seat whiteout, bot switching, localized HUD, custom rules, starting overlap, and parking visibility. Geometry tests check solid and transparent source points under positive/negative tilt and confirm equality of player/rival hulls. Sprite tests check actual bore roots at several scales/tilts and preserve uniform scaling. Existing regressions remain enabled.
+The focused suite is also imported by `ultimate-check.mjs`. Coverage includes all driver types, nine-car and 2/3/4-human fields, input gating, mixed HUD/Q/L1 cooldown attempts, held input, pause, respawn and finish persistence, form-aware stacking and smoothing, hazards in both forms, Mind Control, per-seat whiteout, bot switching, localized HUD, custom rules, starting overlap, and parking visibility. Geometry tests check solid and transparent source points under positive/negative tilt and confirm equality of player/rival hulls. Sprite tests check actual bore roots at several scales/tilts and preserve uniform scaling. Existing regressions remain enabled.
 
 ## HUD and local view inspection
 
 ![Four local views, Cole in seat two](img/cole-local.png)
 
-This is the real Canvas renderer at 250-pixel local column width with Cole’s cooldown visible only in seat two. Seven standings rows, reserved action width, shield space and edge markers are exercised at narrower widths by tests. The DOM uses the same action count and size calculation; non-Cole standard actions remain two 56-pixel squares. A disabled item or ultimate reclaims its space.
+This is the real Canvas renderer at 250-pixel local column width with Cole’s cooldown visible only in seat two. The current nine standings rows, reserved action width, shield space and edge markers are exercised at narrower widths by tests. The DOM uses the same action count and size calculation; non-Cole standard actions remain two 56-pixel squares. A disabled item or ultimate reclaims its space.
 
 The selection grid keeps three columns and centers the seventh card. All English and French descriptions and seventh-place labels are present.
 

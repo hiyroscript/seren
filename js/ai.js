@@ -275,7 +275,7 @@ function laneScore(R, l, s){
 /* Value the opportunity to gain distance with the shared speed boost. */
 /* What the fifteen seconds are worth beyond the pace, for the four cars that
    get something beyond the pace. Everything above is the shared read of the
-   road and applies to all eight; this is an adjustment on top of it, and it is
+   road and applies to all nine; this is an adjustment on top of it, and it is
    nothing for the two cars that have no power to value. No branch assumes the
    others do not exist, and each of them values its own power rather than a
    copy of somebody else's - a ram wants traffic in front, an exchange wants
@@ -593,4 +593,20 @@ function botBlame(victim, by){
 /* A bike has a pure pace advantage. Humans always own their own choice. */
 function botColeForm(R){
   if(!R.human && R.changeT <= 0 && coleCar(R) && !coleBikeActive(R)) switchColeForm(R);
+}
+
+/* A bot requests the same controls as a human; it never creates projectiles. */
+function botAureolinWeapons(R){
+  if(R.human || !aureolinCar(R)) return;
+  R.wantFire = false;
+  if(controlsLocked(R) || R.dead > 0 || R.finished !== null) return;
+  R.fireBlocked = false;
+  const target = aureolinTarget(R,"bullet");
+  if(!target && !R.ultOn) return;
+  if(!R.aureolinArmed && R.changeT <= 0) switchVehicleForm(R);
+  if(!target || R.ultOn) return; // ultimate auto-fire belongs to the mechanic
+  const o = target === "me" ? G : target;
+  const gap = (metersOf(target)-metersOf(R))/.075;
+  R.wantFire = gap < carDims(R.car).h*AUREOLIN_BULLET_RANGE &&
+    Math.abs(o.x-R.x) < racerDims(target).w*.45;
 }

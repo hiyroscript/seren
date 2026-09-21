@@ -158,7 +158,7 @@ $("#carRandom").addEventListener("click", function(){
 });
 
 $("#coleSwitch").addEventListener("click", function(e){
-  e.stopPropagation(); this.blur(); switchColeForm("me"); paintHUD(true);
+  e.stopPropagation(); this.blur(); switchVehicleForm("me"); paintHUD(true);
 });
 $("#itemBox").addEventListener("click", function(e){ if(e && e.stopPropagation) e.stopPropagation(); useItem("me"); });
 /* Tap the charge square to spend it. fireUlt does all the gating - not running,

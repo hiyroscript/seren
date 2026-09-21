@@ -135,9 +135,10 @@ function carPadTick(dt){
 
      left stick, left / right    change lane          (d-pad also works)
      right stick, held up        boost
+     right stick, held down      Aureolin turret
      both sticks clicked in      ultimate             (L3 + R3 / LS + RS)
      R2, or Circle               mystery bubble item  (Xbox: RT, or B)
-     L1                          Cole vehicle switch  (Xbox: LB)
+     L1                          vehicle form switch  (Xbox: LB)
      Options                     pause                (Xbox: Menu)
 
    Everything is edge-triggered off a per-player snapshot of the last frame,

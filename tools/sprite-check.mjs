@@ -61,18 +61,19 @@ const clearWorld=()=>run('G.traps=[];G.boxes=[];G.slicks=[];G.missiles=[];G.fx=[
    terms, and a renderer that built an Image per frame would show up here as a
    count that climbs. */
 const CAR_SHEETS=['v_flann.PNG','v_neela.PNG','vtm_neela.PNG','v_lolanthe.PNG',
-                  'v_verdant.PNG','v_rhosyn.PNG','v_saffron.PNG','vtm_saffron.PNG','v_cole.PNG','vtm_cole.PNG','v_dhaval.PNG'];
+                  'v_verdant.PNG','v_rhosyn.PNG','v_saffron.PNG','vtm_saffron.PNG','v_cole.PNG','vtm_cole.PNG','v_dhaval.PNG','v_aureolin.PNG','vtm_aureolin.PNG'];
 const FX_SHEETS=['queen_note.PNG','pion_note.PNG'];
-test('thirteen cached images, exact case, unloaded and failed assets safely skip drawing',()=>{
-  assert.equal(f.images.length,13);
-  assert.deepEqual(f.images.map(i=>i.src),CAR_SHEETS.concat(FX_SHEETS));
-  assert.equal(new Set(f.images.map(i=>i.src)).size,13,'no sheet is fetched twice');
+const PROJECTILE_SHEETS=['vp_aureolinb.PNG','vp_aureolinr.PNG'];
+test('seventeen cached images, exact case, unloaded and failed assets safely skip drawing',()=>{
+  assert.equal(f.images.length,17);
+  assert.deepEqual(f.images.map(i=>i.src),CAR_SHEETS.concat(FX_SHEETS,PROJECTILE_SHEETS));
+  assert.equal(new Set(f.images.map(i=>i.src)).size,17,'no sheet is fetched twice');
   /* and each cache is keyed by that same exact name */
   for(const src of CAR_SHEETS)
     assert.equal(run(`!!CAR_SPRITES[${JSON.stringify(src)}]`),true,src+' is cached');
   for(const src of FX_SHEETS)
     assert.equal(run(`!!FX_SPRITES[${JSON.stringify(src)}]`),true,src+' is cached');
-  assert.equal(run('Object.keys(CAR_SPRITES).length'),11);
+  assert.equal(run('Object.keys(CAR_SPRITES).length'),13);
   assert.equal(run('Object.keys(FX_SPRITES).length'),2);
   /* The two names the game asks for are the two that were fetched. */
   assert.equal(run('QUEEN_NOTE_IMG'),'queen_note.PNG');
@@ -129,7 +130,7 @@ test('rendering never changes race state or allocates additional images',()=>{
     draw(true,0.12,60,111.6,false,'lolanthe');
     draw(true,-0.12,60,111.6,false,'verdant');
   }
-  assert.equal(run('JSON.stringify(G)'),before);assert.equal(f.images.length,13);
+  assert.equal(run('JSON.stringify(G)'),before);assert.equal(f.images.length,17);
 });
 
 /* ---- the ultimate body fire -------------------------------------
@@ -231,8 +232,8 @@ test('sprite cars use their configured road scales',()=>{
        G.rivals.forEach((r,i)=>{r.car=CAR_IDS[i+1];r.invuln=0;r.dead=0;placeRivalAtY(r, playerY-140*(i+1));});`);
   const drawn=JSON.parse(sizedDraws('render();'));
   const [base,tall]=[run('carW'),run('carH')];
-  assert.equal(drawn.length,8);
-  const SCALES={flann:1.12,neela:1.18,verdant:1.10,rhosyn:1.14,saffron:1.25,cole:1.12};
+  assert.equal(drawn.length,9);
+  const SCALES={flann:1.12,neela:1.18,verdant:1.10,rhosyn:1.14,saffron:1.25,cole:1.12,aureolin:1.10};
   for(const d of drawn){
     const k=SCALES[d.car]||1;
     near(d.w,base*k);near(d.h,tall*k);
@@ -286,7 +287,7 @@ test('two, three and four local columns render the same Flann image and exhaust'
        the grid could never be mistaken for it. */
     assert.equal(sheet('v_flann.PNG').length,seats);
     assert.equal(plumes().length,2*seats);
-    assert.equal(run('G.rivals.length'),7);
+    assert.equal(run('G.rivals.length'),8);
   }
 });
 test('a full render of a burning car still changes no race state',()=>{
@@ -301,7 +302,7 @@ test('a full render of a burning car still changes no race state',()=>{
 });
 test('three minutes of Endless preserve the full racer field and running lifecycle',()=>{
   run('G.local=false;G.car="flann";G.mode="endless";G.rules=defaultRules();startRace();clearTimers();G.state="running";for(let i=0;i<10800;i++)update(1/60);');
-  assert.equal(run('G.state'),'running');assert.equal(run('G.rivals.length'),7);assert.ok(run('G.meters')>0);
+  assert.equal(run('G.state'),'running');assert.equal(run('G.rivals.length'),8);assert.ok(run('G.meters')>0);
 });
 
 /* ================================================================
@@ -491,7 +492,7 @@ test('a full render of a transforming Neela changes no race state',()=>{
   const before=run('JSON.stringify(G)');
   for(let i=0;i<60;i++){f.setNow(30000+i*16);run('render();');}
   assert.equal(run('JSON.stringify(G)'),before);
-  assert.equal(f.images.length,13,'still twelve images and no more');
+  assert.equal(f.images.length,17,'still seventeen images and no more');
   run('endUlt("me");endUlt(G.rivals[0]);');
 });
 test('every local column carries its own Neela body and nobody else is white',()=>{
@@ -740,7 +741,7 @@ test('the owner is shown Aero-Glow, with its own car and nobody else in it',()=>
   clearWorld();
   /* The shared world first: five rivals and the player are all drawn. */
   run('G.shake=0;');calls=[];run('render();');
-  assert.equal(sheet('v_flann.PNG').length,7,'the field is on the road');
+  assert.equal(sheet('v_flann.PNG').length,8,'the field is on the road');
   assert.equal(sheet('v_rhosyn.PNG').length,1);
   /* Away, and the view is the void: the owner's car and nothing else. */
   run('G.ult=1;startUlt("me");tickAeroGlow("me",AERO_SHIFT+AERO_FADE);');
@@ -761,7 +762,7 @@ test('the owner is shown Aero-Glow, with its own car and nobody else in it',()=>
   assert.equal(run('aeroGlowViewActive("me")'),false);
   assert.equal(run('G.invuln'),run('INVULNERABLE_TIME'));
   run('G.invuln=0;G.shake=0;');calls=[];run('render();');
-  assert.equal(sheet('v_flann.PNG').length,7,'the field is there again');
+  assert.equal(sheet('v_flann.PNG').length,8,'the field is there again');
   assert.equal(sheet('v_rhosyn.PNG').length,1);
 });
 test('Aero-Glow renders from canonical state and mutates none of it',()=>{
@@ -772,7 +773,7 @@ test('Aero-Glow renders from canonical state and mutates none of it',()=>{
   const before=run('JSON.stringify(G)');
   for(let i=0;i<60;i++){f.setNow(60000+i*16);run('render();');}
   assert.equal(run('JSON.stringify(G)'),before,'the void moved the race');
-  assert.equal(f.images.length,13,'still twelve images and no more');
+  assert.equal(f.images.length,17,'still seventeen images and no more');
   /* Nothing in the world itself reads a clock: with the car's own exhaust
      pulse pinned, the same state draws the same frame however much time has
      passed. What it moves with is the road the racer is actually covering. */
@@ -1047,7 +1048,7 @@ test('a full render of both new ultimates changes no race state',()=>{
   const before=run('JSON.stringify(G)');
   for(let i=0;i<60;i++){f.setNow(40000+i*16);run('render();');}
   assert.equal(run('JSON.stringify(G)'),before);
-  assert.equal(f.images.length,13,'still twelve images and no more');
+  assert.equal(f.images.length,17,'still seventeen images and no more');
   run('endUlt("me");endUlt(G.rivals[0]);');
 });
 

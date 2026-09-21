@@ -1,6 +1,6 @@
 # SEREN
 
-A three-lane arcade racer that runs in a browser tab. Eight cars, each with its own
+A three-lane arcade racer that runs in a browser tab. Nine cars, each with its own
 ultimate, race up a road that never stops speeding up — through a city, a desert
 and a rainbow strip of deep space — dodging puddles, meteors and tumbleweeds,
 grabbing items out of mystery bubbles, and barging each other into the barriers.
@@ -39,7 +39,7 @@ it can never drift out of date.
 ![A bot race in progress](docs/img/race.png)
 
 The HUD, clockwise from the top left: the track name and race clock; the distance
-you have covered and the eight-car standings, with your row picked out; a ladder
+you have covered and the nine-car standings, with your row picked out; a ladder
 down the right showing how far ahead or behind each racer is; your ultimate meter
 and item box bottom right; your own Conditions as a column of coloured icon
 circles bottom left; three pink, yellow and cyan shield bars immediately above
@@ -99,12 +99,12 @@ getting faster. Drive as far as you can; leaving the race banks the distance as
 your personal best.
 
 **Race against bots** — pick a difficulty, then race the full distance: reach
-3.00×, then three track changes, then 900 metres to the flag. Eight cars, every
+3.00×, then three track changes, then 900 metres to the flag. Nine cars, every
 trap, every pickup, and a finishing order at the end.
 
 **Local play** — two to four people on one screen, one controller each, on a
 computer. The screen splits into equal columns and the bots fill whatever seats
-are left, so it is always a eight-car field. Local play is offered on phones but
+are left, so it is always a nine-car field. Local play is offered on phones but
 greyed out with the reason, because it needs a keyboard-and-mouse machine with
 pads attached.
 
@@ -122,7 +122,7 @@ never inherit half a custom race by accident.
 
 Every car has the same mechanical ultimate: a **85-second charge**, then
 **15 seconds at 2× its own pace**. Difficulty changes when a bot spends the
-boost, never its strength, duration or charge rate. All eight do something
+boost, never its strength, duration or charge rate. All nine do something
 else with those fifteen seconds as well.
 
 | Car | Ultimate effect |
@@ -600,7 +600,7 @@ sheet) → each player picks a car in turn with their own pad → race.
   game — its own camera, its own instruments — and the world is built wide enough
   to cover the whole spread of the field, so a player half a screen up the road
   is not driving through nothing.
-- The field is always **eight cars**. Bots fill whatever seats the people leave.
+- The field is always **nine cars**. Bots fill whatever seats the people leave.
 - Every human car wears a coloured ring on the road, and the cars that are not
   yours wear a numbered flag, so two players in identical positions on two
   columns can still be told apart.
@@ -842,7 +842,7 @@ Run it before you commit. It takes well under a second.
 DOM/Canvas test doubles, including localization, every Settings preference and
 what it reaches, setup, simulated controllers, car turns and pause/results.
 `node tools/ultimate-check.mjs` runs the ultimate, Condition, hazard, contact and
-Mystery Bubble behaviour for all eight cars as player, bot and local seat, plus
+Mystery Bubble behaviour for all nine cars as player, bot and local seat, plus
 Neela's exchange, Lolanthe's aura and forced lane change and Verdant's
 directional defence in every ownership direction, the documented collision
 priority for every pair of ulting cars, the world-position regression that says
@@ -852,7 +852,7 @@ biome continuing through it, the isolation in both directions against every
 contact rule, hazard, pickup and targeting system, the two seconds of
 Invulnerable granted at the frame the car is genuinely back, finishing from
 inside it, pause, a forced wreck and a restart;
-`node tools/sprite-check.mjs` covers race sizes, all eight sprite cars' sheets
+`node tools/sprite-check.mjs` covers race sizes, all nine sprite cars' sheets
 and measured emitters, the ultimate fire, the transformation flash, Verdant's
 per-view opacity and Rhosyn's disappearance from every other view in one to four
 columns, and both note effects;
@@ -968,4 +968,17 @@ Cole is the seventh racer. Tap the swap button beside the item holder, press **Q
 
 These multipliers stack with the ordinary pace effects. Cole’s ultimate clears tumbleweeds and meteors in either form; puddles and opponent attacks retain their usual behavior. Bots switch to the motorcycle after their opening reaction. A new race always begins in car form.
 
-A full field has eight racers: local races with two, three, or four humans have six, five, or four bots. See [Cole measurements and QA](docs/COLE-QA.md). `node tools/cole-check.mjs` runs the focused integration checks; the ultimate suite includes them too.
+A full field has nine racers: local races with two, three, or four humans have seven, six, or five bots. See [Cole measurements and QA](docs/COLE-QA.md). `node tools/cole-check.mjs` runs the focused integration checks; the ultimate suite includes them too.
+
+
+### Aureolin — armed car and turret
+
+Aureolin is the ninth racer. **Q**, **L1 / LB**, or the vehicle-form button switches between the normal yellow camouflage car and its armed form with a two-second cooldown. Form survives a wreck; a new race starts normal.
+
+While armed, hold **Down / S**, the **right stick or D-pad down**, or **swipe down and keep the finger down** to fire the turret. Each round adds an independently expiring 0.10× slowdown for 1.5 seconds. The yellow capacity bar sits below red boost, drains in 60 shots at 15 rounds/second, and recharges in 3.5 seconds. After overheating, it must reach 100% before another shot. The yellow bar also works with ordinary boost disabled.
+
+The shared fifteen-second ultimate refills capacity, automatically fires the armed turret without drain, doubles newly fired bullet range from eight to sixteen normal Aureolin lengths, and automatically launches two homing rockets every two seconds when an opponent is ahead. Rockets continually seek the closest eligible racer ahead by race progress, last at most five seconds and remove one half-shield each on contact. The ultimate leaves form choice to the driver.
+
+Flann’s ultimate absorbs shots; Verdant’s ultimate is revealed without damage or slowdown; Rhosyn’s ultimate is unreachable. Bullets miss flying Saffron, while rockets can follow it. Mind Control stops new firing; existing projectiles continue. Both Aureolin forms clear solid hazards during the ultimate; puddles still affect the car and projectiles pass over water.
+
+See [Aureolin measurements and QA](docs/AUREOLIN-QA.md). Run `node tools/aureolin-check.mjs`; the ultimate suite imports it as well.
