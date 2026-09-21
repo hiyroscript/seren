@@ -32,6 +32,12 @@ function humanBoost(who, on){
   if(who === "me"){ G.padBoost = !!on && !controlsLocked("me"); setBoost(); return; }
   who.wantBoost = !!on && !controlsLocked(who);
 }
+function humanFire(who, on, source){
+  const o = who === "me" ? G : who;
+  const field = source || (who === "me" ? "padFire" : "wantFire");
+  if(!on){ o[field] = false; if(!controlsLocked(who)) o[field+"Blocked"] = false; return; }
+  o[field] = !o[field+"Blocked"] && canAureolinFire(who);
+}
 function humanUlt(who){
   if(who === "me"){ fireUlt(); return; }
   fireUltRival(who);
@@ -62,6 +68,7 @@ function padDrive(who, dt){
   }
 
   humanBoost(who, ry <= -STICK_ON || padBtn(p, PAD_DU));
+  humanFire(who, ry >= STICK_ON || padBtn(p, PAD_DD));
 
   /* Both sticks pressed in, and nothing else. It was L3 + L2 before, which put
      the ultimate under one hand next to a trigger the other thumb is already
@@ -78,7 +85,7 @@ function padDrive(who, dt){
   k.item = item;
 
   const form = padBtn(p, PAD_L1);
-  if(form && !k.form) switchColeForm(who);
+  if(form && !k.form) switchVehicleForm(who);
   k.form = form;
 
   const start = padBtn(p, PAD_START);
@@ -99,6 +106,7 @@ function padsLost(seats){
   for(let i=0;i<seats.length;i++){
     const who = seats[i];
     humanBoost(who, false);
+    clearAureolinFire(who);
     const o = who === "me" ? G : who;
     o.pk = newPadKeys();                     /* nothing is held any more */
   }
@@ -142,18 +150,20 @@ document.addEventListener("keydown", function(e){
   if(k === "arrowleft" || k === "a"){ e.preventDefault(); move(-1); }
   else if(k === "arrowright" || k === "d"){ e.preventDefault(); move(1); }
   else if(k === "arrowup" || k === "w"){ e.preventDefault(); G.keyBoost = true; setBoost(); }
+  else if(k === "arrowdown" || k === "s"){ e.preventDefault(); humanFire("me", true, "keyFire"); }
   else if(k === "p" || k === "escape"){
     e.preventDefault();
     pause(G.state === "running" || G.state === "countdown");
   }
   else if(k === "shift" || k === " "){ e.preventDefault(); G.ultKey = true; }
-  else if(k === "q"){ e.preventDefault(); if(!e.repeat) switchColeForm("me"); }
+  else if(k === "q"){ e.preventDefault(); if(!e.repeat) switchVehicleForm("me"); }
   else if(k === "e"){ e.preventDefault(); useItem("me"); }
 });
 document.addEventListener("keyup", function(e){
   if(!e.key) return;
   const k = e.key.toLowerCase();
   if(k === "arrowup" || k === "w"){ G.keyBoost = false; setBoost(); }
+  if(k === "arrowdown" || k === "s") humanFire("me", false, "keyFire");
   if(k === "shift" || k === " ") G.ultKey = false;
 });
 
@@ -186,6 +196,9 @@ cv.addEventListener("pointermove", function(e){
   } else if(dy < -34 && Math.abs(dy) > Math.abs(dx)){
     G.ptrBoost = true; setBoost(); ptr.moved = true;
     ptr.x = e.clientX; ptr.y = e.clientY;
+  } else if(dy > 34 && Math.abs(dy) > Math.abs(dx)){
+    humanFire("me", true, "ptrFire"); ptr.moved = true;
+    ptr.x = e.clientX; ptr.y = e.clientY;
   } else if(Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP){
     ptr.moved = true;                      /* a drag, not a tap */
   }
@@ -200,7 +213,7 @@ function endPtr(e){
   if(e && ptrDown[e.pointerId]){ delete ptrDown[e.pointerId]; ptrCount = Math.max(0, ptrCount - 1); }
   else { ptrCount = 0; for(const k in ptrDown) delete ptrDown[k]; }
   if(ptrCount === 0){
-    ptr.on = false; G.ptrBoost = false;
+    ptr.on = false; G.ptrBoost = false; humanFire("me", false, "ptrFire");
     setBoost();
     G.ultArmed = true;             /* the ultimate needs a long press, not a tap */
   }

@@ -20,12 +20,12 @@ function collide(kind){
  run(`globalThis.hx=o.x;globalThis.hy=racerY(who);G.traps=[${kind==='weed'?"{kind:'weed',x:hx,y:hy,r:25,vx:0,fall:1,age:0,rot:0,hit:0,nm:0}":kind==='meteor'?"{kind:'meteor',x:hx,y:hy,r:80,mr:18,fall:0,max:1,phase:0,t:0}":"{kind:'puddle',x:hx,y:hy,rx:80,ry:50,s:.5,hit:0,nm:0}"}];
   ${kind==='meteor'?"updateTraps(0,0,'running');":"if(who==='me')updateTraps(0,0,'running');else updateRival(o,0,'running');"}`);
 }
-test('eight distinct identities and correct full-field bot counts for 1–4 humans',()=>{
- eq('CAR_IDS.length',8);eq('CAR_IDS[7]','dhaval');eq('FIELD_SIZE',8);
+test('nine distinct identities and correct full-field bot counts for 1–4 humans',()=>{
+ eq('CAR_IDS.length',9);eq('CAR_IDS[7]','dhaval');eq('FIELD_SIZE',9);
  for(let n=1;n<=4;n++){
   run(`G.local=${n>1};G.players=${n};G.picks=CAR_IDS.slice(0,${n});G.car=G.picks[0];G.rules=defaultRules();startRace();clearTimers();`);
-  eq('G.rivals.length',7);eq('G.rivals.filter(r=>!r.human).length',8-n);
-  eq('new Set([G.car,...G.rivals.map(r=>r.car)]).size',8);
+  eq('G.rivals.length',8);eq('G.rivals.filter(r=>!r.human).length',9-n);
+  eq('new Set([G.car,...G.rivals.map(r=>r.car)]).size',9);
  }
 });
 for(const kind of ['player','bot','local']){

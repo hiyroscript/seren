@@ -38,7 +38,7 @@ to that tier from `G.tier` and `G.speedT`, then the remaining track transitions.
 | --- | --- | --- |
 | `FINAL_TRACKS` | `3` | track changes after reaching 3.00×, then the flag is planted |
 | `FINISH_STRETCH` | `900` | metres of the last track before the line |
-| `FIELD_SIZE` | `8` | cars on the road, however they are driven |
+| `FIELD_SIZE` | `9` | cars on the road, however they are driven |
 | `LOCAL_MAX` | `4` | most people on one screen |
 | `PARK_BASE` | `0.70` | car heights past the line for the last car home |
 | `PARK_STEP` | `0.48` | car heights between one finishing place and the next |
@@ -46,7 +46,7 @@ to that tier from `G.tier` and `G.speedT`, then the remaining track transitions.
 
 `PARK_STEP` follows the lane cycle: three steps separate racers in the same
 lane. At `3 × 0.48` shared car heights, the largest ordinary form clears its
-neighbor. The finish camera frames the whole eight-place parking area.
+neighbor. The finish camera frames the whole nine-place parking area.
 
 ## Boost
 
@@ -112,7 +112,7 @@ All cars share this speed multiplier. It has no status, targeting or
 world-clock effects, and its duration cannot be extended. A wreck or finish
 ends it. Ordinary negative speed modifiers still apply independently.
 
-All eight cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
+All nine cars add behaviour to the shared lifecycle. Saffron flies over the road, intercepts falling meteors and drops on expiry. Mind Control remains effective. Its base model uses raceScale 1.25; the dragon uses two lane widths.
 
 ### Flann's ram
 
@@ -519,7 +519,7 @@ In `js/local.js`:
 
 ### Sprite artwork and race size
 
-All eight base cars and three alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
+All nine base cars and four alternate forms use measured bounds and source-pixel exhaust anchors. `spriteFrame()` fits uniformly; `carDims()` and `racerDims()` keep rendering and hulls locked together. Menus use base models with their own preview size.
 
 | Car | Race scale | Visible bounds (x,y,width,height) | Exhaust source pixels |
 | --- | --- | --- | --- |
@@ -575,7 +575,7 @@ and dodges produce no feedback. This timer has no gameplay effect.
 
 The car has race scale 1.12; the motorcycle has alternate scale 1.12 on top of that (1.2544 of the shared logical box). Both fit their independently measured bounds uniformly. See COLE-QA.md for source dimensions and outlet coordinates.
 
-`FIELD_SIZE = 8`; the start uses two cars beside P1, three in the second row, and two in the third row. Row spacing is 1.3 times the largest base-model height. Parking uses `PARK_BASE = 0.70` and `PARK_STEP = 0.48` shared car heights; three lane-cycling steps separate racers in the same lane. After the flag, each finisher’s camera eases to frame the whole parking area without changing world positions.
+`FIELD_SIZE = 9`; the start uses two cars beside P1, three in the second row, and three in the third row. Row spacing is 1.3 times the largest base-model height. Parking uses `PARK_BASE = 0.70` and `PARK_STEP = 0.48` shared car heights; three lane-cycling steps separate racers in the same lane. After the flag, each finisher’s camera eases to frame the whole parking area without changing world positions.
 
 
 ## Dhaval
@@ -593,3 +593,27 @@ multipliers for levels 0–5 are 1, .88, .68, .46, .28 and .12. Observation inte
 increase by .4 per level and reaction delay by .3 per level. These affect
 judgement only; `racerPace()` is unchanged. Actual light coverage measurements and
 manual QA limits are recorded in [DHAVAL-QA.md](DHAVAL-QA.md).
+
+
+## Aureolin
+
+All values live in `js/data.js`; difficulty changes decisions, not these rules.
+
+| Constant | Default | Meaning |
+| --- | --- | --- |
+| `AUREOLIN_SWITCH_COOLDOWN` | 2 s | Shared-style permanent form switch |
+| `AUREOLIN_BULLET_RATE` | 15/s | Time-accumulated turret rate |
+| `AUREOLIN_BULLET_DRAIN` | 1/60 | Capacity per shot; four seconds from full |
+| `AUREOLIN_HEAT_REFILL` | 1/3.5 per s | Full recharge after 3.5 seconds idle/locked |
+| `AUREOLIN_SLOW_TIME` | 1.5 s | Independent lifetime of each stack |
+| `AUREOLIN_SLOW_STEP` | 0.10 | Subtraction per stack; total factor floored at zero |
+| `AUREOLIN_BULLET_RANGE` | 8 lengths | Launch-fixed range in normal Aureolin lengths |
+| `AUREOLIN_ULT_BULLET_RANGE_MULT` | 2.00 | Exact ultimate launch range multiplier |
+| `AUREOLIN_BULLET_SPEED` | 24 lengths/s | World projectile speed |
+| `AUREOLIN_ROCKET_COOLDOWN` | 2.0 s | Two simultaneous rockets per salvo |
+| `AUREOLIN_ROCKET_LIFE` | 5 s | No-contact self-destruct; no splash |
+| `AUREOLIN_ROCKET_SPEED` | 16 lengths/s | World projectile speed |
+| `AUREOLIN_ROCKET_TURN` | 4.5 rad/s | Smooth maximum turning rate |
+| Bullet / rocket visible length | 0.20 / 0.34 lengths | Uniform full-sheet render, measured visible footprint |
+
+Normal Aureolin uses `raceScale=1.10`; armed adds `scale=1.08`. Its two independent hulls and three weapon anchors are measured from the PNGs. See [the measurement record](AUREOLIN-QA.md).

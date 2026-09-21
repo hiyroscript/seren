@@ -94,21 +94,21 @@ function switchTrack(){
    ================================================================ */
 function spawnRivals(){
   /* Whoever is being driven by a person gets the car that person chose, in
-     seat order; the bots take what is left. The full field has eight cars, so
-     two players leave six bots, three leave five and four leave four - and
+     seat order; the bots take what is left. The full field has nine cars, so
+     two players leave seven bots, three leave six and four leave five - and
      every car in the game is on the road in every local race. */
   const taken = G.local ? G.picks.slice(0, G.players) : [G.car];
   const spare = CAR_IDS.filter(function(id){ return taken.indexOf(id) < 0; });
   const seats = G.local ? G.picks.slice(1, G.players) : [];
   /* People first, always; the bots take what is left of the grid. How much is
-     left is the rule, and the standard rule is "all of it" - which is the eight
+     left is the rule, and the standard rule is "all of it" - which is the nine
      cars this has always put on the road. A custom race can ask for fewer, or
      for none at all, and then the field is just the people. */
   const others = seats.concat(spare.slice(0, botsWanted())).slice(0, FIELD_SIZE - 1);
   /* front row alongside you, the rest lined up behind */
   const front = [0, 1, 2].filter(function(l){ return l !== G.lane; });
-  const grid = front.concat([0, 1, 2, 1, 0]);       /* two beside you, three behind, two in row three */
-  const rows = [0, 0, 1, 1, 1, 2, 2];
+  const grid = front.concat([0, 1, 2, 0, 1, 2]);       /* two beside you, three behind, three in row three */
+  const rows = [0, 0, 1, 1, 1, 2, 2, 2];
   const rowHeight = Math.max(...CAR_IDS.map(id => carDims(id).h))*1.3;
   G.rivals = others.map(function(id, i){
     const lane = grid[i];
@@ -129,6 +129,10 @@ function spawnRivals(){
       /* Neela's ultimate, carried by every racer so nothing downstream has to
          ask which kind of object it is holding. See G in runtime.js. */
       saffronPhase:"off", saffronT:0, saffronLift:0,
+      aureolinArmed:false, aureolinSwitchT:0, aureolinHeat:1, aureolinOverheated:false,
+      aureolinFireT:0, aureolinRocketT:0, aureolinSoundT:0, aureolinSlows:[],
+      wantFire:false, keyFire:false, ptrFire:false, padFire:false, fireBlocked:false,
+      wantFireBlocked:false, keyFireBlocked:false, ptrFireBlocked:false, padFireBlocked:false,
       coleBike:false, coleSwitchT:0,
       neelaForm:false, neelaOrigin:null, neelaSwapped:false,
       whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
@@ -165,7 +169,7 @@ function spawnRivals(){
 function toFlag(){ return G.mode === "bots" || G.mode === "local"; }
 
 /* distance along the road, in metres, for anyone on it */
-function metersOf(R){ return R ? R.m : G.meters; }
+function metersOf(R){ return R && R !== "me" ? R.m : G.meters; }
 function rivalMeters(){ return G.rivals.length ? metersOf(G.rivals[0]) : 0; }
 
 /* ---------------- race lifecycle --------------------------------- */
@@ -201,6 +205,7 @@ function startRace(){
   G.ult = 0; G.ultOn = false; G.boostLock = false; G.ultArmed = true;
   G.ultT = 0; G.ultMax = ULT_TIME;
   G.coleBike = false; G.coleSwitchT = 0;
+  resetAureolin("me"); G.aureolinBullets = []; G.aureolinRockets = [];
   clearSaffronState("me");
   clearNeelaState("me"); G.trail = [];     /* nothing of the last race's ultimate */
   clearLolantheState("me"); clearVerdantState("me");
@@ -274,6 +279,8 @@ function pause(on){
 
 function leave(){
   clearTimers();
+  G.aureolinBullets = []; G.aureolinRockets = [];
+  for(const who of ["me", ...G.rivals]) clearAureolinFire(who);
   for(const a of racers()){
     const who = a.me ? "me" : a.obj, o = a.me ? G : a.obj;
     clearSaffronState(who);
@@ -350,6 +357,7 @@ function checkFinish(){
   for(let i=0;i<G.rivals.length;i++){
     const R = G.rivals[i];
     if(R.finished === null && metersOf(R) >= G.finishAt){
+      clearAureolinFire(R);
       R.finished = G.results.length + 1; R.shieldHitT = 0;
       G.results.push({ me:false, car:R.car, place:R.finished });
       R.lane = parkLaneFor(R.finished);          /* the lane its place earned */
@@ -365,6 +373,7 @@ function checkFinish(){
     }
   }
   if(G.finished === null && G.meters >= G.finishAt){
+    clearAureolinFire("me");
     G.finished = G.results.length + 1; G.shieldHitT = 0;
     G.results.push({ me:true, car:G.car, place:G.finished });
     G.lane = parkLaneFor(G.finished);           /* your car takes its lane too */
@@ -438,7 +447,7 @@ function localWinner(){
   }
   return t("localOver");
 }
-/* The whole grid as it finished: eight cars in order, the ones with people in
+/* The whole grid as it finished: nine cars in order, the ones with people in
    them wearing their colour and their number. A single line of "P1 3rd" told
    you your place and nothing about the race. */
 function localBoard(){
@@ -496,9 +505,11 @@ function update(dt){
   if(G.swipeLock > 0) G.swipeLock = Math.max(0, G.swipeLock - dt);
   if(st === "paused" || st === "idle") return;
 
+  const projectileFrame = st === "running" ? aureolinFrame() : null;
   tickCole("me", dt);
   for(const R of G.rivals) tickCole(R, dt);
 
+  if(st === "running") for(const who of ["me", ...G.rivals]) tickAureolinSlows(who, dt);
   const dodgeFrame = st === "running" ? beginPerfectDodges() : null;
 
   /* speed */
@@ -680,6 +691,10 @@ function update(dt){
      happens to sit in the rivals list. */
   if(st === "running"){ dhavalAuras(); lolantheAuras(); }
   checkFinish();
+  if(st === "running" && G.state === "running"){
+    for(const who of ["me", ...G.rivals]) tickAureolin(who, dt);
+    updateAureolinProjectiles(dt, projectileFrame);
+  }
   if(dodgeFrame) finishPerfectDodges(dodgeFrame);
   updateFx(dt, d);
   if(G.seam !== null){
@@ -763,6 +778,7 @@ function updateRival(R, dt, st){
   botColeForm(R);
   botLook(R, dt);
   const s = R.sense;
+  botAureolinWeapons(R);
 
   if(!R.human && !controlsLocked(R)){
     /* Whatever is in its hand. When to spend it is judgement; what it does when

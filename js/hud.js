@@ -283,7 +283,7 @@ const HUD_RED_HI = "#FF4A50";
 /* How far the bottom row - the squares and the condition badges - stands off
    the foot. A short viewport pulls it in, exactly as the stylesheet's
    @media (max-height:480px) block does. */
-function hudFoot(){ return H < 480 ? 40 : HUD_ACT_BOT; }
+function hudFoot(o){ return (H < 480 ? 40 : HUD_ACT_BOT)+hudMeterExtra(o || (VOWN === "me" ? G : VOWN)); }
 /* The instrument band's inset. On a narrow view it is the plain edge margin;
    on a wide one it closes in so the meter, the badges and the two squares stay
    beside the road rather than in the far corners. The stylesheet's --side on
@@ -349,22 +349,22 @@ function placeOf(who){
   return n;
 }
 
-/* ---- the boost meter across the foot ----
-   One tray, one track: the one thing you fill by holding gets one place to be
-   looked at. The tray closes up around it, so there is no empty channel beside
-   the bar for the eye to keep checking. */
+/* The foot tray contains ordinary boost, Aureolin capacity, or both.
+   Geometry expands only for two visible tracks, independently for each seat. */
+function hudMeterExtra(o){ return ruleOn("boost") && aureolinCar(o) ? HUD_BAR+5 : 0; }
 function hudMeters(o){
-  if(!ruleOn("boost")) return;             /* no boost, no tray */
-  const x = hudSide(), w = Math.max(48, W - x*2);
-  const ry = H - HUD_RAIL_BOT - HUD_RAIL_H;
-  ctx.save();
-  hudGlass(x, ry, w, HUD_RAIL_H, 8);
-  const bx = x + 8, bw = w - 16;
-  const by = ry + HUD_RAIL_PAD;                                   /* #boostWrap */
-  fillRR(bx, by, bw, HUD_BAR, 3, "rgba(255,255,255,0.14)");
-  if(o.charge > 0.001)
-    fillRR(bx, by, Math.max(4, bw*clamp(o.charge,0,1)), HUD_BAR, 3,
-           o.boostLock ? "rgba(255,255,255,0.30)" : (o.charge > 0.98 ? HUD_RED_HI : HUD_RED));
+  const bars = [];
+  if(ruleOn("boost")) bars.push({value:o.charge,color:o.boostLock ? "rgba(255,255,255,.30)" : o.charge > .98 ? HUD_RED_HI : HUD_RED});
+  if(aureolinCar(o)) bars.push({value:o.aureolinHeat,color:o.aureolinOverheated ? "#998637" : CARS.aureolin.accent});
+  if(!bars.length) return;
+  const x = hudSide(), w = Math.max(48,W-x*2), h = HUD_RAIL_H+hudMeterExtra(o);
+  const ry = H-HUD_RAIL_BOT-h;
+  ctx.save(); hudGlass(x,ry,w,h,8);
+  bars.forEach(function(bar,i){
+    const y = ry+HUD_RAIL_PAD+i*(HUD_BAR+5), bw = w-16;
+    fillRR(x+8,y,bw,HUD_BAR,3,"rgba(255,255,255,.14)");
+    if(bar.value > .001) fillRR(x+8,y,Math.max(1,bw*clamp(bar.value,0,1)),HUD_BAR,3,bar.color);
+  });
   ctx.restore();
 }
 
@@ -393,7 +393,7 @@ function drawShieldHit(who, cx, cy, alpha){
   ctx.restore();
 }
 const COLE_SWITCH_PATH = "M4 9h16l-3-3 M20 15H4l3 3 M7 11v2 M17 11v2";
-function hudActionCount(o){ return Number(ruleOn("ults")) + Number(ruleOn("bubbles")) + Number(coleCar(o)); }
+function hudActionCount(o){ return Number(ruleOn("ults")) + Number(ruleOn("bubbles")) + Number(hasVehicleForm(o)); }
 function hudActionSize(o){
   const n = hudActionCount(o);
   return n > 2 ? Math.min(HUD_ACT, Math.max(28, (W - hudSide()*2 - 32 - HUD_ACT_GAP*(n-1))/n)) : HUD_ACT;
@@ -402,25 +402,35 @@ function hudActionWidth(o){ const n = hudActionCount(o); return n ? n*hudActionS
 function hudShieldWidth(o){
   return Math.max(24, Math.min(HUD_SHIELD_W, W - hudSide()*2 - hudActionWidth(o || (VOWN === "me" ? G : VOWN)) - 8));
 }
-function coleCooldownText(o){ return o.coleSwitchT > 0 ? (Math.ceil(o.coleSwitchT*10)/10).toFixed(1) : ""; }
-function coleSwitchLabel(who){
-  return t("hudColeSwitch") + " · " + t(coleBikeActive(who) ? "coleMotorcycle" : "coleNormal") +
-    ((who === "me" ? G : who).coleSwitchT > 0 ? " · " + coleCooldownText(who === "me" ? G : who) + "s" : "");
+function vehicleCooldownText(o){ const t = vehicleFormCooldown(o); return t > 0 ? (Math.ceil(t*10)/10).toFixed(1) : ""; }
+function vehicleSwitchLabel(who){
+  const o = who === "me" ? G : who, cole = coleCar(who);
+  return t(cole ? "hudColeSwitch" : "hudAureolinSwitch") + " · " +
+    t(cole ? (coleBikeActive(who) ? "coleMotorcycle" : "coleNormal") : (aureolinArmedActive(who) ? "aureolinArmed" : "aureolinNormal")) +
+    (vehicleFormCooldown(who) > 0 ? " · " + vehicleCooldownText(o) + "s" : "");
 }
-function paintColeSwitch(){
-  const b = $("#coleSwitch"), on = coleCar("me"), ready = canColeSwitch("me");
+function vehicleSwitchPath(who){
+  return aureolinArmedActive(who) ? "M12 3v4 M12 17v4 M3 12h4 M17 12h4 M7 7h10v10H7z" : COLE_SWITCH_PATH;
+}
+function paintVehicleSwitch(){
+  // Keep the DOM ID for existing integrations; all behavior is form-generic.
+  const b = $("#coleSwitch"), on = hasVehicleForm("me"), ready = canVehicleSwitch("me");
   b.style.display = on ? "" : "none";
   b.disabled = !ready; b.setAttribute("aria-disabled", String(!ready));
-  b.setAttribute("aria-label", coleSwitchLabel("me"));
+  b.setAttribute("aria-label", vehicleSwitchLabel("me"));
   b.classList.toggle("ready", ready);
-  $("#coleSwitchTime").textContent = coleCooldownText(G);
-  const icon = $("#coleSwitchIcon");
-  if(!icon.firstElementChild) icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + COLE_SWITCH_PATH + '"/></svg>';
+  $("#coleSwitchTime").textContent = vehicleCooldownText(G);
+  const icon = $("#coleSwitchIcon"), path = vehicleSwitchPath("me");
+  if(icon._path !== path){
+    icon._path = path;
+    icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="' + path + '"/></svg>';
+  }
   $("#race").style.setProperty("--hud-action-width", hudActionWidth(G) + "px");
   $("#race").style.setProperty("--hud-act", hudActionSize(G) + "px");
+  $("#race").style.setProperty("--weapon-extra", hudMeterExtra(G) + "px");
 }
 function hudShield(o){
-  const y = H - HUD_SHIELD_BOT - HUD_SHIELD_H;
+  const y = H - HUD_SHIELD_BOT - hudMeterExtra(o) - HUD_SHIELD_H;
   const w = (hudShieldWidth(o) - (SHIELD_BARS - 1)*HUD_SHIELD_BAR_GAP)/SHIELD_BARS;
   ctx.save();
   for(let i=0;i<SHIELD_BARS;i++){
@@ -446,21 +456,21 @@ function paintShield(){
    answer. Exactly what the page's own button does. */
 function hudActions(o){
   const bw = hudActionSize(o);
-  const iy = H - hudFoot() - bw;
+  const iy = H - hudFoot(o) - bw;
   const cx = W - hudSide() - bw;
-  const ix = cx - (coleCar(o) ? bw + HUD_ACT_GAP : 0);
+  const ix = cx - (hasVehicleForm(o) ? bw + HUD_ACT_GAP : 0);
   const ux = ix - (ruleOn("bubbles") ? bw + HUD_ACT_GAP : 0);
-  if(coleCar(o)){
+  if(hasVehicleForm(o)){
     const who = o === G ? "me" : o;
     ctx.save(); hudGlass(cx, iy, bw, bw, 12);
-    ctx.strokeStyle = canColeSwitch(who) ? "#FFFFFF" : HUD_MID;
+    ctx.strokeStyle = canVehicleSwitch(who) ? "#FFFFFF" : HUD_MID;
     ctx.lineWidth = 1.7;
     ctx.save(); ctx.translate(cx + bw/2 - 12, iy + bw/2 - 12);
-    ctx.stroke(new Path2D(COLE_SWITCH_PATH)); ctx.restore();
-    if(o.coleSwitchT > 0){
+    ctx.stroke(new Path2D(vehicleSwitchPath(who))); ctx.restore();
+    if(vehicleFormCooldown(o) > 0){
       ctx.font = "600 11px " + HUD_MONO; ctx.fillStyle = "#FFFFFF";
       ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-      ctx.fillText(coleCooldownText(o), cx + bw - 3, iy + bw - 2);
+      ctx.fillText(vehicleCooldownText(o), cx + bw - 3, iy + bw - 2);
     }
     ctx.restore();
   }
@@ -641,7 +651,7 @@ function hudConditions(who){
   const on = activeConditions(who);
   const r = HUD_COND_R, step = r*2 + HUD_COND_GAP;
   const x = hudSide() + r;
-  let y = H - HUD_COND_BOT - r;
+  let y = H - HUD_COND_BOT - hudMeterExtra(who) - r;
   for(let i=0;i<on.length;i++){
     drawConditionBadge(on[i], x, y, r);
     y -= step;
@@ -858,7 +868,7 @@ function drawLadder(){
    badge cannot use, and where a badge can go is a question about the page
    rather than about this file. Carrying a copy of the stylesheet's numbers here
    would be wrong the moment a notch inset shifted the block down, the mode
-   dropped the race clock or the eight place rows, or the mono font rendered a
+   dropped the race clock or the nine place rows, or the mono font rendered a
    line taller than assumed - and being wrong means a badge printed under the
    standings, which is a badge nobody can read.
 
@@ -873,20 +883,20 @@ function drawLadder(){
 let hudZoneCache = null, hudZoneTick = 0;
 function hudZones(){
   const owner = VOWN === "me" ? G : VOWN;
-  const key = [W,H,hudActionCount(owner),G.rivals.length].join(":");
+  const key = [W,H,hudActionCount(owner),hudMeterExtra(owner),G.rivals.length].join(":");
   if(!G.local && --hudZoneTick > 0 && hudZoneCache && hudZoneCache.key === key) return hudZoneCache;
   hudZoneTick = 120;
   /* The fallback - and, in local play, the whole answer - is the stylesheet's
      own arithmetic, run here. A square that is switched off takes its space
      back with it, so an edge badge can use the corner a missing meter left. */
   const acts = hudActionWidth(owner);
-  const rail = HUD_SHIELD_BOT + HUD_SHIELD_H;  /* durability stays even without boost */
+  const rail = HUD_SHIELD_BOT + hudMeterExtra(owner) + HUD_SHIELD_H;  /* durability stays even without boost */
   const z = {
     key:key,
     gaugeBottom: HUD_TOP + 42 + 8 + 26,
     readBottom:  HUD_TOP + readHeight(G.rivals.length + 1),
     readLeft:    W - HUD_EDGE - readWidth(),
-    actsTop:     acts ? H - hudFoot() - hudActionSize(owner) : H - rail,
+    actsTop:     acts ? H - hudFoot(owner) - hudActionSize(owner) : H - rail,
     actsLeft:    acts ? W - hudSide() - acts : W - hudSide()
   };
   if(G.local){
@@ -1119,7 +1129,7 @@ function paintHUD(force){
   syncConditions();
   paintShield();
   paintItemBox();
-  paintColeSwitch();
+  paintVehicleSwitch();
   const board = [{ me:true, m:G.meters, car:G.car }].concat(G.rivals.map(function(R){
     return { me:false, m:metersOf(R), car:R.car };
   }));
@@ -1154,5 +1164,13 @@ function paintHUD(force){
      than as absent. */
   up.style.display = ruleOn("ults") ? "" : "none";
   $("#itemBox").style.display = ruleOn("bubbles") ? "" : "none";
-  $("#meterRail").style.display = ruleOn("boost") ? "" : "none";
+  $("#boostWrap").style.display = ruleOn("boost") ? "" : "none";
+  const weapon = $("#weaponWrap");
+  weapon.style.display = aureolinCar("me") ? "" : "none";
+  weapon.classList.toggle("locked", G.aureolinOverheated);
+  weapon.setAttribute("aria-valuenow", Math.round(G.aureolinHeat*100));
+  weapon.setAttribute("aria-label", t("weaponHeat"));
+  weapon.setAttribute("aria-valuetext", G.aureolinOverheated ? t("weaponOverheated") : Math.round(G.aureolinHeat*100)+"%");
+  $("#weaponFill").style.width = (G.aureolinHeat*100).toFixed(1)+"%";
+  $("#meterRail").style.display = ruleOn("boost") || aureolinCar("me") ? "" : "none";
 }

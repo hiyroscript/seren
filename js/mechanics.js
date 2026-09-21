@@ -124,7 +124,7 @@ function clearDebuffs(who){
   /* Mind Control is a debuff like the other three, so protection takes it
      away with them - and the three notes go with it rather than being left
      orbiting a car that is no longer controlled. */
-  if(o){ o.mindT = 0; o.mindPop = 0; o.mindOut = 0; o.blindPts = []; }
+  if(o){ o.aureolinSlows = []; o.mindT = 0; o.mindPop = 0; o.mindOut = 0; o.blindPts = []; }
   clearDhavalObscure(who);
 }
 function sweepDebuffs(){
@@ -169,7 +169,7 @@ function racerPace(who){
   if(o.boosting) pace *= bike ? COLE_BIKE_BOOST_SPEED : BOOST_SPEED;
   if(o.canT > 0) pace *= CAN_SPEED;
   if(o.shuntT > 0) pace *= SHUNT_BOOST;
-  return pace;
+  return pace*Math.max(0, 1 - AUREOLIN_SLOW_STEP*(o.aureolinSlows || []).length);
 }
 
 /* Saffron's altitude is presentation, never a second race coordinate. */
@@ -274,7 +274,7 @@ function conditionOn(who, id){
     return !!o.boosting || !!o.ultOn || (o.canT || 0) > 0 ||
            (me ? G.shuntT : o.shuntT || 0) > 0;
   }
-  if(id === "slowed") return (me ? G.slowT : o.slow || 0) > 0;
+  if(id === "slowed") return (me ? G.slowT : o.slow || 0) > 0 || (o.aureolinSlows || []).length > 0;
   /* Two things put a screen out of use, and the Condition is the same
      Condition either way: puddle water on the glass, or the white a Neela
      transformation or teleport puts over the view it belongs to. Derived from
@@ -340,7 +340,7 @@ function rearContact(who){
 /* ---------------- shared ultimate predicates --------------------
    Every car runs the same ultimate: eighty-five seconds to charge, fifteen
    seconds long, and the lifecycle in startUlt/tickUlt/endUlt below is shared
-   by all eight. Individual powers use the same clock. racerPace() applies
+   by all nine. Individual powers use the same clock. racerPace() applies
    double pace, or Cole’s motorcycle multiplier, without another lifecycle.
 
    These are the predicates that say which car is which, and they are the only
@@ -474,7 +474,7 @@ function aeroHideK(who){
    hazards in this file and the rivals' in race.js. */
 function clearsSolidHazards(who){
   return flannUltActive(who) || neelaUltActive(who) ||
-         lolantheUltActive(who) || verdantUltActive(who) || coleUltActive(who) || dhavalUltActive(who);
+         lolantheUltActive(who) || verdantUltActive(who) || coleUltActive(who) || dhavalUltActive(who) || aureolinUltActive(who);
 }
 /* And whether this racer is a Neela that still has its one exchange to spend.
    The form has to be up, the swap has to be unspent, and the contact must not
@@ -787,6 +787,7 @@ function applyMindControl(target){
   const o = target === "me" ? G : target;
   if(!o || refusesDebuffs(target) || verdantUltActive(target)) return false;
   const fresh = !((o.mindT || 0) > 0);
+  clearAureolinFire(target, true);
   o.mindT = MIND_CONTROL_TIME;
   if(fresh){
     o.mindPop = MIND_POP;
@@ -1138,9 +1139,9 @@ function offensiveRam(by, victim){
 /* One destruction call that does not care which kind of racer it is handed, so
    the ram uses the existing wreck lifecycle - blame, meter penalty and reward,
    particles, shake and audio - rather than growing a second one. */
-function wreckRacer(who, by){
+function wreckRacer(who, by, force){
   if(who === "me") destroyCar(by);
-  else wreckRival(who, by);
+  else wreckRival(who, by, force);
 }
 
 /* Per-life durability. Only accepted ordinary hazard contacts call this;
@@ -1354,6 +1355,7 @@ function startUlt(who){
      Lolanthe's note is a pop-in and nothing else. Rhosyn starts leaving the
      shared road. Verdant needs nothing: its fade is derived from the ultimate
      every frame rather than started here. */
+  if(aureolinCar(who)){ o.aureolinHeat = 1; o.aureolinOverheated = false; o.aureolinRocketT = 0; }
   if(neelaCar(who)) beginNeelaForm(who);
   if(saffronCar(who)) beginSaffronFlight(who);
   if(lolantheCar(who)){ o.queenPop = QUEEN_POP; o.queenOut = 0; }
@@ -1441,6 +1443,7 @@ function puffFx(x, y){
 function wreckRival(R, by, force){
   if(!R || R.dead > 0) return;
   if(force ? (finishedCar(R) || invulnerableCar(R)) : safeCar(R)) return;
+  clearAureolinFire(R);
   botBlame(R, by);
   ultDelta(R, ULT_ON_WRECK);
   if(by !== undefined) ultDelta(by, ULT_ON_KILL);
@@ -1508,7 +1511,7 @@ function leaderOf(who){
    whole bubble world was an eighty metre band strapped to your car: anyone
    further ahead than that was already past the row before it existed and never
    met a bubble in their life, and anyone dropped behind lost every row before it
-   reached them. The road has to be the same road for all eight, so a row is now
+   reached them. The road has to be the same road for all nine, so a row is now
    planted the same distance ahead of whoever leads and kept until whoever trails
    is through it. When you are the one in front both come out exactly where they
    always did. */
@@ -2378,6 +2381,7 @@ function clearMyUlt(){
   G.ult = 0;
 }
 function destroyCar(by){
+  clearAureolinFire("me");
   clearSaffronState("me");
   clearNeelaState("me");                       /* no alternate form on a wreck */
   clearVerdantState("me");                     /* nor a ghost dissolving through the wreck */
@@ -2460,5 +2464,282 @@ function updateFx(dt, d){
     f.x += f.vx*dt;
     f.y += f.vy*dt + d*0.55;
     f.vx *= 0.94; f.vy *= 0.94;
+  }
+}
+
+/* ---- Aureolin: one vehicle choice and one weapon simulation for all seats. */
+function aureolinCar(who){ const o = who === "me" ? G : who; return !!o && o.car === "aureolin"; }
+function aureolinArmedActive(who){ const o = who === "me" ? G : who; return aureolinCar(who) && !!o.aureolinArmed; }
+function aureolinUltActive(who){ const o = who === "me" ? G : who; return aureolinCar(who) && !!o.ultOn; }
+function hasVehicleForm(who){ return coleCar(who) || aureolinCar(who); }
+function vehicleFormCooldown(who){
+  const o = who === "me" ? G : who;
+  return (coleCar(who) ? o.coleSwitchT : o.aureolinSwitchT) || 0;
+}
+function canVehicleSwitch(who){
+  const o = who === "me" ? G : who;
+  return hasVehicleForm(who) && G.state === "running" && !vehicleFormCooldown(who) &&
+         !(o.dead > 0) && o.finished === null && !controlsLocked(who);
+}
+function switchVehicleForm(who){
+  if(coleCar(who)) return switchColeForm(who);
+  if(!canVehicleSwitch(who)) return false;
+  const o = who === "me" ? G : who;
+  o.aureolinArmed = !o.aureolinArmed;
+  o.aureolinSwitchT = AUREOLIN_SWITCH_COOLDOWN;
+  if(!o.aureolinArmed) clearAureolinFire(who);
+  startWhiteout(who); startMorph(who);
+  return true;
+}
+function clearAureolinFire(who, block){
+  const o = who === "me" ? G : who;
+  o.wantFire = o.keyFire = o.ptrFire = o.padFire = false;
+  o.aureolinFireT = 0;
+  if(block){
+    o.fireBlocked = true;
+    for(const field of ["wantFire","keyFire","ptrFire","padFire"]) o[field+"Blocked"] = true;
+  } // each held physical control must be released independently
+}
+function resetAureolin(who){
+  const o = who === "me" ? G : who;
+  o.aureolinArmed = false; o.aureolinSwitchT = 0;
+  o.aureolinHeat = 1; o.aureolinOverheated = false;
+  o.aureolinRocketT = 0; o.aureolinSoundT = 0; o.aureolinSlows = [];
+  o.fireBlocked = false;
+  for(const field of ["wantFire","keyFire","ptrFire","padFire"]) o[field+"Blocked"] = false;
+  clearAureolinFire(who);
+}
+function canAureolinFire(who){
+  const o = who === "me" ? G : who;
+  return aureolinArmedActive(who) && G.state === "running" &&
+    o.dead <= 0 && o.finished === null && !controlsLocked(who);
+}
+function canAureolinFireBullets(who){
+  const o = who === "me" ? G : who;
+  return canAureolinFire(who) && (o.ultOn || (!o.aureolinOverheated && o.aureolinHeat > 1e-9));
+}
+function canAureolinFireRockets(who){ return canAureolinFire(who) && aureolinUltActive(who); }
+function tickAureolinSlows(who, dt){
+  const o = who === "me" ? G : who;
+  o.aureolinSlows = (o.aureolinSlows || []).map(t => t-dt).filter(t => t > 1e-9);
+}
+/* Source dimensions are model metadata, so physics never waits for image IO.
+   This is the same uniform fit/centering as spriteFrame()/spriteAnchor(). */
+function modelAnchorWorld(who, anchor){
+  const o = who === "me" ? G : who, model = racerModel(who), d = racerDims(who);
+  const b = model.spriteBounds, size = model.sourceSize;
+  const k = Math.min(d.w/(size[0]*b[2]), d.h/(size[1]*b[3]));
+  const x = (anchor[0]-b[0]-b[2]/2)*size[0]*k;
+  const y = (anchor[1]-b[1]-b[3]/2)*size[1]*k;
+  const c = Math.cos(o.tilt || 0), s = Math.sin(o.tilt || 0);
+  return {x:o.x+x*c-y*s, y:racerY(who)+x*s+y*c};
+}
+function aureolinProjectile(who, kind, anchor){
+  const o = who === "me" ? G : who, at = modelAnchorWorld(who, anchor);
+  const length = carDims(o.car).h, tilt = o.tilt || 0;
+  const p = {owner:who, kind, x:at.x, m:G.meters+(playerY-at.y)*.075,
+    vx:Math.sin(tilt), vy:-Math.cos(tilt), angle:tilt, altitude:0,
+    speed:length*(kind === "bullet" ? AUREOLIN_BULLET_SPEED : AUREOLIN_ROCKET_SPEED),
+    length:length*AUREOLIN_PROJECTILES[kind].length, traveled:0,
+    range:length*AUREOLIN_BULLET_RANGE*(o.ultOn ? AUREOLIN_ULT_BULLET_RANGE_MULT : 1),
+    life:AUREOLIN_ROCKET_LIFE, target:null,
+    get y(){ return parkY(this.m); }};
+  (kind === "bullet" ? G.aureolinBullets : G.aureolinRockets).push(p);
+  return p;
+}
+function fireAureolinBullet(who){
+  if(!canAureolinFireBullets(who)) return false;
+  const o = who === "me" ? G : who;
+  aureolinProjectile(who, "bullet", racerModel(who).turretMuzzle);
+  if(!o.ultOn){
+    o.aureolinHeat = Math.max(0, o.aureolinHeat-AUREOLIN_BULLET_DRAIN);
+    if(o.aureolinHeat < 1e-9){ o.aureolinHeat = 0; o.aureolinOverheated = true; }
+  }
+  // Limit audio to five short clicks per second, independent of shot count.
+  if(!(o.aureolinSoundT > 0)){
+    tone(180, .025, "triangle", .018); o.aureolinSoundT = .2;
+  }
+  return true;
+}
+function aureolinReachable(who, kind){
+  return !physicallyProtected(who) && !rhosynUltActive(who) &&
+         (kind === "rocket" || !saffronAirborne(who));
+}
+function aureolinTarget(owner, kind){
+  const m = metersOf(owner); let best = null, gap = Infinity;
+  for(const who of ["me", ...G.rivals]){
+    if(who === owner || !aureolinReachable(who, kind)) continue;
+    const ahead = metersOf(who)-m;
+    if(ahead > 0 && ahead < gap){ gap = ahead; best = who; }
+  }
+  return best;
+}
+function fireAureolinRockets(who){
+  const o = who === "me" ? G : who;
+  if(!canAureolinFireRockets(who) || o.aureolinRocketT > 1e-9 || !aureolinTarget(who, "rocket")) return false;
+  for(const anchor of racerModel(who).rocketMuzzles) aureolinProjectile(who, "rocket", anchor);
+  o.aureolinRocketT = Math.max(0, o.aureolinRocketT) + AUREOLIN_ROCKET_COOLDOWN;
+  tone(120, .09, "triangle", .05);
+  return true;
+}
+function tickAureolin(who, dt){
+  if(G.state !== "running") return;
+  const o = who === "me" ? G : who;
+  o.aureolinSwitchT = Math.max(0, (o.aureolinSwitchT || 0)-dt);
+  if(o.aureolinSwitchT < 1e-9) o.aureolinSwitchT = 0;
+  if(!aureolinCar(who)) return;
+  o.aureolinSoundT = Math.max(0, o.aureolinSoundT-dt);
+  o.aureolinRocketT = Math.max(0, o.aureolinRocketT-dt);
+  if(o.ultOn){ o.aureolinHeat = 1; o.aureolinOverheated = false; }
+  if(o.dead > 0 || o.finished !== null || controlsLocked(who)) clearAureolinFire(who, controlsLocked(who));
+  const requested = o.ultOn || o.wantFire || o.keyFire || o.ptrFire || o.padFire;
+  if(requested && canAureolinFireBullets(who)){
+    o.aureolinFireT += dt;
+    const interval = 1/AUREOLIN_BULLET_RATE;
+    while(o.aureolinFireT+1e-9 >= interval){
+      o.aureolinFireT -= interval;
+      if(!fireAureolinBullet(who)){ o.aureolinFireT = 0; break; }
+      G.aureolinBullets[G.aureolinBullets.length-1].firstStep = Math.max(0,o.aureolinFireT);
+    }
+  } else {
+    o.aureolinFireT = 0;
+    o.aureolinHeat = Math.min(1, o.aureolinHeat+dt*AUREOLIN_HEAT_REFILL);
+    if(o.aureolinHeat > 1-1e-9){ o.aureolinHeat = 1; o.aureolinOverheated = false; }
+  }
+  fireAureolinRockets(who);
+}
+/* Exact swept polygon translation: start/end footprints and the quadrilateral
+   swept by each edge. Unlike a bounding circle this preserves empty corners. */
+function sweepProjectilePolygon(points, dx, dy, target){
+  if(hitPolygonsOverlap(points, target)) return true;
+  const end = points.map(p => ({x:p.x+dx,y:p.y+dy}));
+  if(hitPolygonsOverlap(end, target)) return true;
+  for(let i=0;i<points.length;i++){
+    const j = (i+1)%points.length;
+    if(hitPolygonsOverlap([points[i],points[j],end[j],end[i]], target)) return true;
+  }
+  return false;
+}
+function aureolinFootprint(p, x, y, angle){
+  const def = AUREOLIN_PROJECTILES[p.kind], w = p.length*def.bounds[2]/def.bounds[3];
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return def.body.map(a => ({x:x+a[0]*w*c-a[1]*p.length*s, y:y+a[0]*w*s+a[1]*p.length*c}));
+}
+function aureolinContactTime(p, x, y, dx, dy, target){
+  const pts = aureolinFootprint(p, x, y, p.angle);
+  if(!sweepProjectilePolygon(pts, dx, dy, target)) return null;
+  let lo = 0, hi = 1;
+  for(let i=0;i<14;i++){
+    const mid = (lo+hi)/2;
+    if(sweepProjectilePolygon(pts, dx*mid, dy*mid, target)) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+function aureolinImpact(p, harmless){
+  const count = harmless ? 2 : p.kind === "rocket" ? 8 : 3;
+  for(let i=0;i<count;i++) addFx(p.x,p.y,rand(-35,35),rand(-35,35),.16,1.5,"#F5CF32");
+  if(!harmless && p.kind === "rocket") noise(.06,.06);
+}
+function hitAureolinRacer(p, who){
+  if(who === p.owner || !aureolinReachable(who, p.kind)) return false;
+  if(flannUltActive(who)){ aureolinImpact(p, true); return true; }
+  if(verdantUltActive(who)){ verdantReveal(who); aureolinImpact(p, true); return true; }
+  const o = who === "me" ? G : who;
+  if(p.kind === "bullet"){
+    if(!refusesDebuffs(who)) (o.aureolinSlows || (o.aureolinSlows=[])).push(AUREOLIN_SLOW_TIME);
+  } else {
+    // Combat damage bypasses only the ordinary ultimate hazard shield waiver.
+    o.shield = Math.max(0, o.shield-1);
+    if(o.shield === 0) wreckRacer(who, p.owner, true);
+    else o.shieldHitT = SHIELD_HIT_TIME; // also visible on airborne Saffron
+  }
+  if(who !== "me") botBlame(who,p.owner);
+  aureolinImpact(p, false);
+  return true;
+}
+function aureolinFrame(){
+  const frame = new Map();
+  for(const who of ["me", ...G.rivals]){
+    const o = who === "me" ? G : who;
+    frame.set(who,{x:o.x,m:metersOf(who),alt:saffronAltitude(who)});
+  }
+  for(const h of [...G.traps,...G.slicks]) frame.set(h,{
+    x:h.x,m:G.meters+(playerY-h.y)*.075,alt:h.kind === "meteor" ? rockAlt(h) : 0
+  });
+  return frame;
+}
+function aureolinHazardPolygon(o, slick){
+  if(slick) return slickOutline(o,1);
+  if(o.kind === "puddle" || (o.kind === "meteor" && o.phase !== 0)) return null;
+  const r = o.kind === "weed" ? o.r*Math.sqrt(.86) : o.mr;
+  const y = o.y-(o.kind === "meteor" ? rockAlt(o) : 0);
+  return Array.from({length:16},(_,i) => ({x:o.x+Math.cos(i*Math.PI/8)*r,y:y+Math.sin(i*Math.PI/8)*r}));
+}
+function updateAureolinProjectiles(dt, frame){
+  if(G.state !== "running") return;
+  for(const list of [G.aureolinBullets,G.aureolinRockets]) for(let i=list.length-1;i>=0;i--){
+    const p = list[i], oldX = p.x, oldY = p.y;
+    const elapsed = p.firstStep === undefined ? dt : Math.min(dt,p.firstStep);
+    delete p.firstStep;
+    const step = p.kind === "bullet" ? Math.min(p.speed*elapsed, Math.max(0,p.range-p.traveled)) : p.speed*Math.min(elapsed,p.life);
+    if(p.kind === "rocket"){
+      p.target = aureolinTarget(p.owner,"rocket");
+      if(p.target){
+        const o = p.target === "me" ? G : p.target;
+        const alt = saffronAltitude(p.target), tx = o.x-p.x;
+        // Never turn back down the road, including after passing a target.
+        const ty = Math.min(-carH*.2, racerY(p.target)-alt-p.y);
+        const desired = Math.atan2(tx,-ty);
+        const delta = Math.atan2(Math.sin(desired-p.angle),Math.cos(desired-p.angle));
+        p.angle += clamp(delta,-AUREOLIN_ROCKET_TURN*elapsed,AUREOLIN_ROCKET_TURN*elapsed);
+        p.altitude = lerp(p.altitude,alt,1-Math.exp(-8*elapsed));
+        p.vx = Math.sin(p.angle); p.vy = -Math.cos(p.angle);
+      }
+    }
+    const dx = p.vx*step, dy = p.vy*step;
+    let first = null, firstT = Infinity;
+    for(const who of ["me", ...G.rivals]){
+      if(who === p.owner || !aureolinReachable(who,p.kind)) continue;
+      const o = who === "me" ? G : who, alt = p.kind === "rocket" ? saffronAltitude(who) : 0;
+      const before = frame && frame.get(who);
+      const fraction = dt > 0 ? elapsed/dt : 1;
+      const mx = before ? (o.x-before.x)*fraction : 0;
+      const my = before ? (-(metersOf(who)-before.m)/.075-(alt-before.alt))*fraction : 0;
+      const time = aureolinContactTime(p,oldX+mx,oldY+my,dx-mx,dy-my,carHit(who,undefined,racerY(who)-alt).points);
+      if(time !== null && time < firstT){ firstT=time;first={who}; }
+    }
+    for(const list2 of [G.traps,G.slicks]) for(const hazard of list2){
+      const slick = list2 === G.slicks;
+      if(p.altitude > carH*.3 && (slick || hazard.kind !== "meteor")) continue;
+      const before = frame && frame.get(hazard);
+      const alt = hazard.kind === "meteor" ? rockAlt(hazard) : 0;
+      if(!slick && hazard.kind === "meteor"){
+        const priorAlt = before ? before.alt : alt;
+        if(Math.min(alt,priorAlt) > p.altitude+carH*.55 || Math.max(alt,priorAlt) < p.altitude-carH*.55) continue;
+      }
+      const poly = aureolinHazardPolygon(hazard,slick);
+      if(!poly) continue;
+      const fraction = dt > 0 ? elapsed/dt : 1;
+      const mx = before ? (hazard.x-before.x)*fraction : 0;
+      const my = before ? (hazard.y-alt-(parkY(before.m)-before.alt))*fraction : 0;
+      const time = aureolinContactTime(p,oldX+mx,oldY+my,dx-mx,dy-my,poly);
+      if(time !== null && time < firstT){ firstT=time;first={hazard,list:list2}; }
+    }
+    const fraction = first ? firstT : 1;
+    p.x += dx*fraction; p.m -= dy*fraction*.075; p.traveled += step*fraction;
+    p.life -= elapsed;
+    if(first){
+      if(first.who) hitAureolinRacer(p,first.who);
+      else {
+        const h = first.hazard;
+        first.list.splice(first.list.indexOf(h),1);
+        smashFx(p.x,p.y,h.r || h.rx || 10*SCENE,"#F5CF32",ultOwnerCar(p.owner));
+      }
+      list.splice(i,1);
+    } else if((p.kind === "bullet" && p.traveled >= p.range-1e-8) || p.life <= 1e-9){
+      if(p.kind === "rocket") aureolinImpact(p,true);
+      list.splice(i,1);
+    }
   }
 }

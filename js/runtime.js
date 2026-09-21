@@ -35,7 +35,7 @@ let VOWN = "me";            /* whose view is being drawn */
 let VW_TOP = 0, VW_BOT = 0; /* the union of every view: what the world must cover */
 
 /* Where a car's own view sits relative to the master frame. After the flag,
-   ease toward the middle of the parking area so all eight places stay visible.
+   ease toward the middle of the parking area so all nine places stay visible.
    This changes only the camera, never a racer's canonical world position. */
 function camDy(who){
   const o = who === "me" ? G : who;
@@ -98,6 +98,10 @@ const G = {
      because any car can be the one teleported. `swapGuard` is a single step's
      worth of "this contact has already been dealt with". */
   saffronPhase:"off", saffronT:0, saffronLift:0,
+  aureolinArmed:false, aureolinSwitchT:0, aureolinHeat:1, aureolinOverheated:false,
+  aureolinFireT:0, aureolinRocketT:0, aureolinSoundT:0, aureolinSlows:[],
+  wantFire:false, keyFire:false, ptrFire:false, padFire:false, fireBlocked:false,
+  wantFireBlocked:false, keyFireBlocked:false, ptrFireBlocked:false, padFireBlocked:false,
   coleBike:false, coleSwitchT:0,
   neelaForm:false, neelaOrigin:null, neelaSwapped:false,
   whiteT:0, morphT:0, swapGuard:0, trail:[], trailGap:0,
@@ -146,6 +150,7 @@ const G = {
   mode:"endless", diff:"medium",
   /* the short forward shove a rear-end hands its victim */
   shuntT:0, bumpCD:0,
+  aureolinBullets:[], aureolinRockets:[],
   slipT:0, item:null, swapT:0, boxes:[], slicks:[], missiles:[], boxGap:0, nextRow:6000, canT:0, lastTap:-9, tapClock:0,
   raceT:0, tracksLeft:-1, finishAt:0, finished:null, results:[], raceDone:false,
   /* local play */
@@ -160,7 +165,7 @@ const G = {
    object is never a special case bolted onto local play, it is the thing the
    race has always been reading and simply could not be changed before.
 
-   bots is -1 for "fill the grid", which is what eight-cars-whatever-happens has
+   bots is -1 for "fill the grid", which is what nine-cars-whatever-happens has
    always meant; a custom race can name a number instead, down to nobody. */
 function defaultRules(){
   return { bots:-1, traps:true, bubbles:true, boost:true, ults:true };
@@ -221,7 +226,7 @@ function racerModel(who){
   if(!c) return CARS.flann;
   /* Asked with the racer itself rather than the argument, so carHit() calling
      this with nothing at all still means player one. */
-  return c.altForm && (neelaFormActive(o) || saffronDragonActive(o) || coleBikeActive(o)) ? c.altForm : c;
+  return c.altForm && (neelaFormActive(o) || saffronDragonActive(o) || coleBikeActive(o) || aureolinArmedActive(o)) ? c.altForm : c;
 }
 /* A model may be drawn larger or smaller than the racer's own box; only an
    alternate form uses it, and only to keep the shape it turns into the size
